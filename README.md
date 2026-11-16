@@ -1,7 +1,8 @@
 # Gerberus
 
 Gerberus checks a PCB design for electrical bugs before you order it: parts pushed past their datasheet limits,
-missing protection, swapped pins, parts you can't buy, and bad USB routing. It reads KiCad and Altium designs.
+missing protection, swapped pins, parts you can't buy, and bad USB routing. It reads KiCad designs, and Altium
+schematics for the schematic checks.
 
 ## Install
 
@@ -17,17 +18,22 @@ On Windows, paste this into PowerShell:
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.ps1 | iex"
 ```
 
-Or, if you have [Rust](https://rustup.rs) installed, build it yourself:
+Then open a new terminal window, so it can find the `gerberus` command. Run `gerberus update` later to get the
+latest version.
+
+Software developers who have [Rust](https://rustup.rs) installed can build it instead (you don't need this if you
+used the installer above; to update a copy built this way, run the same command again):
 
 ```sh
 cargo install --locked --git https://github.com/roccoagain/gerberus
 ```
 
-Run `gerberus update` to get the latest version. More in [docs/install.md](docs/install.md).
+Two commands need another program installed: `gerberus stress` needs [ngspice](https://ngspice.sourceforge.io/),
+and `gerberus datasheet verify` needs poppler's `pdftotext`. More in [docs/install.md](docs/install.md).
 
 ## Quick start
 
-Try it on one of the example boards. Download them with git (or download the repository as a ZIP from GitHub):
+Try it on one of the example boards. Download them with git:
 
 ```sh
 git clone https://github.com/roccoagain/gerberus
@@ -35,12 +41,19 @@ cd gerberus/tests/fixtures/sniffer
 gerberus check sniffer.kicad_sch
 ```
 
-Each finding says PASS, FAIL or UNKNOWN. A FAIL gives the numbers it compared and the datasheet page they came
-from. The sniffer fails when its supply is connected backwards, and warns that its headers have no ESD protection.
+(No git? On the [GitHub page](https://github.com/roccoagain/gerberus) click **Code → Download ZIP**, unzip it, and
+`cd` into `gerberus-main/tests/fixtures/sniffer` instead.)
 
-On your own board, point it at the root schematic (`.kicad_sch`) or the Altium project (`.PrjPcb`). Put an
-`inputs.toml` next to the schematic that says what voltages arrive on each connector pin; the one in
-`tests/fixtures/sniffer` is a short example, and [the format is here](parts/README.md#board-inputs).
+It lists every FAIL and UNKNOWN, then a count of errors, warnings, unknowns and passes (`--all` lists the passes
+too). A FAIL is an **error** when the part can be damaged or the board won't work, and a **warning** when it's a
+risk worth a look. It gives the numbers it compared and the datasheet page they came from. UNKNOWN means Gerberus
+couldn't decide, usually because a part has no part file yet; it never counts as a pass. The sniffer has 2 errors
+(its supply connected backwards damages the regulator) and warnings for headers with no ESD protection.
+
+On your own board, point it at the root schematic (`.kicad_sch`) or the Altium project (`.PrjPcb`). `check`
+needs an `inputs.toml` next to the schematic that says what voltages arrive on each connector pin (for example, 3.6
+to 5.5 V on J1 pin 1); copy the one in `tests/fixtures/sniffer` as a start, and see [the
+format](parts/README.md#board-inputs).
 
 ## What it checks
 

@@ -61,9 +61,11 @@ Every command reads a design into one design graph and checks that.
 - `src/limits.rs` loads the part files (`parts/`, format in [`parts/README.md`](../parts/README.md)) and
   `src/policy.rs` the derating policy (`policy.toml`). Both are built into the binary by `build.rs`.
 - `src/inputs.rs` reads a board's `inputs.toml`.
-- `src/voltage.rs` works out every net's worst-case voltage range; `src/rules.rs` and `src/protection.rs` check
-  pins against it (`check`); `src/thermal.rs` adds loads and junction temperature (`loads`).
+- `src/voltage.rs` works out every net's worst-case voltage range. `check` runs the rules in `src/rules.rs`
+  against it, with the `esd` and `reverse-polarity` rules from `src/protection.rs` and the junction-temperature and
+  forward-current rules from `src/thermal.rs`, which also backs `loads`.
 - `src/spice/` runs the hot-plug stress simulation in ngspice (`stress`).
 - `src/pinout.rs` (`pinout`), `src/bom.rs` (`bom`), `src/si/` (`si`), `src/datasheet.rs` (`datasheet`) and
   `src/update.rs` (`update` and the daily release check) each back one command.
-- `src/main.rs` is the command line.
+- `src/main.rs` is the command line, and also holds the `parts` command (which reads `src/limits.rs`). `src/lib.rs`
+  declares the modules, so tests and `examples/` can use them.
