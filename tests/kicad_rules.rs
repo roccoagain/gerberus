@@ -5,8 +5,8 @@
 
 use std::path::PathBuf;
 
-use scoutfly::design::Design;
-use scoutfly::kicad;
+use gerberus::design::Design;
+use gerberus::kicad;
 
 const ROOT: &str = "00000000-0000-0000-0000-000000000001";
 
@@ -60,7 +60,7 @@ fn load(body: &[String]) -> Design {
         "(kicad_sch (version 20260306) (uuid \"{ROOT}\")\n{LIBS}\n{}\n)",
         body.join("\n")
     );
-    let dir = std::env::temp_dir().join(format!("scoutfly-rules-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("gerberus-rules-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path: PathBuf = dir.join(format!("{:016x}.kicad_sch", hash(&text)));
     std::fs::write(&path, text).unwrap();
@@ -78,7 +78,7 @@ fn wire(a: (f64, f64), b: (f64, f64)) -> String {
     format!("(wire (pts (xy {} {}) (xy {} {})))", a.0, a.1, b.0, b.1)
 }
 
-fn net<'a>(d: &'a Design, r: &str, p: &str) -> &'a scoutfly::design::Net {
+fn net<'a>(d: &'a Design, r: &str, p: &str) -> &'a gerberus::design::Net {
     d.pin_net(r, p).unwrap_or_else(|| panic!("{r}.{p} has no net"))
 }
 
