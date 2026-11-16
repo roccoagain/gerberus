@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817759,
+  "listing": {
+    "code": "C15850",
+    "mpn": "CL21A106KAYNNNE",
+    "manufacturer": "Samsung Electro-Mechanics",
+    "stock": 1862940,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0805",
+    "similar": [
+      {
+        "code": "C7432816",
+        "mpn": "CL21A106KAFN3NE",
+        "manufacturer": "Samsung Electro-Mechanics",
+        "stock": 1035,
+        "status": "normal",
+        "package": "0805",
+        "description": "10uF ±10% 25V Ceramic Capacitor X5R 0805"
+      },
+      {
+        "code": "C18185769",
+        "mpn": "TCC0805X5R106K250FTC",
+        "manufacturer": "CCTC",
+        "stock": 18880,
+        "status": "normal",
+        "package": "0805",
+        "description": "10uF ±10% 25V Ceramic Capacitor X5R 0805"
+      },
+      {
+        "code": "C19103847",
+        "mpn": "HGC0805R5106K250NSLJ",
+        "manufacturer": "Chinocera",
+        "stock": 380440,
+        "status": "normal",
+        "package": "0805",
+        "description": "10uF ±10% 25V Ceramic Capacitor X5R 0805"
+      },
+      {
+        "code": "C20070397",
+        "mpn": "CSA0805X5R106K250MT",
+        "manufacturer": "HRE",
+        "stock": 125780,
+        "status": "normal",
+        "package": "0805",
+        "description": "10uF X5R ±10% 25V 0805 Ceramic Capacitors"
+      },
+      {
+        "code": "C20244008",
+        "mpn": "TMK212BBJ106KG8T",
+        "manufacturer": "Taiyo Yuden",
+        "stock": 5,
+        "status": "normal",
+        "package": "0805",
+        "description": "10uF X5R ±10% 25V 0805 Ceramic Capacitors RoHS"
+      }
+    ]
+  }
+}

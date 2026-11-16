@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817761,
+  "listing": {
+    "code": "C82942",
+    "mpn": "ME6211C33M5G-N",
+    "manufacturer": "MICRONE",
+    "stock": 282390,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SOT-23-5",
+    "similar": [
+      {
+        "code": "C2837689",
+        "mpn": "ME6511C33M5G",
+        "manufacturer": "MICRONE",
+        "stock": 950,
+        "status": "normal",
+        "package": "SOT-23-5L",
+        "description": "3.3V Positive Fixed SOT-23-5L Voltage Regulators - Linear, Low Drop Out (LDO) Regulators"
+      },
+      {
+        "code": "C2925775",
+        "mpn": "ME6251C33M5G",
+        "manufacturer": "MICRONE",
+        "stock": 1325,
+        "status": "normal",
+        "package": "SOT-23-5",
+        "description": "Linear Voltage Regulator IC Positive Fixed 1 Output 500mA SOT-23-5"
+      },
+      {
+        "code": "C610253",
+        "mpn": "ME6231C33M5G",
+        "manufacturer": "MICRONE",
+        "stock": 100570,
+        "status": "normal",
+        "package": "SOT-23-5",
+        "description": "Linear Voltage Regulator IC Positive Fixed 1 Output 500mA SOT-23-5"
+      },
+      {
+        "code": "C427602",
+        "mpn": "ME6217C33M5G",
+        "manufacturer": "MICRONE",
+        "stock": 54155,
+        "status": "normal",
+        "package": "SOT-23-5",
+        "description": "3.3V Positive Fixed SOT-23-5 Voltage Regulators - Linear, Low Drop Out (LDO) Regulators"
+      },
+      {
+        "code": "C236696",
+        "mpn": "ME6207C33M5G",
+        "manufacturer": "MICRONE",
+        "stock": 0,
+        "status": "normal",
+        "package": "SOT-23-5",
+        "description": "3.3V Positive Fixed SOT-23-5 Voltage Regulators - Linear, Low Drop Out (LDO) Regulators"
+      }
+    ]
+  }
+}

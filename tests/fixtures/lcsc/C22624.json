@@ -1,0 +1,23 @@
+{
+  "fetched": 1794817738,
+  "listing": {
+    "code": "C22624",
+    "mpn": "B5819WS",
+    "manufacturer": "JSCJ",
+    "stock": 629540,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SOD-323",
+    "similar": [
+      {
+        "code": "C77281",
+        "mpn": "B1040WS",
+        "manufacturer": "JSCJ",
+        "stock": 6000,
+        "status": "normal",
+        "package": "SOD-323",
+        "description": "Diode Independent 40V 1A Surface Mount SOD-323"
+      }
+    ]
+  }
+}

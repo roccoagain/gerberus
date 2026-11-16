@@ -15,7 +15,40 @@ pub struct PadNet {
     pub net: Option<String>,
 }
 
-pub fn load_pad_nets(path: &Path) -> Result<Vec<PadNet>, String> {
+/// One footprint placed on the board.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Footprint {
+    pub reference: String,
+    /// Library footprint, such as `Package_SO:SOIC-8_3.9x4.9mm_P1.27mm`.
+    pub lib_id: String,
+    /// KiCad's "not in schematic" attribute: a footprint added on the board only, such as a test point or logo.
+    pub board_only: bool,
+    /// Pads with a number, in file order. Unnumbered pads (holes, paste-only shapes) are left out. A number
+    /// can repeat, such as an exposed pad split into several shapes.
+    pub pads: Vec<Pad>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pad {
+    pub number: String,
+    /// `smd`, `thru_hole`, `np_thru_hole` or `connect`.
+    pub kind: String,
+    /// `None` for pads with no net, such as mounting pads.
+    pub net: Option<String>,
+}
+
+impl Footprint {
+    /// Each pad number once, sorted.
+    pub fn pad_numbers(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = self.pads.iter().map(|p| p.number.as_str()).collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+}
+
+/// Every footprint on the board, in file order.
+pub fn load_footprints(path: &Path) -> Result<Vec<Footprint>, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let tree = sexpr::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     if tree.head() != Some("kicad_pcb") {
@@ -34,18 +67,41 @@ pub fn load_pad_nets(path: &Path) -> Result<Vec<PadNet>, String> {
             })
             .unwrap_or_default()
             .to_string();
-        for pad in fp.children("pad") {
-            let num = pad.arg(1).unwrap_or_default();
-            if num.is_empty() {
-                continue;
-            }
-            out.push(PadNet {
-                reference: reference.clone(),
-                pad: num.to_string(),
-                net: pad_net(pad),
-            });
-        }
+        let pads = fp
+            .children("pad")
+            .filter_map(|pad| {
+                let number = pad.arg(1).unwrap_or_default();
+                (!number.is_empty()).then(|| Pad {
+                    number: number.to_string(),
+                    kind: pad.arg(2).unwrap_or_default().to_string(),
+                    net: pad_net(pad),
+                })
+            })
+            .collect();
+        out.push(Footprint {
+            reference,
+            lib_id: fp.arg(1).unwrap_or_default().to_string(),
+            board_only: fp
+                .child("attr")
+                .is_some_and(|a| a.items().iter().skip(1).any(|i| i.text() == Some("board_only"))),
+            pads,
+        });
     }
+    Ok(out)
+}
+
+pub fn load_pad_nets(path: &Path) -> Result<Vec<PadNet>, String> {
+    let mut out: Vec<PadNet> = load_footprints(path)?
+        .into_iter()
+        .flat_map(|fp| {
+            let reference = fp.reference;
+            fp.pads.into_iter().map(move |p| PadNet {
+                reference: reference.clone(),
+                pad: p.number,
+                net: p.net,
+            })
+        })
+        .collect();
     out.sort();
     out.dedup();
     Ok(out)
