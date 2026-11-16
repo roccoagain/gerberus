@@ -1160,8 +1160,8 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                 q.kind == PinKind::PowerIn
                     && q.net != pin.net
                     && match volts.nets[q.net].driver {
-                        Driver::Strong | Driver::Pulled => volts.nets[q.net].span.max.is_some_and(|v| v > 0.0),
-                        // A rail only a connector reaches (a board with no inputs.toml) may well be powered.
+                        // A driven rail of unknown voltage (a board with no inputs.toml) may well be powered.
+                        Driver::Strong | Driver::Pulled => volts.nets[q.net].span.max.is_none_or(|v| v > 0.0),
                         Driver::Weak => true,
                         Driver::Floating => false,
                     }
@@ -1177,26 +1177,21 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                             .and_then(|c2| c2.pins.get(p2))
                             .is_some_and(|p2| p2.kind == PinKind::Passive)
                 });
-            // An input reached only through a series capacitor is AC-coupled. Many amplifiers and codecs bias
-            // such an input themselves; without a part file, nothing says whether this one does.
+            // An input reached only through capacitors is AC-coupled, or AC-grounded (a differential amplifier's
+            // unused input). Many amplifiers and codecs bias such an input themselves; without a part file,
+            // nothing says whether this one does.
             let ac_coupled = lib.part_for(c).is_none()
                 && pin.kind == PinKind::Input
                 && design.nets[pin.net].pins.iter().any(|(r2, _)| r2 != reference)
-                && design.nets[pin.net].pins.iter().all(|(r2, _)| {
-                    r2 == reference || design.components.get(r2).is_some_and(|c2| is_capacitor(r2, c2))
-                })
-                // At least one capacitor carries a signal in: one whose far side is a 0 V ground only filters.
-                && design.nets[pin.net].pins.iter().any(|(r2, p2)| {
-                    r2 != reference
-                        && design.components[r2].pins.values().any(|q| {
-                            q.number != *p2 && q.net != pin.net && volts.nets[q.net].span != Span::exact(0.0)
-                        })
-                });
+                && design.nets[pin.net]
+                    .pins
+                    .iter()
+                    .all(|(r2, _)| r2 == reference || design.components.get(r2).is_some_and(|c2| is_capacitor(r2, c2)));
             let (vd, msg) = match nv.driver {
                 Driver::Floating if ac_coupled => (
                     Verdict::Unknown,
                     format!(
-                        "{reference}.{name} is on {net}, which only capacitors reach, so it is AC-coupled. {reference} \
+                        "{reference}.{name} is on {net}, which only capacitors reach (AC-coupled). {reference} \
                          has no part file, so nothing says whether it biases this input itself; if its datasheet \
                          says it does, give it a `biases` drive"
                     ),

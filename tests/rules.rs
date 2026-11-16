@@ -380,14 +380,15 @@ fn floating_inputs_and_unpowered_pins_fail() {
             pin("3", PinKind::PowerIn, gnd),
         ],
     );
-    // Something else on /FLOAT that doesn't drive: a capacitor to ground.
+    // Something else on /FLOAT that doesn't drive: another part's input. (A capacitor alone would make it
+    // AC-coupled, which a part with no part file may bias itself: see `ac_coupled_inputs`.)
     add(
         &mut d,
-        "C99",
-        "Device:C",
-        "100nF",
+        "U10",
+        "Logic:Buffer",
+        "X",
         None,
-        vec![pin("1", PinKind::Passive, a), pin("2", PinKind::Passive, gnd)],
+        vec![pin("1", PinKind::Input, a), pin("3", PinKind::PowerIn, gnd)],
     );
     let (_, r) = run_on(&d, &inputs);
     let f = r.by_rule("floating-input").find(|f| f.reference == "U9").unwrap();
