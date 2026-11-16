@@ -1133,14 +1133,23 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
             // A part with no part file may supply the net itself: a charge pump's output or an internal
             // regulator's pin that its symbol marks as a power input (the MAX9722A's PVSS).
             // Two or more of its own pins on the net (PVSS and SVSS tied) set this apart from a lone power pin
-            // left unconnected, which stays a FAIL.
+            // left unconnected, which stays a FAIL. The part must also take power from a driven rail on another
+            // power pin: a part whose only supply net never reaches a source (a mistyped label, a VDDA island
+            // with a forgotten ferrite) still FAILs, however many of its pins and decoupling caps sit on it.
             let own_pins = design.nets[pin.net]
                 .pins
                 .iter()
                 .filter(|(r2, _)| r2 == reference)
                 .count();
+            let powered_elsewhere = c.pins.values().any(|q| {
+                q.kind == PinKind::PowerIn
+                    && q.net != pin.net
+                    && matches!(volts.nets[q.net].driver, Driver::Strong | Driver::Pulled)
+                    && volts.nets[q.net].span.max.is_some_and(|v| v > 0.0)
+            });
             let own_rail = lib.part_for(c).is_none()
                 && own_pins >= 2
+                && powered_elsewhere
                 && design.nets[pin.net].pins.iter().all(|(r2, p2)| {
                     r2 == reference
                         || design

@@ -404,13 +404,37 @@ fn floating_inputs_and_unpowered_pins_fail() {
     // A part with no part file and two of its own power pins tied on a net with only a capacitor, like the
     // MAX9722A's charge-pump output PVSS and SVSS: it may supply that net itself, so nothing proves it unpowered.
     let pump = new_net(&mut d, "/PVSS");
+    let v33 = net(&d, "+3V3");
     add(
         &mut d,
         "U8",
         "Amplifier:Pump",
         "X",
         None,
-        vec![pin("1", PinKind::PowerIn, pump), pin("2", PinKind::PowerIn, pump)],
+        vec![
+            pin("1", PinKind::PowerIn, pump),
+            pin("2", PinKind::PowerIn, pump),
+            pin("3", PinKind::PowerIn, v33),
+        ],
+    );
+    // The same with nothing else powering the part is a supply net that never reaches a source (a mistyped
+    // label): that stays a FAIL.
+    let typo = new_net(&mut d, "/VDD_TYPO");
+    add(
+        &mut d,
+        "U7",
+        "Amplifier:Pump",
+        "X",
+        None,
+        vec![pin("1", PinKind::PowerIn, typo), pin("2", PinKind::PowerIn, typo)],
+    );
+    add(
+        &mut d,
+        "C97",
+        "Device:C",
+        "100nF 50V",
+        None,
+        vec![pin("1", PinKind::Passive, typo), pin("2", PinKind::Passive, gnd)],
     );
     add(
         &mut d,
@@ -423,6 +447,8 @@ fn floating_inputs_and_unpowered_pins_fail() {
     let (_, r) = run_on(&d, &inputs);
     let f = r.by_rule("unpowered").find(|f| f.reference == "U8").unwrap();
     assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
+    let f = r.by_rule("unpowered").find(|f| f.reference == "U7").unwrap();
+    assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
     let f = r
         .by_rule("unpowered")
         .find(|f| f.reference == "U9" && f.message.contains("GND"))
@@ -779,5 +805,60 @@ fn esd_does_not_follow_pulls_onto_rails() {
     );
     let (_, r) = run_on(&d, &inputs);
     let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J2.6")).collect();
+    assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
+}
+
+/// Parts with no part file that can't take the discharge into one pin don't hold a connector's net at UNKNOWN: a
+/// generic pull-down to a rail, and a connector named by its symbol library rather than its reference.
+#[test]
+fn esd_skips_undescribed_pulls_and_connectors() {
+    let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    let swo = d.components["J2"].pins["6"].net;
+    let gnd = net(&d, "GND");
+    add(
+        &mut d,
+        "R98",
+        "Device:R",
+        "10k",
+        None,
+        vec![pin("1", PinKind::Passive, swo), pin("2", PinKind::Passive, gnd)],
+    );
+    add(
+        &mut d,
+        "USB2",
+        "Connector:USB_C_Receptacle",
+        "USB_C",
+        None,
+        vec![pin("A5", PinKind::Bidirectional, swo), pin("A1", PinKind::Passive, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J2.6")).collect();
+    assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
+}
+
+/// A part with no part file behind a series diode whose far side is clamped is sheltered by that clamp, as an IC
+/// there would be: can-encoder rev 2's VBUS reaches +VDC through D1, where D2 (SMF26A) clamps.
+#[test]
+fn esd_shelters_undescribed_parts_behind_a_clamp() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let vdc = net(&d, "+VDC");
+    let gnd = net(&d, "GND");
+    let before: Vec<_> = run_on(&d, &inputs)
+        .1
+        .by_rule("esd")
+        .filter(|f| f.message.starts_with("J1.1"))
+        .map(|f| f.verdict)
+        .collect();
+    assert_eq!(before, [Verdict::Pass]);
+    add(
+        &mut d,
+        "U98",
+        "Regulator:Mystery",
+        "MYSTERY2",
+        Some("MYSTERY2"),
+        vec![pin("1", PinKind::PowerIn, vdc), pin("2", PinKind::PowerIn, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J1.1")).collect();
     assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
 }
