@@ -72,14 +72,25 @@ pub fn simulate(netlist: &str) -> Result<Measured, String> {
     let text = String::from_utf8_lossy(&out.stdout);
     let err = String::from_utf8_lossy(&out.stderr);
     let measured = Measured::parse(&text);
-    if measured.values.is_empty() {
+    // A run that stops part way (a timestep too small) still prints the measurements it had; none of them
+    // can be trusted.
+    let aborted = text.contains("simulation(s) aborted") || err.contains("simulation(s) aborted");
+    if measured.values.is_empty() || aborted {
         let why: Vec<&str> = text
             .lines()
             .chain(err.lines())
-            .filter(|l| l.to_ascii_lowercase().contains("error"))
+            .filter(|l| {
+                let l = l.to_ascii_lowercase();
+                l.contains("error") || l.contains("timestep too small") || l.contains("aborted")
+            })
             .take(5)
             .collect();
-        return Err(format!("ngspice measured nothing: {}", why.join("; ")));
+        let what = if aborted {
+            "ngspice stopped"
+        } else {
+            "ngspice measured nothing"
+        };
+        return Err(format!("{what}: {}", why.join("; ")));
     }
     Ok(measured)
 }

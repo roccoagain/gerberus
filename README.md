@@ -243,24 +243,35 @@ What is modelled:
 - resistors, capacitors and inductors from their values;
 - ferrite beads, fuses and jumpers as closed;
 - diodes and LEDs from their forward drop at their test current;
-- TVS diodes from their breakdown voltage;
-- regulators as ideal sources that drop out when their supply is too low (a switcher at 100 % efficiency, the
-  least it can draw);
+- TVS diodes breaking down at the top of their breakdown range, with the resistance their `clamp` figure gives
+  (clamping voltage at the pulse current), or 1 Ω when the part file has none;
+- a transistor's forward drive (a P-FET reverse-polarity switch) as its channel switched on, 0.05 Ω;
+- step-down regulators as ideal sources with 10 mΩ output resistance that drop out when their supply is too low (a
+  switcher at 100 % efficiency, the least it can draw), and with no soft start, so the regulator's inrush is high;
 - every IC's `[[supply]]` current.
+
+A limit relative to another pin (`max = VDD + 0.3`) is checked against that pin's voltage in the same run. A limit
+whose end the datasheet doesn't give comes out UNKNOWN, not PASS.
 
 What isn't:
 - Capacitor ESR and IC pins' internal clamps aren't modelled, both of which would damp a peak, so the result
   errs high.
-- A switching regulator's switch node is reported UNKNOWN.
+- A step-up regulator's output is UNKNOWN, and so is a switching regulator's switch node.
 - Signal inputs are left open.
 - Pin limits on nets nothing in the simulation drives (IC signal pins) aren't reported.
-- Parts with no model are listed, and the pins on their nets come out UNKNOWN.
+- Parts with no model are listed, and the pins on their nets come out UNKNOWN. A net the static voltage analysis
+  says is powered but the simulation leaves near 0 V is UNKNOWN too, as something feeding it isn't modelled.
+- A TVS that a supply holds past its breakdown minimum once settled fails: it keeps conducting.
 
 On the test boards:
-- The sniffer fails. Its 10 µF input capacitor and the cable take VIN from 5.5 V to 7.5 V, past the ME6211's 6.5 V
-  absolute maximum. A TVS, a bulk capacitor with some ESR, or a series resistor would fix it.
-- The CAN encoders pass. Rev 2's +VDC rings to about 31 V from 26 V, inside the TPS560430's and the capacitors'
-  ratings. Rev 1's TVS clamps its +12V at about 22.6 V.
+- The sniffer fails. Its 10 µF input capacitor and the cable take VIN from 5.5 V to about 9.9 V, past the ME6211's
+  6.5 V absolute maximum. A TVS, a bulk capacitor with some ESR, or a series resistor would fix it.
+- Rev 2 of the CAN encoder fails. Its series Schottky D1 holds the input capacitors at the top of the ring, so +VDC
+  reaches about 53 V from a 26 V bus: past the TPS560430's 38 V, the 50 V capacitors and D1's 40 V reverse rating.
+  The SMF26A (31.9 V top of breakdown) can't hold it, at 2.1 Ω from its clamp figure. A bulk electrolytic
+  capacitor across the input, whose ESR damps the ring, is the usual fix.
+- Rev 1 fails on its SMAJ18A, which the 25.2 V bus holds past breakdown. Its +12V rail peaks at about 34.8 V,
+  just inside the AP63200's 35 V.
 
 ## Pinout check
 

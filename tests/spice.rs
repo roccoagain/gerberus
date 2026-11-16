@@ -128,6 +128,7 @@ fn sniffer_ldo_input_overshoots_on_hot_plug() {
     );
     for want in [
         "settles at 5.497 V",
+        "peaks at 9.894 V",
         "past its absolute maximum of 6.5 V",
         "ME6211C33M5G-N",
         "run 0 (cable 1 µH)",
@@ -144,6 +145,170 @@ fn sniffer_ldo_input_overshoots_on_hot_plug() {
     let text = spice::describe(&d, &sweep);
     assert!(text.contains("3 runs") && text.contains("VIN 5.5 V on +5V"), "{text}");
     assert!(text.contains("aren't reported"), "{text}");
+}
+
+/// A limit read against another pin than ground is measured: a series diode's reverse voltage.
+#[test]
+fn limits_between_two_pins_are_measured() {
+    let (d, sweep, f) = stress("can-encoder-rev1", 0);
+    finding(&f, "D1.K (+12V) from A (VBUS)");
+    // The bus rings back below the rail the diode holds up, reverse biasing it by several volts.
+    let (max, _, min, _) = sweep.peak(net(&d, "+12V"), Some(net(&d, "VBUS"))).unwrap();
+    assert!(max > 5.0 && min < -1.0, "{max} {min}");
+    // Every pair a limit reads got a measurement.
+    assert!(!sweep.limits().is_empty());
+    for &(a, b) in sweep.limits() {
+        assert!(sweep.peak(a, b).is_some(), "{} unmeasured", d.nets[a].name);
+    }
+}
+
+/// Every element name in a netlist is unique (ngspice stops on a duplicate), TVS diodes clamp at the top of
+/// their breakdown range with the resistance their clamp figure gives, and a bidirectional TVS is two diodes
+/// back to back.
+#[test]
+fn netlist_names_and_tvs_models() {
+    let (d, inputs, lib, v) = board("can-encoder-rev1");
+    let c = spice::build(&d, &lib, &inputs, &v).unwrap();
+    let pairs = c.pairs(&d, &lib);
+    let (text, _) = c.netlist(&policy(0), &pairs, None);
+    let mut names: Vec<&str> = text
+        .lines()
+        .filter(|l| !l.starts_with(['.', '*']))
+        .filter_map(|l| l.split_whitespace().next())
+        .map(str::trim)
+        .collect();
+    let all = names.len();
+    names.sort_unstable();
+    names.dedup();
+    assert_eq!(names.len(), all, "duplicate names in\n{text}");
+    // SMAJ18A: (29.2 V - 22.1 V) / 13.7 A.
+    assert!(text.contains("RS=0.5182 BV=22.1"), "{text}");
+    // NUP2105L: each line is a pair of diodes sharing a middle node, breaking down at 32 V.
+    // (40 V - 32 V) / 5 A.
+    let line = |start: &str| {
+        text.lines()
+            .find(|l| l.starts_with(start))
+            .unwrap_or_else(|| panic!("{start}"))
+    };
+    let (a, b) = (line("DU5_0_0a "), line("DU5_0_0b "));
+    let mid = |l: &str| l.split_whitespace().nth(2).unwrap().to_string();
+    assert_eq!(mid(a), mid(b), "{a} / {b}");
+    assert!(text.contains("RS=1.6 BV=32"), "{text}");
+}
+
+/// A TVS that a supply holds past its breakdown keeps conducting: rev 1's SMAJ18A on the 24 V bus.
+#[test]
+fn a_tvs_held_past_breakdown_fails() {
+    let (_, _, f) = stress("can-encoder-rev1", 0);
+    let d2 = finding(&f, "D2.K (+12V)");
+    assert_eq!(
+        (d2.verdict, d2.severity),
+        (Verdict::Fail, Severity::Error),
+        "{}",
+        d2.message
+    );
+    assert!(
+        d2.message.contains("breakdown minimum of 20 V (SMAJ18A Rev:2025A6 p2)"),
+        "{}",
+        d2.message
+    );
+}
+
+use gerberus::design::{Component, Net, Pin, PinKind};
+
+fn new_net(d: &mut Design, name: &str) -> usize {
+    d.nets.push(Net {
+        name: name.into(),
+        pins: vec![],
+        labels: vec![],
+    });
+    d.nets.len() - 1
+}
+
+fn move_pin(d: &mut Design, reference: &str, number: &str, to: usize) {
+    let from = d.components[reference].pins[number].net;
+    d.nets[from].pins.retain(|(r, p)| !(r == reference && p == number));
+    d.nets[to].pins.push((reference.into(), number.into()));
+    d.components
+        .get_mut(reference)
+        .unwrap()
+        .pins
+        .get_mut(number)
+        .unwrap()
+        .net = to;
+}
+
+fn net(d: &Design, name: &str) -> usize {
+    d.nets.iter().position(|n| n.name == name).unwrap()
+}
+
+fn rerun(d: &Design, inputs: &BoardInputs, lib: &Library) -> (spice::Sweep, Vec<Finding>) {
+    let v = compute(d, lib, inputs);
+    let p = policy(0);
+    let sweep = spice::sweep(d, lib, inputs, &v, &p, 7).unwrap();
+    let f = spice::check(d, lib, &sweep, &p);
+    (sweep, f)
+}
+
+/// A P-FET in the power path (an IC with a forward drive) passes power on: the rail behind it is powered and
+/// checked, not hidden as a quiet signal net.
+#[test]
+fn a_pfet_in_the_power_path_passes_power() {
+    let (mut d, inputs, lib, _) = board("can-encoder");
+    let (vbus, vdc, gnd) = (net(&d, "VBUS"), net(&d, "+VDC"), net(&d, "GND"));
+    // Take the series diode out, and put an AO3401A in its place: D on the bus, S on the rail.
+    let spare = new_net(&mut d, "SPARE");
+    for pin in ["1", "2"] {
+        move_pin(&mut d, "D1", pin, spare);
+    }
+    let mut q = Component {
+        reference: "Q9".into(),
+        lib_id: "Device:Q_PMOS".into(),
+        in_bom: true,
+        on_board: true,
+        ..Default::default()
+    };
+    q.fields.insert("MPN".into(), "AO3401A".into());
+    for (number, n) in [("1", gnd), ("2", vdc), ("3", vbus)] {
+        d.nets[n].pins.push(("Q9".into(), number.into()));
+        q.pins.insert(
+            number.into(),
+            Pin {
+                number: number.into(),
+                name: String::new(),
+                kind: PinKind::Passive,
+                no_connect: false,
+                net: n,
+                stack: None,
+            },
+        );
+    }
+    d.components.insert("Q9".into(), q);
+    let (sweep, f) = rerun(&d, &inputs, &lib);
+    assert!(sweep.settled(vdc, None).unwrap() > 20.0);
+    let u1 = finding(&f, "U1.VIN (+VDC)");
+    assert_ne!(u1.verdict, Verdict::Unknown, "{}", u1.message);
+}
+
+/// A maximum relative to another pin (`VDD + 0.3`) is checked on the difference in the same run.
+#[test]
+fn a_relative_maximum_is_checked_against_its_pin() {
+    let (mut d, inputs, lib, _) = board("can-encoder");
+    let (_, _, f) = stress("can-encoder", 0);
+    assert_eq!(finding(&f, "U3.CSN").verdict, Verdict::Pass);
+    // Pull chip select up to 5 V instead: 1.7 V above VDD.
+    let five = net(&d, "+5V");
+    let csn = d.components["U3"]
+        .pins
+        .iter()
+        .find(|(_, p)| d.nets[p.net].name == "/SPI_CS")
+        .map(|(n, _)| n.clone())
+        .unwrap();
+    move_pin(&mut d, "U3", &csn, five);
+    let (_, f) = rerun(&d, &inputs, &lib);
+    let u3 = finding(&f, "U3.CSN");
+    assert_eq!(u3.verdict, Verdict::Fail, "{}", u3.message);
+    assert!(u3.message.contains("above VDD"), "{}", u3.message);
 }
 
 /// A switch node isn't modelled, so its pin is UNKNOWN; nets nothing drives aren't reported at all.
@@ -167,8 +332,22 @@ fn worst_run_is_reported() {
     let vdc = d.nets.iter().position(|n| n.name == "+VDC").unwrap();
     let (max, _, _, _) = sweep.peak(vdc, None).unwrap();
     assert!(max > sweep.settled(vdc, None).unwrap() + 1.0, "{max}");
+    // A series diode holds the input capacitors at the peak of the ring: twice the bus, past the regulator's
+    // 38 V and the 50 V capacitors.
+    let u1 = finding(&f, "U1.VIN (+VDC)");
+    assert_eq!(
+        (u1.verdict, u1.severity),
+        (Verdict::Fail, Severity::Error),
+        "{}",
+        u1.message
+    );
     let c1 = finding(&f, "C1.1 (+VDC)");
-    assert_eq!(c1.verdict, Verdict::Pass, "{}", c1.message);
+    assert_eq!(
+        (c1.verdict, c1.severity),
+        (Verdict::Fail, Severity::Warning),
+        "{}",
+        c1.message
+    );
 }
 
 #[test]

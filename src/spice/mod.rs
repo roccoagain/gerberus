@@ -9,8 +9,10 @@
 //! past an absolute maximum is an error, past a passive's rating a warning.
 //!
 //! What is modelled: resistors, capacitors, inductors and ferrite beads, jumpers and fuses (closed), diodes,
-//! LEDs and TVS diodes from their forward drop and breakdown, regulators as ideal sources that follow their
-//! supply when it is too low to hold them, and every IC's supply current. IC signal pins are left open, so
+//! LEDs and TVS diodes from their forward drop, breakdown and clamp figure, transistor switches (a forward
+//! drive) as their channel switched on, step-down regulators as ideal sources that follow their supply when it
+//! is too low to hold them, and every IC's supply current. A limit relative to another pin is checked against
+//! that pin in the same run. IC signal pins are left open, so
 //! their internal clamps don't absorb anything: the result is on the pessimistic side there. Parts gerberus
 //! can't model are listed, and nets they touch come out UNKNOWN rather than PASS.
 
@@ -28,7 +30,7 @@ use crate::limits::{Bound, Class, Library, Lookup, Part, Quantity, Range};
 use crate::rules::{Finding, Severity, Verdict};
 use crate::voltage::Voltages;
 
-pub use netlist::{Circuit, build};
+pub use netlist::{Circuit, Pair, SWITCH_OHMS, TVS_OHMS, build};
 pub use run::{Measured, simulate};
 
 /// `policy.toml`'s `[spice]` table: the cable a board is plugged in through, and the sweep.
@@ -160,13 +162,20 @@ pub struct Sweep {
     pub circuit: Circuit,
     /// Each run's drawn values, for the report.
     pub runs: Vec<String>,
-    worst: BTreeMap<(usize, Option<usize>), Worst>,
+    /// The pairs pin limits read, besides the per-net ones added to tell whether a net was powered.
+    limits: Vec<Pair>,
+    worst: BTreeMap<Pair, Worst>,
 }
 
 impl Sweep {
     /// The highest and lowest `V(a) − V(b)` any run reached, and the run that reached each.
     pub fn peak(&self, a: usize, b: Option<usize>) -> Option<(f64, usize, f64, usize)> {
         self.worst.get(&(a, b)).map(|w| (w.max, w.max_run, w.min, w.min_run))
+    }
+
+    /// The pairs of nets the pin limits read.
+    pub fn limits(&self) -> &[Pair] {
+        &self.limits
     }
 
     /// Whether a pair never moved off 0 V in any run: nothing in the simulation drives it (an IC's signal pin).
@@ -192,9 +201,10 @@ pub fn sweep(
     seed: u64,
 ) -> Result<Sweep, String> {
     let circuit = build(design, lib, inputs, volts)?;
-    let pairs = circuit.pairs(design, lib);
+    let limits = circuit.pairs(design, lib);
+    let pairs = circuit.with_nets(&limits);
     let mut rng = Rng::new(seed);
-    let mut worst: BTreeMap<(usize, Option<usize>), Worst> = BTreeMap::new();
+    let mut worst: BTreeMap<Pair, Worst> = BTreeMap::new();
     let mut runs = vec![];
     for run in 0..=policy.runs {
         // Run 0 is nominal, with the largest cable inductance; the rest draw everything.
@@ -222,19 +232,12 @@ pub fn sweep(
             w.end_max = w.end_max.max(m.end);
         }
     }
-    Ok(Sweep { circuit, runs, worst })
-}
-
-/// A part's limit as numbers when both ends are plain values (or one is unknown).
-fn numeric(r: &Range) -> Option<(Option<f64>, Option<f64>, Option<u32>)> {
-    match r {
-        Range::Known { min, max, page, .. } => {
-            let n = |b: &Bound| if let Bound::Value(v) = b { Some(*v) } else { None };
-            let (lo, hi) = (n(min), n(max));
-            (lo.is_some() || hi.is_some()).then_some((lo, hi, *page))
-        }
-        Range::Unknown(_) => None,
-    }
+    Ok(Sweep {
+        circuit,
+        runs,
+        limits,
+        worst,
+    })
 }
 
 fn part_of<'a>(lib: &'a Library, c: &crate::design::Component) -> Option<std::borrow::Cow<'a, Part>> {
@@ -248,10 +251,107 @@ fn part_of<'a>(lib: &'a Library, c: &crate::design::Component) -> Option<std::bo
     }
 }
 
+/// What one end of a limit says about the sweep.
+enum Side {
+    Inside,
+    /// Past the limit: why, and the run that went furthest.
+    Past(String, usize),
+    Unknown(String),
+}
+
+/// `pin + 0.3`, `pin − 0.3` or `pin`, for a bound relative to another pin.
+fn relative(pin: &str, plus: f64) -> String {
+    if plus.abs() < 1e-9 {
+        pin.to_string()
+    } else if plus > 0.0 {
+        format!("{pin} + {} V", sig(plus))
+    } else {
+        format!("{pin} − {} V", sig(-plus))
+    }
+}
+
+/// Where a part's limit is measured, for the checks on each end.
+struct At<'a> {
+    c: &'a crate::design::Component,
+    part: &'a Part,
+    a: usize,
+    key: Pair,
+    kind: &'a str,
+}
+
+/// One end of a limit against the sweep: the maximum when `upper`, else the minimum. A bound relative to
+/// another pin is checked on the difference to that pin in the same run.
+fn side(sweep: &Sweep, at: &At<'_>, bound: &Bound, upper: bool) -> Side {
+    let kind = at.kind;
+    let Some((max, max_run, min, min_run)) = sweep.peak(at.key.0, at.key.1) else {
+        return Side::Unknown("ngspice didn't measure it".into());
+    };
+    let end = if upper { "maximum" } else { "minimum" };
+    match bound {
+        Bound::Value(v) if upper && max > *v => {
+            Side::Past(format!("{} V is past its {kind} of {} V", sig(max), sig(*v)), max_run)
+        }
+        Bound::Value(v) if !upper && min < *v => Side::Past(
+            format!("{} V is past its {kind} minimum of {} V", sig(min), sig(*v)),
+            min_run,
+        ),
+        Bound::Value(_) => Side::Inside,
+        Bound::Unknown(why) => Side::Unknown(format!("its {kind} has no known {end} ({why})")),
+        Bound::Pin { pin, plus, at_most } => {
+            let Some(rn) = sweep.circuit.pin_net(at.c, at.part, pin) else {
+                return Side::Unknown(format!("its {kind} {end} follows {pin}, which isn't on the schematic"));
+            };
+            let limit = relative(pin, *plus);
+            let (rmax, rmax_run, rmin, rmin_run) = match sweep.circuit.key(at.a, rn) {
+                // The same net: the difference is always 0.
+                None => (0.0, 0, 0.0, 0),
+                Some((x, y)) => match sweep.peak(x, y) {
+                    Some(p) => p,
+                    None => return Side::Unknown(format!("ngspice didn't measure it against {pin}")),
+                },
+            };
+            if upper && rmax > *plus {
+                return Side::Past(
+                    format!("it goes {} V above {pin}, past its {kind} of {limit}", sig(rmax)),
+                    rmax_run,
+                );
+            }
+            if !upper && rmin < *plus {
+                return Side::Past(
+                    format!(
+                        "it goes to {} V from {pin}, past its {kind} minimum of {limit}",
+                        sig(rmin)
+                    ),
+                    rmin_run,
+                );
+            }
+            match at_most {
+                Some(m) if upper && max > *m => Side::Past(
+                    format!("{} V is past its {kind} cap of {} V", sig(max), sig(*m)),
+                    max_run,
+                ),
+                _ => Side::Inside,
+            }
+        }
+    }
+}
+
+/// A plain-number minimum of a range.
+fn value_min(r: &Range) -> Option<f64> {
+    match r {
+        Range::Known {
+            min: Bound::Value(v), ..
+        } => Some(*v),
+        _ => None,
+    }
+}
+
 /// The `hot-plug` rule: the peak voltage across every pin limit, over every run, against the limit.
+#[allow(clippy::too_many_lines)]
 pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy) -> Vec<Finding> {
     let mut out = vec![];
     let net_name = |n: usize| design.nets[n].name.as_str();
+    let circuit = &sweep.circuit;
     for (reference, c) in &design.components {
         let Some(part) = part_of(lib, c) else { continue };
         let passive = matches!(
@@ -264,7 +364,7 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
             .map_or(String::new(), |d| format!(" {}", d.document));
         for limit in part.limits.iter().filter(|l| l.quantity == Quantity::Voltage) {
             let Some(to) = limit.to.as_deref() else { continue };
-            let Some(bn) = sweep.circuit.pin_net(c, &part, to) else {
+            let Some(bn) = circuit.pin_net(c, &part, to) else {
                 continue;
             };
             // Passives and connectors are rated on `recommended`; everything else on `abs_max`.
@@ -273,34 +373,66 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
             } else {
                 (&limit.abs_max, "absolute maximum", Severity::Error)
             };
-            let Some((lo, hi, page)) = numeric(range) else { continue };
+            // A protection part's own stress is its breakdown: past it, it carries current.
+            let breakdown = (part.class == Class::Tvs)
+                .then(|| limit.breakdown.as_ref().and_then(value_min))
+                .flatten();
+            let cite_of = |r: Option<&Range>| match r {
+                Some(Range::Known { page: Some(p), .. }) => format!("{}{doc} p{p}", part.mpn),
+                _ => format!("{}{doc}", part.mpn),
+            };
+            let cite = cite_of(Some(range));
             for pin in &limit.pins {
-                let Some(an) = sweep.circuit.pin_net(c, &part, pin) else {
+                let Some(an) = circuit.pin_net(c, &part, pin) else {
                     continue;
                 };
-                if an == bn {
-                    continue;
-                }
-                let b = (!sweep.circuit.is_ground(bn)).then_some(bn);
-                if sweep.circuit.is_ground(an) && b.is_none() {
-                    continue;
-                }
-                // A net nothing in the simulation drives says nothing about stress.
-                if sweep.quiet(an, b) && sweep.circuit.unmodelled_on(an).is_none() {
-                    continue;
-                }
-                let Some((max, max_run, min, min_run)) = sweep.peak(an, b) else {
-                    continue;
-                };
+                let Some(key) = circuit.key(an, bn) else { continue };
+                let b = key.1;
                 let what = match b {
                     None => format!("{reference}.{pin} ({})", net_name(an)),
                     Some(b) => format!("{reference}.{pin} ({}) from {to} ({})", net_name(an), net_name(b)),
                 };
-                let cite = format!("{}{doc} p{}", part.mpn, page.unwrap_or(0));
-                let unknown = sweep
-                    .circuit
-                    .unmodelled_on(an)
-                    .or_else(|| b.and_then(|b| sweep.circuit.unmodelled_on(b)));
+                let mut finding = |verdict, severity, msg: String| {
+                    out.push(Finding {
+                        rule: "hot-plug",
+                        verdict,
+                        severity,
+                        reference: reference.clone(),
+                        message: format!("{msg}; {}", policy.reason),
+                        nets: vec![],
+                        case: None,
+                    });
+                };
+                let Some((max, _, min, _)) = sweep.peak(an, b) else {
+                    finding(
+                        Verdict::Unknown,
+                        severity,
+                        format!("{what}: ngspice didn't measure it ({cite})"),
+                    );
+                    continue;
+                };
+                // Why the result can't be trusted: a part on the nets isn't modelled, or the run never powered a
+                // net the static analysis says is powered (a part in its supply path isn't modelled).
+                let mut unsure: Vec<String> = vec![];
+                for n in std::iter::once(an).chain(b) {
+                    if let Some(u) = circuit.unmodelled_on(n) {
+                        unsure.push(format!("{u} isn't modelled"));
+                    }
+                    let reached = sweep.settled(n, None).unwrap_or(0.0);
+                    if let Some(e) = circuit.expected(n).filter(|&e| e > 0.5 && reached < e / 2.0) {
+                        unsure.push(format!(
+                            "the simulation leaves {} at {} V where the voltage analysis gives it at least {} V, so \
+                             something feeding it isn't modelled",
+                            net_name(n),
+                            sig(reached),
+                            sig(e)
+                        ));
+                    }
+                }
+                // A net nothing in the simulation drives, and nothing should, says nothing about stress.
+                if sweep.quiet(an, b) && unsure.is_empty() {
+                    continue;
+                }
                 let settled = sweep.settled(an, b).unwrap_or(max);
                 let span = format!(
                     "peaks at {} V, settles at {} V, dips to {} V",
@@ -308,50 +440,60 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                     sig(settled),
                     sig(min)
                 );
-                let (verdict, sev, msg) = if let Some(h) = hi.filter(|&h| max > h) {
-                    (
+                if let Some(bmin) = breakdown.filter(|&v| settled >= v) {
+                    finding(
+                        Verdict::Fail,
+                        Severity::Error,
+                        format!(
+                            "{what}: {span}: it settles at or past its breakdown minimum of {} V ({}), so it keeps \
+                             conducting after the plug-in, which a part rated for pulses won't survive",
+                            sig(bmin),
+                            cite_of(limit.breakdown.as_ref())
+                        ),
+                    );
+                    continue;
+                }
+                let at = At {
+                    c,
+                    part: &part,
+                    a: an,
+                    key,
+                    kind,
+                };
+                let sides = match range {
+                    Range::Known { min, max, .. } => vec![side(sweep, &at, max, true), side(sweep, &at, min, false)],
+                    // A protection part's breakdown covers it.
+                    Range::Unknown(_) if breakdown.is_some() => vec![],
+                    Range::Unknown(why) => vec![Side::Unknown(format!("its {kind} isn't known ({why})"))],
+                };
+                if let Some((why, run)) = sides.iter().find_map(|s| match s {
+                    Side::Past(why, run) => Some((why, *run)),
+                    _ => None,
+                }) {
+                    finding(
                         Verdict::Fail,
                         severity,
-                        format!(
-                            "{what}: {span}: {} V is past its {kind} of {} V ({cite}), in run {max_run} ({})",
-                            sig(max),
-                            sig(h),
-                            sweep.runs[max_run]
-                        ),
-                    )
-                } else if let Some(l) = lo.filter(|&l| min < l) {
-                    (
-                        Verdict::Fail,
-                        severity,
-                        format!(
-                            "{what}: {span}: {} V is past its {kind} minimum of {} V ({cite}), in run {min_run} ({})",
-                            sig(min),
-                            sig(l),
-                            sweep.runs[min_run]
-                        ),
-                    )
-                } else if let Some(u) = unknown {
-                    (
+                        format!("{what}: {span}: {why} ({cite}), in run {run} ({})", sweep.runs[run]),
+                    );
+                    continue;
+                }
+                unsure.extend(sides.into_iter().filter_map(|s| match s {
+                    Side::Unknown(why) => Some(why),
+                    _ => None,
+                }));
+                let inside = match breakdown {
+                    Some(v) => format!("below its breakdown of {} V", sig(v)),
+                    None => format!("inside its {kind}"),
+                };
+                if unsure.is_empty() {
+                    finding(Verdict::Pass, severity, format!("{what}: {span}, {inside} ({cite})"));
+                } else {
+                    finding(
                         Verdict::Unknown,
                         severity,
-                        format!("{what}: {span}, inside its {kind} ({cite}), but {u} isn't modelled"),
-                    )
-                } else {
-                    (
-                        Verdict::Pass,
-                        severity,
-                        format!("{what}: {span}, inside its {kind} ({cite})"),
-                    )
-                };
-                out.push(Finding {
-                    rule: "hot-plug",
-                    verdict,
-                    severity: sev,
-                    reference: reference.clone(),
-                    message: format!("{msg}; {}", policy.reason),
-                    nets: vec![],
-                    case: None,
-                });
+                        format!("{what}: {span} ({cite}), but {}", unsure.join("; ")),
+                    );
+                }
             }
         }
     }
@@ -365,7 +507,7 @@ pub fn describe(design: &Design, sweep: &Sweep) -> String {
     if !skipped.is_empty() {
         let _ = writeln!(out, "not modelled: {}", skipped.join("; "));
     }
-    let quiet = sweep.worst.keys().filter(|&&(a, b)| sweep.quiet(a, b)).count();
+    let quiet = sweep.limits.iter().filter(|&&(a, b)| sweep.quiet(a, b)).count();
     if quiet > 0 {
         let _ = writeln!(
             out,
