@@ -65,6 +65,7 @@ Every command reads a design into one design graph and checks that.
   against it, with the `esd` and `reverse-polarity` rules from `src/protection.rs` and the junction-temperature and
   forward-current rules from `src/thermal.rs`, which also backs `loads`.
 - `src/spice/` runs the hot-plug stress simulation in ngspice (`stress`).
+- `src/doctor.rs` (`doctor`) traces each UNKNOWN finding back to what it waits on.
 - `src/pinout.rs` (`pinout`), `src/bom.rs` (`bom`), `src/si/` (`si`), `src/datasheet.rs` (`datasheet`) and
   `src/update.rs` (`update` and the daily release check) each back one command.
 - `src/main.rs` is the command line, and also holds the `parts` command (which reads `src/limits.rs`). `src/lib.rs`

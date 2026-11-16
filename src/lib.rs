@@ -5,6 +5,7 @@ pub mod bom;
 pub mod datasheet;
 pub mod design;
 pub mod diag;
+pub mod doctor;
 pub mod family;
 pub mod inputs;
 pub mod kicad;

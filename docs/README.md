@@ -8,6 +8,7 @@ Using it:
 - [Reading designs](reading-designs.md): KiCad and Altium support, buses, `gerberus netlist`.
 - [Board inputs and part files](../parts/README.md): the `inputs.toml` format ([Board inputs](../parts/README.md#board-inputs)),
   the part file format, the derating policy, and how net voltages are worked out.
+- [What to add first](doctor.md): `doctor`, the ranked list of missing part files, inputs and limits.
 - [Voltage checks](voltage-checks.md): `voltages` and `check`, every rule, fault cases, reverse polarity and ESD.
 - [Junction temperature and derating](thermal.md): `loads`, junction temperature, forward current.
 - [Hot-plug stress](stress.md): `stress`, the SPICE simulation and what it models.

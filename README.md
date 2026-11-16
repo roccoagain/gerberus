@@ -68,6 +68,10 @@ nets come out unknown. Add an `inputs.toml` next to the schematic that says what
 pin (for example, 3.6 to 5.5 V on J1 pin 1); copy the one in `tests/fixtures/sniffer` as a start, and see [the
 format](parts/README.md#board-inputs).
 
+To see what to add first, run `gerberus doctor` on the schematic. It lists every part with no part file, every
+connector pin nothing describes, and every gap in a part file, ranked by how many unknown results each one
+settles. [More](docs/doctor.md)
+
 ## What it checks
 
 | Command | What it checks |
