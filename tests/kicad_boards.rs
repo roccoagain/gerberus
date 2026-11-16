@@ -132,3 +132,56 @@ fn joins_sheet_pins_and_global_labels() {
     assert_eq!(g.name, "G");
     assert_eq!(g.pins.len(), 2);
 }
+
+/// Reads a netlist that `kicad-cli sch export netlist` wrote into `(reference, pin) -> net name`.
+fn kicad_netlist(rel: &str) -> BTreeMap<(String, String), String> {
+    let text = std::fs::read_to_string(fixture(rel)).unwrap();
+    let tree = gerberus::sexpr::parse(&text).unwrap();
+    let mut out = BTreeMap::new();
+    for net in tree.child("nets").unwrap().children("net") {
+        let name = net.child("name").and_then(|n| n.arg(1)).unwrap().to_string();
+        for node in net.children("node") {
+            let r = node.child("ref").and_then(|n| n.arg(1)).unwrap().to_string();
+            let p = node.child("pin").and_then(|n| n.arg(1)).unwrap().to_string();
+            out.insert((r, p), name.clone());
+        }
+    }
+    out
+}
+
+/// Buses on two sheets: vectors that pair by position, a named group, two labels on one bus, an alias and a
+/// global bus. `expect.net` is KiCad's own netlist of the same files (see `bus/gen.py`).
+#[test]
+fn bus_design_matches_kicad_netlist() {
+    let design = kicad::load(&fixture("bus/root.kicad_sch")).unwrap();
+    let want = kicad_netlist("bus/expect.net");
+    let mut got = BTreeMap::new();
+    for (r, c) in &design.components {
+        for (p, pin) in &c.pins {
+            got.insert((r.clone(), p.clone()), design.nets[pin.net].name.clone());
+        }
+    }
+    let problems: Vec<String> = want
+        .iter()
+        .filter(|(k, v)| got.get(*k) != Some(*v))
+        .map(|((r, p), v)| {
+            format!(
+                "{r}.{p}: KiCad says {v:?}, reader says {:?}",
+                got.get(&(r.clone(), p.clone()))
+            )
+        })
+        .chain(
+            got.keys()
+                .filter(|k| !want.contains_key(*k))
+                .map(|(r, p)| format!("{r}.{p}: not in KiCad's netlist")),
+        )
+        .collect();
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+    // The two wires on bus entries with no label are flagged; nothing else is.
+    assert_eq!(design.warnings.len(), 2, "{:#?}", design.warnings);
+    assert!(
+        design.warnings.iter().all(|w| w.contains("has no label")),
+        "{:#?}",
+        design.warnings
+    );
+}

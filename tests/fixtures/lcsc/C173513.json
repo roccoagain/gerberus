@@ -1,0 +1,23 @@
+{
+  "fetched": 1794817762,
+  "listing": {
+    "code": "C173513",
+    "mpn": "SMAJ18A",
+    "manufacturer": "MDD(Microdiode Semiconductor)",
+    "stock": 23680,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "DO-214AC(SMA)",
+    "similar": [
+      {
+        "code": "C2993955",
+        "mpn": "SMAJ17A",
+        "manufacturer": "MDD(Microdiode Semiconductor)",
+        "stock": 0,
+        "status": "normal",
+        "package": "SMA(DO-214AC)",
+        "description": "27.6VC Clamp 14.5A Ipp TVS DIODE SMA(DO-214AC)"
+      }
+    ]
+  }
+}

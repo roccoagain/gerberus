@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817762,
+  "listing": {
+    "code": "C440198",
+    "mpn": "GRM21BR61H106KE43L",
+    "manufacturer": "muRata",
+    "stock": 123990,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0805",
+    "similar": [
+      {
+        "code": "C22367830",
+        "mpn": "HGC0805R5106K500NSLJ",
+        "manufacturer": "Chinocera",
+        "stock": 115080,
+        "status": "normal",
+        "package": "0805",
+        "description": "10uF ±10% 50V Ceramic Capacitor X5R 0805"
+      },
+      {
+        "code": "C22392395",
+        "mpn": "TCC0805X5R106K500FT",
+        "manufacturer": "CCTC",
+        "stock": 8980,
+        "status": "normal",
+        "package": "0805",
+        "description": "10uF ±10% 50V Ceramic Capacitor X5R 0805"
+      },
+      {
+        "code": "C22465730",
+        "mpn": "CC0805KKX5R9BB106",
+        "manufacturer": "YAGEO",
+        "stock": 7416,
+        "status": "normal",
+        "package": "0805",
+        "description": "10uF X5R ±10% 50V 0805 Ceramic Capacitors RoHS"
+      },
+      {
+        "code": "C25503213",
+        "mpn": "C2012X5R1H106KT0A0E",
+        "manufacturer": "TDK",
+        "stock": 20,
+        "status": "normal",
+        "package": "0805",
+        "description": "10uF ±10% Ceramic Capacitor 0805"
+      },
+      {
+        "code": "C2932476",
+        "mpn": "CL21A106KBYQNNE",
+        "manufacturer": "Samsung Electro-Mechanics",
+        "stock": 54710,
+        "status": "normal",
+        "package": "0805",
+        "description": "10uF ±10% 50V Ceramic Capacitor X5R 0805"
+      }
+    ]
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817737,
+  "listing": {
+    "code": "C125847",
+    "mpn": "CC0805KKX7R9BB225",
+    "manufacturer": "YAGEO",
+    "stock": 26025,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "0805",
+    "similar": [
+      {
+        "code": "C1322370",
+        "mpn": "0805B225K500NT",
+        "manufacturer": "FH",
+        "stock": 51950,
+        "status": "normal",
+        "package": "0805",
+        "description": "2.2uF ±10% 50V Ceramic Capacitor X7R 0805"
+      },
+      {
+        "code": "C17702473",
+        "mpn": "CS2012X7R225K500NRE",
+        "manufacturer": "SAMWHA",
+        "stock": 19520,
+        "status": "normal",
+        "package": "0805",
+        "description": "2.2uF ±10% 50V Ceramic Capacitor X7R 0805"
+      },
+      {
+        "code": "C1870180",
+        "mpn": "08055C225KAT2A",
+        "manufacturer": "Kyocera AVX",
+        "stock": 43,
+        "status": "normal",
+        "package": "0805",
+        "description": "2.2uF X7R ±10% 50V 0805 Ceramic Capacitors RoHS"
+      },
+      {
+        "code": "C2762602",
+        "mpn": "CL21B225KBYNNNE",
+        "manufacturer": "Samsung Electro-Mechanics",
+        "stock": 35925,
+        "status": "normal",
+        "package": "0805",
+        "description": "2.2uF ±10% 50V Ceramic Capacitor X7R 0805"
+      },
+      {
+        "code": "C2915744",
+        "mpn": "C0805X225K050T",
+        "manufacturer": "IHHEC",
+        "stock": 2726,
+        "status": "normal",
+        "package": "0805",
+        "description": "2.2uF ±10% 50V Ceramic Capacitor X7R 0805"
+      }
+    ]
+  }
+}

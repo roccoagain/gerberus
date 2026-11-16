@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817764,
+  "listing": {
+    "code": "C14486",
+    "mpn": "NUP2105LT1G",
+    "manufacturer": "onsemi",
+    "stock": 134190,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SOT-23",
+    "similar": [
+      {
+        "code": "C42449123",
+        "mpn": "NUP1105LT1G-JSM",
+        "manufacturer": "JSMSEMI",
+        "stock": 2970,
+        "status": "normal",
+        "package": "SOT-23",
+        "description": "44VC Clamp 8A@8/20us Ipp TVS DIODE SOT-23"
+      },
+      {
+        "code": "C7464234",
+        "mpn": "ESDBL2105DX-AH",
+        "manufacturer": "ST(Semtech)",
+        "stock": 1910,
+        "status": "normal",
+        "package": "SOT-23",
+        "description": "44VC Clamp 8A@8/20us Ipp SOT-23"
+      },
+      {
+        "code": "C5158054",
+        "mpn": "NUP2105L",
+        "manufacturer": "UMW",
+        "stock": 16160,
+        "status": "normal",
+        "package": "SOT-23",
+        "description": "44VC Clamp 8A@8/20us Ipp SOT-23"
+      },
+      {
+        "code": "C20600685",
+        "mpn": "ESD2402EB",
+        "manufacturer": "YANGJIE",
+        "stock": 1640,
+        "status": "normal",
+        "package": "SOT-23",
+        "description": "44VC Clamp 8A@8/20us Ipp TVS DIODE SOT-23"
+      },
+      {
+        "code": "C42420849",
+        "mpn": "ESBT23C24L02-ES",
+        "manufacturer": "ElecSuper",
+        "stock": 440,
+        "status": "normal",
+        "package": "SOT-23",
+        "description": "43VC Clamp 8A Ipp TVS DIODE SOT-23"
+      }
+    ]
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "fetched": 1794817738,
+  "listing": {
+    "code": "C123789",
+    "mpn": "SMF26A",
+    "manufacturer": "MDD(Microdiode Semiconductor)",
+    "stock": 9500,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SOD-123FL",
+    "similar": [
+      {
+        "code": "C123810",
+        "mpn": "SMF24A",
+        "manufacturer": "MDD(Microdiode Semiconductor)",
+        "stock": 46380,
+        "status": "normal",
+        "package": "SOD-123FL",
+        "description": "38.9VC Clamp 5.1A@10/1000us Ipp TVS DIODE SOD-123FL"
+      },
+      {
+        "code": "C123813",
+        "mpn": "SMF28A",
+        "manufacturer": "MDD(Microdiode Semiconductor)",
+        "stock": 28440,
+        "status": "normal",
+        "package": "SOD-123FL",
+        "description": "45.4VC Clamp 4.4A@10/1000us Ipp TVS DIODE SOD-123FL"
+      }
+    ]
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817760,
+  "listing": {
+    "code": "C25804",
+    "mpn": "0603WAF1002T5E",
+    "manufacturer": "UNI-ROYAL",
+    "stock": 513100,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0603",
+    "similar": [
+      {
+        "code": "C2784880",
+        "mpn": "PS03W4F1002T5E",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 30200,
+        "status": "normal",
+        "package": "0603",
+        "description": "10kΩ ±1% 250mW 0603 Thick Film Resistor AEC-Q200"
+      },
+      {
+        "code": "C965184",
+        "mpn": "NQ03WAF1002T5E",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 320700,
+        "status": "normal",
+        "package": "0603",
+        "description": "10kΩ ±1% 100mW 0603 Thick Film Resistor AEC-Q200"
+      },
+      {
+        "code": "C167144",
+        "mpn": "0603WAD1002T5E",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 250,
+        "status": "normal",
+        "package": "0603",
+        "description": "10kΩ ±0.5% 100mW 0603 Thick Film Resistor"
+      },
+      {
+        "code": "C2989021",
+        "mpn": "TC0325F1002T5F",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 77000,
+        "status": "normal",
+        "package": "0603",
+        "description": "10kΩ ±1% 100mW 0603 Thin Film Resistor"
+      },
+      {
+        "code": "C2989345",
+        "mpn": "TC0325D1002T5F",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 4650,
+        "status": "normal",
+        "package": "0603",
+        "description": "10kΩ ±0.5% 100mW 0603 Thin Film Resistor"
+      }
+    ]
+  }
+}

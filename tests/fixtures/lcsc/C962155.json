@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817740,
+  "listing": {
+    "code": "C962155",
+    "mpn": "TPS560430YFDBVR",
+    "manufacturer": "TI",
+    "stock": 10719,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SOT-23-6",
+    "similar": [
+      {
+        "code": "C1849549",
+        "mpn": "TPS560430YFQDBVRQ1",
+        "manufacturer": "TI",
+        "stock": 707,
+        "status": "normal",
+        "package": "SOT-23-6",
+        "description": "Buck Switching Regulator IC Adjustable 1 Output 600mA SOT-23-6"
+      },
+      {
+        "code": "C2071735",
+        "mpn": "TPS560430YFDBVT",
+        "manufacturer": "TI",
+        "stock": 528,
+        "status": "normal",
+        "package": "SOT-23-6",
+        "description": "Buck Switching Regulator IC Adjustable 1V~34.2V 1 Output 600mA SOT-23-6"
+      },
+      {
+        "code": "C2071736",
+        "mpn": "TPS560430YDBVR",
+        "manufacturer": "TI",
+        "stock": 2264,
+        "status": "normal",
+        "package": "SOT-23-6",
+        "description": "Buck Switching Regulator IC Adjustable 1V~34.2V 1 Output 600mA SOT-23-6"
+      },
+      {
+        "code": "C2072000",
+        "mpn": "TPS560430YDBVT",
+        "manufacturer": "TI",
+        "stock": 16,
+        "status": "normal",
+        "package": "SOT-23-6",
+        "description": "2.1MHz Step-down type Adjustable 600mA 1V~34.2V SOT-23-6 Voltage Regulators - DC DC Switching Regulators RoHS"
+      },
+      {
+        "code": "C1848531",
+        "mpn": "TPS560430XDBVT",
+        "manufacturer": "TI",
+        "stock": 90,
+        "status": "normal",
+        "package": "SOT-23-6",
+        "description": "1.1MHz Step-down type Adjustable 600mA 1V~34.2V SOT-23-6 Voltage Regulators - DC DC Switching Regulators RoHS"
+      }
+    ]
+  }
+}
