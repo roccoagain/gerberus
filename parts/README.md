@@ -269,16 +269,27 @@ when = { size = ["0805"] }
 ohms = { above = 10, max = 10e6 }                   # min/max include the end, above/below don't
 ppm = 100
 page = 5
+
+[[range]]                                           # values the series is made in; with any of these, a
+when = { size = ["0805"], tolerance = ["F"] }       # part number outside all of them isn't rated
+ohms = { min = 1, max = 10e6 }
+page = 5
 ```
+
+A resistor family also gives `rcwv_page`, the page that says the rated voltage is √(P·R) or the maximum
+working voltage, whichever is less.
 
 Capacitor rows give `voltage` (the rated voltage) instead of `power`. A field can list its codes and give
 `values` for only some of them: a capacitor tolerance in picofarads (B, C, D) or +80/−20 % (Z) gives no fraction,
 so the part gets no tolerance. Each rating comes from the one row that covers the part number and gives it: no
 row leaves it out (power or rated voltage left out makes the part unchecked, with the reason), and two rows are an
-error. A resistor's rated voltage is √(P·R) from the decoded value, capped by the maximum working voltage. A 0 Ω
+error. So is a missing temperature coefficient when the family has `[[tcr]]` rows, and a part number that splits
+into fields more than one way. A resistor's rated voltage is √(P·R) from the decoded value, capped by the maximum working voltage. A 0 Ω
 jumper isn't rated, since it has a current rating rather than a power one.
 
-A part file written by hand for the same part number always wins, and `cargo test` checks that every hand-written
+A part file written by hand for the same part number always wins, wherever it is (a built-in file beats a
+board's own family); of two families, the one in the later folder wins. `gerberus part show` runs the same checks
+as `check` on what it prints. `cargo test` checks that every hand-written
 file a family also decodes agrees with it. The built-in families are Yageo RC_L resistors (`yageo-rc.toml`) and
 Samsung CL capacitors (`samsung-cl.toml`).
 

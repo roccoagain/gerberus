@@ -28,13 +28,17 @@ fn values_decode() {
     assert_eq!(c("106"), Some(10_000_000.0));
     assert_eq!(c("1R5"), Some(1.5));
     assert_eq!(c("10"), None);
+    for bad in ["-R5", "+R5", "0R0", "10R", "109", "108", "R5R", "005"] {
+        assert_eq!(c(bad), None, "{bad}");
+    }
+    assert_eq!(c("475"), Some(4_700_000.0));
 }
 
 #[test]
 fn yageo_part_numbers_decode() {
     let lib = builtin();
     let f = family(&lib, "Yageo RC_L");
-    let d = f.decode("RC0805FR-0710KL").unwrap();
+    let d = f.decode("RC0805FR-0710KL").unwrap().unwrap();
     assert_eq!(d.codes["size"], "0805");
     assert_eq!(d.codes["tolerance"], "F");
     assert_eq!(d.codes["reel"], "07");
@@ -66,6 +70,92 @@ fn yageo_part_numbers_decode() {
     // A 1210 has no double-power row, and a jumper has no power rating: neither is rated.
     assert!(f.part("RC1210FR-7W10KL").unwrap().is_err());
     assert!(f.part("RC0603JR-070RL").unwrap().is_err());
+
+    // Part numbers the datasheet doesn't list aren't rated: double power above 1 Mohm, 47 Mohm in 0402,
+    // 0.5 ohm, 0.1 % at 1 ohm, 7D on a 0075, ESD-safe packing on a 0603.
+    for mpn in [
+        "RC0603JR-7W10ML",
+        "RC0402FR-0747ML",
+        "RC0603FR-070R5L",
+        "RC0402BR-071RL",
+        "RC0075FS-7D1KL",
+        "RC0603FS-0710KL",
+    ] {
+        let r = f.part(mpn).unwrap();
+        assert!(r.is_err(), "{mpn} was rated");
+    }
+
+    // TCR boundaries: 10 ohm is in the 1-10 ohm row, just above it the 10 ohm - 10 Mohm row.
+    let tcr = |mpn: &str| f.part(mpn).unwrap().unwrap().tcr.unwrap().ppm;
+    assert_eq!(tcr("RC0603FR-0710RL"), 200.0);
+    assert_eq!(tcr("RC0603FR-0710R2L"), 100.0);
+    assert_eq!(tcr("RC0603FR-0710ML"), 100.0);
+    assert_eq!(tcr("RC0603JR-0712ML"), 200.0);
+    assert_eq!(tcr("RC0805JR-0727ML"), 300.0);
+    assert_eq!(tcr("RC0075FS-0799RL"), 600.0);
+    assert_eq!(tcr("RC0075FS-07100RL"), 200.0);
+
+    // The working-voltage bound never rounds above the datasheet's sqrt(P x R).
+    let p = f.part("RC0805FR-0710KL").unwrap().unwrap();
+    let v = p.limits.iter().find(|l| l.quantity == Quantity::Voltage).unwrap();
+    assert!(v.recommended.values().unwrap().1 <= (0.125f64 * 1e4).sqrt());
+    assert!(matches!(v.recommended, Range::Known { page: Some(7), .. }));
+}
+
+#[test]
+fn samsung_part_numbers_decode() {
+    let lib = builtin();
+    let f = family(&lib, "Samsung CL");
+    let d = f.decode("CL10A106MP8NNNC").unwrap().unwrap();
+    assert_eq!(d.codes["size"], "10");
+    assert_eq!(d.codes["voltage"], "P");
+    let p = f.part("CL10A106MP8NNNC").unwrap().unwrap();
+    assert!(p.problems().is_empty(), "{:?}", p.problems());
+    let v = p.limits.iter().find(|l| l.quantity == Quantity::Voltage).unwrap();
+    assert_eq!(v.recommended.values(), Some((-10.0, 10.0)));
+    assert_eq!(p.tolerance.as_ref().unwrap().value, 0.2);
+    assert_eq!(p.temperature.as_ref().map(|t| (t.min, t.max)), Some((-55.0, 85.0)));
+    // Below 10 pF, F means +/-1 pF, not 1 %, so no tolerance; Z (+80/-20 %) gives none either.
+    assert!(f.part("CL10C5R6FB8NNNC").unwrap().unwrap().tolerance.is_none());
+    assert_eq!(
+        f.part("CL10C101FB8NNNC").unwrap().unwrap().tolerance.unwrap().value,
+        0.01
+    );
+    assert!(f.part("CL21F105ZO8NNNC").unwrap().unwrap().tolerance.is_none());
+    // Y5V's range is -30 to 85 °C.
+    let t = f.part("CL21F105ZO8NNNC").unwrap().unwrap().temperature.unwrap();
+    assert_eq!((t.min, t.max), (-30.0, 85.0));
+    assert!(f.decode("CL10A106MP8NNNX").is_none());
+}
+
+/// A family in a board's own parts folder replaces the built-in one; a part file anywhere beats a family.
+#[test]
+fn family_precedence() {
+    let dir = std::env::temp_dir().join(format!("gerberus-family-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let text = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("parts/yageo-rc.toml"))
+        .unwrap()
+        .replace("family = \"Yageo RC_L\"", "family = \"Local RC\"");
+    std::fs::write(dir.join("rc.toml"), text).unwrap();
+    let mut lib = builtin();
+    lib.add_dir(&dir).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    let mut design = gerberus::design::Design::default();
+    for (r, mpn) in [("R1", "RC0603FR-0747KL"), ("C1", "CL05B104KO5NNNC")] {
+        let mut c = Component {
+            reference: r.into(),
+            ..Default::default()
+        };
+        c.fields.insert("MPN".into(), mpn.into());
+        design.components.insert(r.into(), c);
+    }
+    lib.expand_families(&design);
+    assert!(lib.parts["RC0603FR-0747KL"].description.contains("Local RC"));
+    assert!(
+        lib.files["CL05B104KO5NNNC"]
+            .to_string_lossy()
+            .ends_with("CL05B104KO5NNNC.toml (built in)")
+    );
 }
 
 #[test]
@@ -92,7 +182,7 @@ fn a_family_part_is_looked_up_and_a_bad_one_says_why() {
     assert!(matches!(lib.lookup(&design.components["R1"]), Lookup::Datasheet(p) if p.mpn == "RC0603FR-0747KL"));
     assert!(lib.files["RC0603FR-0747KL"].to_string_lossy().contains("yageo-rc.toml"));
     match lib.lookup(&design.components["R2"]) {
-        Lookup::Unchecked(why) => assert!(why.contains("no row gives") && why.contains("power"), "{why}"),
+        Lookup::Unchecked(why) => assert!(why.contains("doesn't list RC1210FR-7W10KL"), "{why}"),
         _ => panic!("R2 should be unchecked"),
     }
     match lib.lookup(&design.components["R3"]) {

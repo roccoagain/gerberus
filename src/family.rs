@@ -32,6 +32,22 @@ pub struct Family {
     /// Resistors: temperature coefficient rows.
     #[serde(default)]
     pub tcr: Vec<TcrRow>,
+    /// The values the series is made in, by code. When there are any, a part number outside all of them is
+    /// not rated: the datasheet says nothing about it.
+    #[serde(default)]
+    pub range: Vec<RangeRow>,
+    /// Resistors: the page that gives the rated voltage as sqrt(P x R), capped by the maximum working voltage.
+    pub rcwv_page: Option<u32>,
+}
+
+/// Values the series is made in: resistances (`ohms`) for the codes in `when`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RangeRow {
+    #[serde(default)]
+    pub when: When,
+    pub ohms: Ohms,
+    pub page: u32,
 }
 
 /// One coded field of the part number.
@@ -204,7 +220,8 @@ impl Family {
             .rating
             .iter()
             .map(|r| (&r.when, r.page))
-            .chain(self.tcr.iter().map(|t| (&t.when, t.page)));
+            .chain(self.tcr.iter().map(|t| (&t.when, t.page)))
+            .chain(self.range.iter().map(|t| (&t.when, t.page)));
         for (when, page) in rows {
             if page == 0 {
                 out.push("every rating and tcr row needs a page".into());
@@ -243,27 +260,59 @@ impl Family {
         out
     }
 
-    /// Splits `mpn` into this family's fields, or `None` when it isn't one of its part numbers.
-    pub fn decode(&self, mpn: &str) -> Option<Decoded> {
+    /// Splits `mpn` into this family's fields, or `None` when it isn't one of its part numbers. A part number
+    /// that splits more than one way is an error: which reading is right isn't known.
+    pub fn decode(&self, mpn: &str) -> Option<Result<Decoded, String>> {
         let pieces = self.pieces();
-        let mut codes = BTreeMap::new();
-        if !self.matches(&pieces, mpn, &mut codes) {
-            return None;
-        }
+        let mut found = vec![];
+        self.matches(&pieces, mpn, &mut BTreeMap::new(), &mut found);
+        let codes = match found.len() {
+            0 => return None,
+            1 => found.remove(0),
+            _ => {
+                return Some(Err(format!(
+                    "{} family: {mpn} can be read {} ways ({})",
+                    self.family,
+                    found.len(),
+                    found
+                        .iter()
+                        .map(|c| c.iter().map(|(k, v)| format!("{k} {v}")).collect::<Vec<_>>().join(", "))
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                )));
+            }
+        };
         let value = self
             .field
             .iter()
             .find_map(|(name, f)| f.kind.map(|k| (name, k)))
             .and_then(|(name, k)| parse_value(k, &codes[name]));
-        Some(Decoded { codes, value })
+        Some(Ok(Decoded { codes, value }))
     }
 
-    fn matches(&self, pieces: &[Piece<'_>], rest: &str, codes: &mut BTreeMap<String, String>) -> bool {
+    /// Every way `rest` splits into `pieces`, up to two (enough to tell it is ambiguous).
+    fn matches(
+        &self,
+        pieces: &[Piece<'_>],
+        rest: &str,
+        codes: &mut BTreeMap<String, String>,
+        found: &mut Vec<BTreeMap<String, String>>,
+    ) {
+        if found.len() >= 2 {
+            return;
+        }
         let Some((first, more)) = pieces.split_first() else {
-            return rest.is_empty();
+            if rest.is_empty() {
+                found.push(codes.clone());
+            }
+            return;
         };
         match first {
-            Piece::Text(t) => rest.strip_prefix(t).is_some_and(|r| self.matches(more, r, codes)),
+            Piece::Text(t) => {
+                if let Some(r) = rest.strip_prefix(t) {
+                    self.matches(more, r, codes, found);
+                }
+            }
             Piece::Field(name) => {
                 let f = &self.field[*name];
                 let candidates: Vec<usize> = match f.kind {
@@ -280,12 +329,9 @@ impl Family {
                 };
                 for n in candidates {
                     codes.insert((*name).to_string(), rest[..n].to_string());
-                    if self.matches(more, &rest[n..], codes) {
-                        return true;
-                    }
+                    self.matches(more, &rest[n..], codes, found);
                 }
                 codes.remove(*name);
-                false
             }
         }
     }
@@ -299,8 +345,7 @@ impl Family {
     /// The part file this family gives `mpn`, as TOML text: what a person would write for that one part, with
     /// each value cited to the series datasheet. Errors say why a matching part number can't be rated.
     pub fn part_text(&self, mpn: &str) -> Option<Result<String, String>> {
-        let d = self.decode(mpn)?;
-        Some(self.render(mpn, &d))
+        Some(self.decode(mpn)?.and_then(|d| self.render(mpn, &d)))
     }
 
     /// The part this family gives `mpn`, or `None` when the part number isn't one of its.
@@ -341,6 +386,13 @@ impl Family {
             }
         };
         let missing = |what: &str| format!("{} family: no row gives {mpn} ({codes_text}) its {what}", self.family);
+        if !self.range.is_empty() && !self.range.iter().any(|r| Self::row_applies(&r.when, Some(&r.ohms), d)) {
+            return Err(format!(
+                "{} family: the datasheet doesn't list {mpn} ({codes_text}): its value is outside the range made in \
+                 that size and tolerance",
+                self.family
+            ));
+        }
         let temperature = pick("temperature range", &|r| r.temperature.is_some())?;
         let tol_field = &self.field["tolerance"];
         let tol_code = &d.codes["tolerance"];
@@ -389,8 +441,20 @@ impl Family {
                     .iter()
                     .filter(|r| Self::row_applies(&r.when, r.ohms.as_ref(), d))
                     .collect();
-                if let [r] = tcrs.as_slice() {
-                    let _ = writeln!(t, "tcr = {{ ppm = {}, page = {}{} }}", r.ppm, r.page, note(&r.note));
+                match tcrs.as_slice() {
+                    [r] => {
+                        let _ = writeln!(t, "tcr = {{ ppm = {}, page = {}{} }}", r.ppm, r.page, note(&r.note));
+                    }
+                    [] if self.tcr.is_empty() => {}
+                    [] => return Err(missing("temperature coefficient")),
+                    rows => {
+                        return Err(format!(
+                            "{} family: {} rows give {mpn} ({codes_text}) its temperature coefficient, on pages {}",
+                            self.family,
+                            rows.len(),
+                            rows.iter().map(|r| r.page.to_string()).collect::<Vec<_>>().join(", ")
+                        ));
+                    }
                 }
                 temperature_line(&mut t, temperature);
                 datasheet_section(&mut t, ds);
@@ -409,15 +473,16 @@ impl Family {
                     ),
                     mwv => format!(
                         "recommended = {{ min = {lo}, max = {hi}, page = {}, derived = {}, note = {} }}",
-                        rating.page,
+                        self.rcwv_page.unwrap_or(rating.page),
                         q(&format!(
-                            "-sqrt({p} * {ohms}) .. sqrt({p} * {ohms}); RCWV = sqrt(P x R), with P from the rating row and R from the part number{}; non-polar, so the same magnitude applies in both directions",
+                            "-sqrt({p} * {ohms}) .. sqrt({p} * {ohms}); RCWV = sqrt(P x R), with P = {p} W from p{} and R from the part number{}; non-polar, so the same magnitude applies in both directions",
+                            rating.page,
                             mwv.map(|m| format!(", below the size's {m} V maximum working voltage"))
                                 .unwrap_or_default()
                         )),
                         q(&format!("rated continuous working voltage at P = {p} W")),
-                        lo = -round(rcwv),
-                        hi = round(rcwv),
+                        lo = -toward_zero(rcwv),
+                        hi = toward_zero(rcwv),
                     ),
                 };
                 let _ = writeln!(t, "\n[pins]\n1 = \"1\"\n2 = \"2\"\n");
@@ -504,6 +569,11 @@ fn q(s: &str) -> String {
     toml::Value::String(s.to_string()).to_string()
 }
 
+/// Rounded to the millivolt toward zero, so a rating is never made larger than the datasheet's.
+fn toward_zero(v: f64) -> f64 {
+    (v * 1000.0).trunc() / 1000.0
+}
+
 fn round(v: f64) -> f64 {
     (v * 1000.0).round() / 1000.0
 }
@@ -555,19 +625,20 @@ pub fn parse_value(kind: ValueKind, s: &str) -> Option<f64> {
             Some(v * mult)
         }
         ValueKind::CapacitancePf => {
-            if s.len() != 3 {
+            // Three characters: three digits, or two digits and an `R` (not last) as the decimal point.
+            let digits = s.chars().filter(char::is_ascii_digit).count();
+            let rs = s.matches('R').count();
+            if s.len() != 3 || digits + rs != 3 || rs > 1 || s.ends_with('R') {
                 return None;
             }
-            if let Some(at) = s.find('R') {
+            if rs == 1 {
                 let v: f64 = s.replacen('R', ".", 1).parse().ok()?;
-                return (at > 0 || v > 0.0).then_some(v * 1e-12);
-            }
-            if !s.chars().all(|c| c.is_ascii_digit()) {
-                return None;
+                return (v > 0.0).then_some(v * 1e-12);
             }
             let sig: f64 = s[..2].parse().ok()?;
             let exp: i32 = s[2..].parse().ok()?;
-            (exp <= 9).then(|| sig * 10f64.powi(exp) * 1e-12)
+            // 10^0 to 10^7 pF; 8 and 9 are multipliers below 1 in the EIA code, which these series don't use.
+            (sig > 0.0 && exp <= 7).then(|| sig * 10f64.powi(exp) * 1e-12)
         }
     }
 }

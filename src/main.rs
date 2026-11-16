@@ -117,7 +117,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "si" => si(Path::new(path), rest),
         [cmd, sub, rest @ ..] if cmd == "datasheet" => datasheet(sub, rest),
-        [cmd, sub, mpn, rest @ ..] if cmd == "part" && sub == "show" => part_show(mpn, rest),
+        [cmd, sub, mpn, rest @ ..] if cmd == "part" && sub == "show" && !mpn.starts_with("--") => part_show(mpn, rest),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);
@@ -155,12 +155,20 @@ fn part_show(mpn: &str, rest: &[String]) -> Result<bool, String> {
     }
     for (path, family) in lib.families.iter().rev() {
         if let Some(text) = family.part_text(mpn) {
+            let at = |e: String| format!("{}: {e}", path.display());
+            let text = text.map_err(at)?;
+            // The same checks `check` runs on it, so this never prints a part that `check` would reject.
+            let part = family.part(mpn).expect("it decoded above").map_err(at)?;
+            let problems = part.problems();
+            if !problems.is_empty() {
+                return Err(at(problems.join("; ")));
+            }
             println!(
                 "# Written by the {} family in {} for {mpn}.",
                 family.family,
                 path.display()
             );
-            print!("{}", text.map_err(|e| format!("{}: {e}", path.display()))?);
+            print!("{text}");
             return Ok(true);
         }
     }
