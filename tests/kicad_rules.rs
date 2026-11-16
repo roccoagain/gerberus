@@ -205,3 +205,40 @@ fn duplicate_references_warn() {
         d.warnings
     );
 }
+
+/// A local label and a global power symbol with the same name on one sheet are one net, named after the power.
+#[test]
+fn local_label_joins_power_symbol_by_name() {
+    let d = load(&[
+        sym("Device:R", "R1", 50.0, 50.0),
+        sym("power:VDD", "#PWR1", 50.0, 46.19),
+        sym("Device:R", "R2", 70.0, 50.0),
+        "(label \"VDD\" (at 70 46.19 0))".into(),
+    ]);
+    assert_eq!(net(&d, "R2", "1").name, "VDD");
+    assert_eq!(net(&d, "R1", "1").pins, net(&d, "R2", "1").pins);
+}
+
+/// The power-symbol preference only applies inside one group. Across groups KiCad compares names, so a hidden
+/// `AVDD` pin elsewhere renames the whole net `AVDD`.
+#[test]
+fn power_symbol_preference_stays_within_one_group() {
+    let d = load(&[
+        sym("Test:IC", "U1", 50.0, 50.0),
+        sym("power:VDD", "#PWR1", 50.0, 44.92),
+        sym("Test:IC", "U2", 100.0, 50.0),
+    ]);
+    let n = net(&d, "U1", "8");
+    assert_eq!(n.name, "AVDD");
+    assert_eq!(
+        n.pins,
+        [("U1".to_string(), "8".to_string()), ("U2".to_string(), "8".to_string())]
+    );
+}
+
+/// Two jumpered pins that share a number are two pins to KiCad, so the net is not `unconnected-`.
+#[test]
+fn jumpered_pins_alone_are_not_unconnected() {
+    let d = load(&[sym("Test:JP", "JP1", 50.0, 50.0)]);
+    assert_eq!(net(&d, "JP1", "1").name, "Net-(JP1-Pad1)");
+}

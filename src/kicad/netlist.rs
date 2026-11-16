@@ -122,7 +122,8 @@ fn on_segment(p: Pt, a: Pt, b: Pt) -> bool {
     cross == 0 && p.0 >= a.0.min(b.0) && p.0 <= a.0.max(b.0) && p.1 >= a.1.min(b.1) && p.1 <= a.1.max(b.1)
 }
 
-/// KiCad's unit letters: 1 → A, 26 → Z, 27 → AA.
+/// KiCad's default unit letters: 1 → A, 26 → Z, 27 → AA. Projects can switch to `.1`-style suffixes and units
+/// can carry display names (`unit_name`); neither is read yet, so generated names on such parts may differ.
 fn unit_letter(mut unit: u32) -> String {
     let mut out = Vec::new();
     while unit > 0 {
@@ -381,6 +382,7 @@ impl Builder {
                 Item::Pin(pin, None) => g.pins.push(pin),
                 Item::Pin(pin, Some(PinDriver::HiddenPower(name))) => {
                     g.pins.push(pin);
+                    g.links.push(format!("local:{inst_path}:{name}"));
                     g.candidates.push(Candidate {
                         priority: Priority::GlobalPower,
                         rank: 2,
@@ -391,6 +393,9 @@ impl Builder {
                     g.labels.push(name);
                 }
                 Item::PowerSymbol(scope, name) => {
+                    if scope == PowerScope::Global {
+                        g.links.push(format!("local:{inst_path}:{name}"));
+                    }
                     let (priority, rank, link, shown) = match scope {
                         PowerScope::Global => (Priority::GlobalPower, 0, format!("global:{name}"), name.clone()),
                         PowerScope::Local => (
@@ -423,8 +428,8 @@ impl Builder {
                             format!("port:{inst_path}:{name}"),
                         ),
                     };
-                    // KiCad joins local labels, hierarchical labels and local power on one sheet by bare name.
-                    if kind == LabelKind::Hierarchical {
+                    // KiCad joins every label and power name on one sheet by bare name, whatever its kind.
+                    if kind != LabelKind::Local {
                         g.links.push(format!("local:{inst_path}:{name}"));
                     }
                     g.candidates.push(Candidate {
@@ -484,20 +489,23 @@ impl Builder {
         let mut nets = Vec::new();
         for members in merged.values() {
             let mut pins: Vec<PlacedPin> = Vec::new();
-            let mut candidates: Vec<Candidate> = Vec::new();
+            // Each group's own name source, chosen as KiCad does within one group.
+            let mut drivers: Vec<Candidate> = Vec::new();
             let mut labels = BTreeSet::new();
             for &m in members {
                 let g = &mut self.subgraphs[m];
                 pins.append(&mut g.pins);
-                candidates.extend(g.candidates.iter().cloned());
+                drivers.extend(best_candidate(&g.candidates, true).cloned());
                 labels.extend(g.labels.iter().cloned());
             }
             if pins.is_empty() {
                 continue;
             }
+            // Jumpered pins that share a number are separate pins to KiCad, so count before merging them.
+            let pin_items = pins.len();
             pins.sort_by(|a, b| (&a.reference, &a.number).cmp(&(&b.reference, &b.number)));
             pins.dedup_by(|a, b| a.reference == b.reference && a.number == b.number);
-            let name = net_name(&candidates, &pins);
+            let name = net_name(&drivers, &pins, pin_items);
             let index = nets.len();
             for p in &pins {
                 if let Some(c) = self.components.get_mut(&p.reference) {
@@ -560,20 +568,35 @@ fn pin_net_name(p: &PlacedPin, unconnected: bool) -> String {
     }
 }
 
-fn net_name(candidates: &[Candidate], pins: &[PlacedPin]) -> String {
-    let low_quality = |n: &str| n.contains("-Pad");
-    let best = candidates.iter().min_by(|a, b| {
+fn low_quality(name: &str) -> bool {
+    name.contains("-Pad")
+}
+
+/// Picks a name source as KiCad's `ResolveDrivers` does. The power-symbol rank only applies within one group
+/// (`with_rank`); across groups KiCad compares priority and then name.
+fn best_candidate(candidates: &[Candidate], with_rank: bool) -> Option<&Candidate> {
+    candidates.iter().min_by(|a, b| {
+        let rank = if with_rank {
+            a.rank.cmp(&b.rank)
+        } else {
+            std::cmp::Ordering::Equal
+        };
         b.priority
             .cmp(&a.priority)
-            .then(a.rank.cmp(&b.rank))
+            .then(rank)
             .then(a.depth.cmp(&b.depth))
             .then(low_quality(&a.name).cmp(&low_quality(&b.name)))
             .then(a.name.cmp(&b.name))
-    });
-    if let Some(c) = best {
+    })
+}
+
+/// `drivers` holds one name source per joined group. `pin_items` counts part pins before pins that share a
+/// number were merged.
+fn net_name(drivers: &[Candidate], pins: &[PlacedPin], pin_items: usize) -> String {
+    if let Some(c) = best_candidate(drivers, false) {
         return c.name.clone();
     }
-    if let [p] = pins {
+    if let ([p], 1) = (pins, pin_items) {
         return format!("unconnected-({})", pin_net_name(p, true));
     }
     // Like KiCad, prefer a name built from a pin name (`U1-SW`) over one built from a pad number (`C3-Pad1`).

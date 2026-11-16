@@ -66,7 +66,6 @@ pub struct LibPin {
 
 #[derive(Debug, Clone, Default)]
 pub struct SymbolInstance {
-    pub uuid: String,
     pub lib_id: String,
     pub lib_name: Option<String>,
     pub at: (f64, f64),
@@ -301,7 +300,6 @@ fn read_symbol(s: &Sexp) -> SymbolInstance {
         }
     }
     SymbolInstance {
-        uuid: s.child("uuid").and_then(|u| u.arg(1)).unwrap_or_default().to_string(),
         lib_id: s.child("lib_id").and_then(|l| l.arg(1)).unwrap_or_default().to_string(),
         lib_name: s.child("lib_name").and_then(|l| l.arg(1)).map(str::to_string),
         at: (x, y),
