@@ -20,8 +20,8 @@ error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V
    = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx
    = help: add a divider, clamp or series resistor, or choose a part rated higher
 
-error: 18 errors, 9 warnings, 110 unknown, 402 passed
-   = note: 110 unknown and 402 passed not shown; --unknown or --all lists them
+error: 18 errors, 9 warnings, 109 unknown, 402 passed
+   = note: 109 unknown and 402 passed not shown; --unknown or --all lists them
    = note: --verbose shows how each net in a finding got its voltage range
 ```
 
@@ -38,7 +38,7 @@ the output is a terminal and `NO_COLOR` isn't set; `--color always|never|auto` o
 | `tvs-standoff` | a rail rises above a TVS diode's stand-off voltage | warning |
 | `cap-voltage` | a capacitor sees more than its rated voltage (error), or more than `policy.toml` allows (warning) | error / warning |
 | `resistor-power` | a resistor's worst-case V²/R is over its rating (error) or the policy's share of it (warning) | error / warning |
-| `floating-input` | an input pin is on a net nothing drives (UNKNOWN when only open-drain or tri-state outputs, connectors or unmodelled parts reach it) | error |
+| `floating-input` | an input pin is on a net nothing drives (UNKNOWN when only open-drain or tri-state outputs, connectors or unmodelled parts reach it, or when it is AC-coupled through capacitors into a part with no part file, which may bias it itself) | error |
 | `unpowered` | a power pin is on a net nothing supplies (UNKNOWN when two or more pins of one part with no part file are tied on it with only passives: it may supply the net itself, like a charge pump's output) | error |
 | `regulator-headroom` | a regulator's supply can fall below what its datasheet output range needs | warning |
 | `esd` | an external connector pin's net has no TVS or ESD clamp, and a part on it (directly, or through one series resistor, inductor or diode with no clamp behind it) has no system-level ESD rating to `policy.toml`'s level | warning |

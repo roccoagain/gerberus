@@ -62,9 +62,10 @@ decide, usually because a part has no part file yet; it never counts as a pass. 
 `--all` to list the passes too, and `--verbose` to see how each net got its voltage range. The sniffer's 2 errors
 are its supply connected backwards, which damages the regulator; its warnings are headers with no ESD protection.
 
-On your own board, point it at the root schematic (`.kicad_sch`) or the Altium project (`.PrjPcb`). `check`
-needs an `inputs.toml` next to the schematic that says what voltages arrive on each connector pin (for example, 3.6
-to 5.5 V on J1 pin 1); copy the one in `tests/fixtures/sniffer` as a start, and see [the
+On your own board, point it at the root schematic (`.kicad_sch`) or the Altium project (`.PrjPcb`). `check` runs
+straight away, but without knowing what plugs into the board it can only take the net named GND as 0 V, so most
+nets come out unknown. Add an `inputs.toml` next to the schematic that says what voltages arrive on each connector
+pin (for example, 3.6 to 5.5 V on J1 pin 1); copy the one in `tests/fixtures/sniffer` as a start, and see [the
 format](parts/README.md#board-inputs).
 
 ## What it checks

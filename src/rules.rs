@@ -1167,8 +1167,12 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
             let powered_elsewhere = c.pins.values().any(|q| {
                 q.kind == PinKind::PowerIn
                     && q.net != pin.net
-                    && matches!(volts.nets[q.net].driver, Driver::Strong | Driver::Pulled)
-                    && volts.nets[q.net].span.max.is_some_and(|v| v > 0.0)
+                    && match volts.nets[q.net].driver {
+                        // A driven rail of unknown voltage (a board with no inputs.toml) may well be powered.
+                        Driver::Strong | Driver::Pulled => volts.nets[q.net].span.max.is_none_or(|v| v > 0.0),
+                        Driver::Weak => true,
+                        Driver::Floating => false,
+                    }
             });
             let own_rail = lib.part_for(c).is_none()
                 && own_pins >= 2
@@ -1181,7 +1185,28 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                             .and_then(|c2| c2.pins.get(p2))
                             .is_some_and(|p2| p2.kind == PinKind::Passive)
                 });
+            // An input reached only through a capacitor from a signal is AC-coupled. So is one AC-grounded through
+            // a capacitor to a rail, when another input of the same part is AC-coupled (the other leg of a
+            // differential input). Many amplifiers and codecs bias such inputs themselves; without a part file,
+            // nothing says whether this one does. A lone input with only a decoupling capacitor stays a FAIL.
+            let ac_coupled = lib.part_for(c).is_none()
+                && pin.kind == PinKind::Input
+                && design.only_capacitors_on(reference, pin.net)
+                && (coupled_to_signal(design, volts, reference, pin.net)
+                    || c.pins.values().any(|q| {
+                        q.kind == PinKind::Input
+                            && q.net != pin.net
+                            && coupled_to_signal(design, volts, reference, q.net)
+                    }));
             let (vd, msg) = match nv.driver {
+                Driver::Floating if ac_coupled => (
+                    Verdict::Unknown,
+                    format!(
+                        "{reference}.{name} is on {net}, which only capacitors reach: it is AC-coupled. {reference} \
+                         has no part file, so nothing says whether it biases this input itself; if its datasheet \
+                         says it does, give it a `biases` drive"
+                    ),
+                ),
                 Driver::Floating if own_rail => (
                     Verdict::Unknown,
                     format!(
@@ -1221,6 +1246,20 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
             });
         }
     }
+}
+
+/// Whether `net` (reached only through capacitors from `reference`) has a capacitor carrying a signal in: its
+/// far side is on a driven net that isn't a fixed 0 V rail.
+fn coupled_to_signal(design: &Design, volts: &Voltages, reference: &str, net: usize) -> bool {
+    design.only_capacitors_on(reference, net)
+        && design.others_on(reference, net).any(|(_, c2, p2)| {
+            c2.pins.values().any(|q| {
+                q.number != p2
+                    && q.net != net
+                    && volts.nets[q.net].driver != Driver::Floating
+                    && volts.nets[q.net].span != Span::exact(0.0)
+            })
+        })
 }
 
 fn regulator_headroom(design: &Design, volts: &Voltages, r: &mut Report) {

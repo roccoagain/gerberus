@@ -98,6 +98,13 @@ supply = "VIN"
 range = { min = { unknown = "undershoot below GND isn't given" }, max = { unknown = "overshoot above VIN isn't given" }, page = 3 }
 
 [[drive]]
+kind = "biases"        # an input the part biases itself, such as an amplifier's AC-coupled input
+pin = "INP"
+to = "GND"
+supply = "VDD"
+range = { min = 1.2, max = 1.4, page = 7, note = "input bias voltage, VDD = 2.7 to 5.5 V" }
+
+[[drive]]
 kind = "forward"       # a diode conducting from `pin` (anode) to `to` (cathode) drops `range`
 pin = "A"
 to = "K"
@@ -110,6 +117,18 @@ to = "K"
 current = 0.020
 range = { min = 1.8, max = 2.4, page = 3, note = "VF at IF = 20 mA" }
 ```
+
+A `biases` drive sets the input's net only when nothing but capacitors share it (an AC-coupled input); with a
+resistor or another part's pin on the net, the net is worked out as usual and the bias is ignored. It counts as
+a pull, so `floating-input` passes. Its range works like a switch node's: a number, or another pin plus an
+offset. Give `{ unknown = "..." }` when the datasheet says the input is biased internally but not to what.
+`stress` doesn't model the bias: in its runs the input sits at whatever its capacitor couples in.
+
+On a part with no part file, an input reached only through capacitors is `UNKNOWN` rather than a FAIL when it is
+AC-coupled: a capacitor brings in a signal (its far side is driven and isn't a 0 V rail), or it is AC-grounded
+while another input of the same part is AC-coupled (the unused leg of a differential input). Only the datasheet
+can say whether the part biases it. An input with nothing on it but a capacitor to ground, on a part with no
+other AC-coupled input, is still a FAIL.
 
 An LED's VF minimum holds only at and above `current`. Below it the LED drops less, so a series resistor's
 current is then bounded with VF taken as 0 V.
@@ -228,7 +247,9 @@ against the rating itself is an error.
 ### Board inputs
 
 Each board has an `inputs.toml` next to its schematic (see `tests/fixtures/*/inputs.toml`). It gives the
-voltages the outside world puts on its connector pins:
+voltages the outside world puts on its connector pins. Without one, `check`, `voltages` and `loads` still run
+but say so. A net named `GND`, `0V` or `VSS` is taken as 0 V, every net only a connector reaches is UNKNOWN,
+nothing is checked for ESD, reverse polarity or faults, and `stress` has no supply to switch on.
 
 ```toml
 board = "can-encoder rev 2"
@@ -256,6 +277,7 @@ down to the inputs it comes from. It starts from `inputs.toml` (the `to` pins ar
   0 V, marked as only a floor: checks can pass on it but not fail on it, and nets fed from it inherit the mark.
   Above the recommended maximum, the top end follows the supply. Line and load regulation aren't modelled.
 - **Switch nodes** (`switches`): whatever their range gives; both ends are UNKNOWN on today's parts.
+- **Biased inputs** (`biases`): an input reached only through capacitors sits at its bias range.
 - **Everything else**: the union of what can pull the net: nets reached through resistors, inductors, LEDs and
   jumpers (capacitors count as open, TVS diodes as off), and IC output pins, which reach at most their part's
   highest supply. A pin of any other part that isn't an input makes the net UNKNOWN.

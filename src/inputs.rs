@@ -140,6 +140,46 @@ impl std::fmt::Display for PinRef {
 }
 
 impl BoardInputs {
+    /// For a board with no inputs.toml: only its ground, taken as 0 V when a net is named `GND`, `0V` or `VSS`.
+    /// Every connector pin is left as whatever might be plugged in, so nets that only a connector reaches stay
+    /// UNKNOWN.
+    pub fn none(board: &str, design: &Design) -> BoardInputs {
+        let ground = design.nets.iter().find(|n| {
+            let name = n.name.rsplit('/').next().unwrap_or("").to_ascii_uppercase();
+            matches!(name.as_str(), "GND" | "0V" | "VSS") && !n.pins.is_empty()
+        });
+        let inputs = ground
+            .and_then(|n| n.pins.iter().min())
+            .map(|(r, p)| {
+                let pin = PinRef {
+                    reference: r.clone(),
+                    pin: p.clone(),
+                };
+                Input {
+                    name: "ground".into(),
+                    pin: pin.clone(),
+                    to: pin,
+                    min: 0.0,
+                    max: Max::Value(0.0),
+                    source: format!(
+                        "assumed: there is no inputs.toml, and {} is named as a ground",
+                        ground.map_or("", |n| n.name.as_str())
+                    ),
+                    fault: None,
+                    reverse: Some("an assumed ground, not a supply".into()),
+                }
+            })
+            .into_iter()
+            .collect();
+        BoardInputs {
+            board: board.to_string(),
+            inputs,
+            undriven: vec![],
+            differential: vec![],
+            temperature: None,
+        }
+    }
+
     pub fn load(path: &Path) -> Result<BoardInputs, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))

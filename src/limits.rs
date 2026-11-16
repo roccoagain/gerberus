@@ -231,6 +231,9 @@ pub enum DriveKind {
     Forward,
     /// A switch node: `pin` swings across `range`, which may be relative to the supply (`{ pin = "VIN" }`).
     Switches,
+    /// An input the part biases itself through internal resistors, such as an amplifier's AC-coupled input:
+    /// `pin` sits within `range` (which may be relative to the supply) with nothing else driving it.
+    Biases,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -773,7 +776,7 @@ impl Part {
         for (i, d) in self.drives.iter().enumerate() {
             let at = |what: &str| format!("drive {} ({}): {what}", i + 1, d.pin);
             if d.kind != DriveKind::Forward && d.supply.is_none() {
-                out.push(at("a regulator or switch node needs `supply`"));
+                out.push(at("a regulator, switch node or biased input needs `supply`"));
             }
             if d.kind != DriveKind::Regulates && (d.feedback || d.headroom.is_some()) {
                 out.push(at("only a regulator has `feedback` or `headroom`"));
@@ -794,8 +797,12 @@ impl Part {
                 if d.range.has_values() && (page.is_none() || self.datasheet.is_none()) {
                     out.push(at("has values but no datasheet page"));
                 }
-                if d.kind != DriveKind::Switches && [min, max].iter().any(|b| matches!(b, Bound::Pin { .. })) {
-                    out.push(at("only a switch node's range can be relative to a pin"));
+                if !matches!(d.kind, DriveKind::Switches | DriveKind::Biases)
+                    && [min, max].iter().any(|b| matches!(b, Bound::Pin { .. }))
+                {
+                    out.push(at(
+                        "only a switch node's or biased input's range can be relative to a pin",
+                    ));
                 }
                 if let Some((lo, hi)) = d.range.values()
                     && lo > hi
@@ -1029,6 +1036,21 @@ pub enum Coverage {
     },
     /// Not fitted, not on the board or not in the BOM.
     NotFitted,
+    /// A part with no electrical limits to check, such as a test point, and what it is.
+    NonElectrical(&'static str),
+}
+
+/// A test point with no part file: a bare pad, so there is nothing to check it against. Found by its symbol
+/// (`Connector:TestPoint`), or by a `TP` reference on a one-pin part. (A net tie is not one: it joins two
+/// nets, which the voltage engine doesn't follow yet, so it stays unchecked.)
+pub fn non_electrical(reference: &str, c: &Component) -> Option<&'static str> {
+    let letters: String = reference
+        .chars()
+        .take_while(char::is_ascii_alphabetic)
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    let symbol = c.lib_id.rsplit(':').next().unwrap_or("");
+    (symbol.starts_with("TestPoint") || (letters == "TP" && c.pins.len() <= 1)).then_some("test point")
 }
 
 /// How every component of a design is covered, keyed by reference.
@@ -1052,7 +1074,10 @@ pub fn coverage(design: &crate::design::Design, lib: &Library) -> BTreeMap<Strin
                             _ => String::new(),
                         },
                     },
-                    Lookup::Unchecked(reason) => Coverage::Unchecked { reason },
+                    Lookup::Unchecked(reason) => match non_electrical(r, c) {
+                        Some(what) => Coverage::NonElectrical(what),
+                        None => Coverage::Unchecked { reason },
+                    },
                 }
             };
             (r.clone(), cov)

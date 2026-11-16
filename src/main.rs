@@ -313,11 +313,33 @@ fn analyse(
         .inputs
         .clone()
         .unwrap_or_else(|| path.parent().unwrap_or(Path::new(".")).join("inputs.toml"));
-    let inputs = BoardInputs::load(&inputs_path)?;
-    let problems = inputs.problems(&design);
-    if !problems.is_empty() {
-        return Err(format!("{}: {}", inputs_path.display(), problems.join("; ")));
-    }
+    // Without an inputs.toml next to the design, run anyway with no inputs, and say what that leaves out.
+    let inputs = if o.inputs.is_none() && !inputs_path.exists() {
+        let inputs = BoardInputs::none(&path.display().to_string(), &design);
+        let ground = match inputs.inputs.first() {
+            Some(i) => format!(
+                "{} is taken as 0 V",
+                design.nets[design.components[&i.pin.reference].pins[&i.pin.pin].net].name
+            ),
+            None => "no net is named GND, 0V or VSS, so not even ground is known".into(),
+        };
+        eprintln!(
+            "note: no {} found, so nothing is known about what plugs into the connectors: {ground}, every net \
+             only a connector reaches is UNKNOWN, and reverse-polarity, esd, fault cases and `stress` are \
+             skipped.\n\
+             help: write an inputs.toml next to the schematic giving each connector pin's voltage range (see \
+             \"Board inputs\" in parts/README.md)",
+            inputs_path.display()
+        );
+        inputs
+    } else {
+        let inputs = BoardInputs::load(&inputs_path)?;
+        let problems = inputs.problems(&design);
+        if !problems.is_empty() {
+            return Err(format!("{}: {}", inputs_path.display(), problems.join("; ")));
+        }
+        inputs
+    };
     let v = match &o.fault {
         None => gerberus::voltage::compute(&design, &lib, &inputs),
         Some(f) if inputs.faults().contains(&f.as_str()) => {
@@ -437,7 +459,7 @@ fn parts(path: &Path, rest: &[String]) -> Result<bool, String> {
     let lib = load_library(&options(path, rest, &[])?.dirs)?;
     let design = gerberus::load(path)?;
     let cov = coverage(&design, &lib);
-    let (mut sheet, mut default, mut unchecked) = (0, 0, 0);
+    let (mut sheet, mut default, mut unchecked, mut bare) = (0, 0, 0, 0);
     for (r, c) in &cov {
         match c {
             Coverage::Datasheet { mpn } => {
@@ -457,9 +479,15 @@ fn parts(path: &Path, rest: &[String]) -> Result<bool, String> {
                 println!("{r}: UNCHECKED ({reason})");
             }
             Coverage::NotFitted => println!("{r}: not fitted"),
+            Coverage::NonElectrical(what) => {
+                bare += 1;
+                println!("{r}: nothing to check ({what})");
+            }
         }
     }
-    println!("{sheet} with datasheet limits, {default} with class defaults, {unchecked} unchecked");
+    println!(
+        "{sheet} with datasheet limits, {default} with class defaults, {unchecked} unchecked, {bare} with nothing to check"
+    );
     Ok(true)
 }
 
