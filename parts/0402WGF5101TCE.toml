@@ -1,0 +1,30 @@
+mpn = "0402WGF5101TCE"
+manufacturer = "UNI-ROYAL (Uniroyal Electronics)"
+description = "5.1 kohm 1 % 0.0625 W thick-film resistor, 0402"
+class = "resistor"
+
+tolerance = { value = 0.01, page = 2, note = "7th code F = ±1 %" }
+tcr = { ppm = 100, page = 6, note = "0402, R > 10 ohm" }
+temperature = { min = -55, max = 155, page = 5, note = "0402 operating temperature range" }
+
+[datasheet]
+title = "Thick Film Chip Resistors, 01005/0201/0402/0603/0805/1206/1210/1812/2010/2512 Series"
+document = "V.3, February 12, 2019"
+url = "https://www.lcsc.com/datasheet/C25905.pdf"
+
+[pins]
+1 = "1"
+2 = "2"
+
+[[limit]]
+pins = ["1"]
+to = "2"
+abs_max = { unknown = "the datasheet gives a short-time overload voltage test (2.5 x RCWV, at most 100 V), not an absolute maximum" }
+recommended = { min = -17.85, max = 17.85, page = 5, derived = "-sqrt(0.0625 * 5100) .. sqrt(0.0625 * 5100); RCWV = sqrt(P x R), with P from the power rating and R from the part number, below the 0402 max working voltage 50 V; non-polar, so the same magnitude applies in both directions", note = "Section 9 voltage rating: rated continuous DC or RMS AC working voltage RCWV = sqrt(P x R), never above the Max. Working Voltage (50 V for 0402, section 7 Ratings); P = 1/16 W at 70 C ambient" }
+
+[[limit]]
+quantity = "power"
+pins = ["1"]
+to = "2"
+abs_max = { unknown = "the datasheet gives only the power rating" }
+recommended = { min = 0, max = 0.0625, page = 4, note = "power rating at 70 C; derated above 70 C" }

@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "filename": "kitchen-sink.kicad_pro",
+    "version": 1
+  },
+  "sheets": [
+    [
+      "ed036790-1fc2-5fb4-8839-7ed76dea8b6b",
+      ""
+    ],
+    [
+      "87562baf-e231-51ec-a5b2-23b4d7718e9c",
+      "power"
+    ],
+    [
+      "a595f9ce-524e-514d-91f1-3e66e10ad9e1",
+      "can"
+    ],
+    [
+      "8191967a-3e1a-5579-85b7-3e416c341a26",
+      "mcu"
+    ],
+    [
+      "c046d631-bc2c-53c6-89d3-00373145e39d",
+      "usb"
+    ],
+    [
+      "cdbb82d7-1635-52b6-8431-6e8a7d323e8d",
+      "thermal"
+    ],
+    [
+      "ba2fb903-d27d-5096-ad69-a60e186a9f13",
+      "sensors"
+    ]
+  ],
+  "schematic": {
+    "legacy_lib_dir": "",
+    "legacy_lib_list": []
+  },
+  "board": {
+    "design_settings": {}
+  }
+}

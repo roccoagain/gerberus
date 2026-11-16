@@ -219,6 +219,14 @@ every pin it uses, and that the boards' pinouts agree (no errors, and only the k
 run against a snapshot of LCSC's answers in `tests/fixtures/lcsc`, so they don't need the network. The boards come
 from [roccoagain/hardware](https://github.com/roccoagain/hardware).
 
+## Kitchen sink
+
+`tests/fixtures/kitchen-sink` (from [roccoagain/hardware](https://github.com/roccoagain/hardware)) is one board
+with a deliberate pass case and fail case for every command, one schematic sheet per feature: supply inputs and
+protection, the CAN bus and its faults, debug and serial headers, two USB ports, LED current and junction
+temperature, and an unpowered sensor. `tests/kitchen_sink.rs` asserts every FAIL that `check`, `pinout`, `si` and
+`bom` report on it, and that each section's pass case passes; the board's README says what each part is for.
+
 ## Checks
 
 CI (`.github/workflows/ci.yml`) runs on pushes to main, on every pull request, and weekly for new advisories:

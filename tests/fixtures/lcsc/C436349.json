@@ -1,0 +1,59 @@
+{
+  "fetched": 1794855095,
+  "listing": {
+    "code": "C436349",
+    "mpn": "TPD1E05U06DPYR",
+    "manufacturer": "TI",
+    "stock": 52190,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "X1SON-2(0.6x1)",
+    "similar": [
+      {
+        "code": "C1847651",
+        "mpn": "TPD1E05U06DPYT",
+        "manufacturer": "TI",
+        "stock": 750,
+        "status": "normal",
+        "package": "X1-SON-2(0.6x1)",
+        "description": "14VC Clamp 2.5A@8/20us Ipp TVS DIODE X1-SON-2(0.6x1)"
+      },
+      {
+        "code": "C22363741",
+        "mpn": "AZ5215-01F",
+        "manufacturer": "ElecSuper",
+        "stock": 6050,
+        "status": "normal",
+        "package": "DFN1006-2L",
+        "description": "15VC Clamp 4A@8/20us Ipp ESD DIODE DFN1006-2L"
+      },
+      {
+        "code": "C22464604",
+        "mpn": "ESDU5V0F1-ES",
+        "manufacturer": "ElecSuper",
+        "stock": 5550,
+        "status": "normal",
+        "package": "DFN1006-2L",
+        "description": "15VC Clamp 4A Ipp ESD DIODE DFN1006-2L"
+      },
+      {
+        "code": "C42420750",
+        "mpn": "ESD8LL5.0T5G",
+        "manufacturer": "ElecSuper",
+        "stock": 5850,
+        "status": "normal",
+        "package": "DFN1006-2L",
+        "description": "10.5VC Clamp 4A Ipp ESD DIODE DFN1006-2L"
+      },
+      {
+        "code": "C46970738",
+        "mpn": "ESD321DPYR(ES)",
+        "manufacturer": "ElecSuper",
+        "stock": 5600,
+        "status": "normal",
+        "package": "DFN1006-2L",
+        "description": "9.5VC Clamp 4A@8/20us Ipp ESD DIODE DFN1006-2L"
+      }
+    ]
+  }
+}
