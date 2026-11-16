@@ -1,0 +1,32 @@
+mpn = "MT6701CT-STD-R"
+manufacturer = "MagnTek"
+description = "14-bit magnetic angle sensor, SSI / I2C / ABZ / analog / PWM, SOP-8"
+class = "ic"
+
+[datasheet]
+title = "MT6701 differential-Hall magnetic angle sensor IC (Chinese)"
+document = "Version 1.9, May 2024"
+url = "https://www.lcsc.com/datasheet/C3003196.pdf"
+
+# Section 1.1 pin list, page 3.
+[pins]
+1 = "VDD"
+2 = "MODE"
+3 = "OUT"
+4 = "GND"
+5 = "PUSH"
+6 = "A"
+7 = "B"
+8 = "Z"
+
+[[limit]]
+pins = ["VDD"]
+to = "GND"
+abs_max = { min = -0.5, max = 7, page = 6, note = "section 4, VDD pin voltage" }
+recommended = { min = 3.0, max = 5.5, page = 7, note = "section 5, VDD pin voltage" }
+
+[[limit]]
+pins = ["MODE", "OUT", "PUSH", "A", "B", "Z"]
+to = "GND"
+abs_max = { unknown = "section 4 (absolute maximum ratings) gives only the VDD pin voltage" }
+recommended = { unknown = "the datasheet gives no input voltage range for the signal pins" }

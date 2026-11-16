@@ -1,0 +1,10 @@
+board = "can-encoder rev 2"
+
+# J2 is wired in parallel with J1, so J1 covers both.
+[[input]]
+name = "VBUS"
+pin = "J1.1"
+to = "J1.4"
+min = 7
+max = 26
+source = "hardware/can-encoder/DESIGN.md: input range 7–26 V; the bus is the 24 V 6S battery bus, up to 25.2 V"

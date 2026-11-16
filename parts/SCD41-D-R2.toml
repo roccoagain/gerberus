@@ -1,0 +1,51 @@
+mpn = "SCD41-D-R2"
+manufacturer = "Sensirion"
+description = "Photoacoustic CO2, temperature and humidity sensor, I2C, LGA-20"
+class = "ic"
+
+[datasheet]
+title = "SCD4x CO2, temperature and humidity sensor"
+document = "Version 1.7, April 2025"
+url = "https://sensirion.com/media/documents/48C4B7FB/67FE0194/CD_DS_SCD4x_Datasheet_D1.pdf"
+
+# Table 6, page 5 (top-view figure).
+[pins]
+1 = "DNC"
+2 = "DNC"
+3 = "DNC"
+4 = "DNC"
+5 = "DNC"
+8 = "DNC"
+11 = "DNC"
+12 = "DNC"
+13 = "DNC"
+14 = "DNC"
+15 = "DNC"
+16 = "DNC"
+17 = "DNC"
+18 = "DNC"
+6 = "GND"
+7 = "VDD"
+9 = "SCL"
+10 = "SDA"
+19 = "VDDH"
+20 = "GND"
+21 = "GND"
+
+[[limit]]
+pins = ["VDD", "VDDH"]
+to = "GND"
+abs_max = { min = -0.3, max = 6.0, page = 4, note = "DC supply voltage" }
+recommended = { min = 2.4, max = 5.5, page = 4 }
+
+[[limit]]
+pins = ["VDDH"]
+to = "VDD"
+abs_max = { unknown = "the datasheet gives no rating for a difference between VDD and VDDH" }
+recommended = { min = 0, max = 0, page = 5, note = "VDD and VDDH must always be kept at the same voltage" }
+
+[[limit]]
+pins = ["SDA", "SCL"]
+to = "GND"
+abs_max = { min = -0.3, max = { pin = "VDD", plus = 0.3 }, page = 4 }
+recommended = { min = { unknown = "only VIL max 0.3 x VDD is given" }, max = { pin = "VDD" }, page = 4, note = "VIH max 1 x VDD" }

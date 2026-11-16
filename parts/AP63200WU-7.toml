@@ -1,0 +1,53 @@
+mpn = "AP63200WU-7"
+manufacturer = "Diodes Incorporated"
+description = "3.8 V to 32 V, 2 A synchronous buck, 500 kHz, adjustable, TSOT-26"
+class = "ic"
+
+[datasheet]
+title = "AP63200/AP63201/AP63203/AP63205 3.8V to 32V Input, 2A Low IQ Synchronous Buck Converter"
+document = "DS41326 Rev. 3 - 2, November 2024"
+url = "https://www.lcsc.com/datasheet/C2071868.pdf"
+
+[pins]
+1 = "FB"
+2 = "EN"
+3 = "VIN"
+4 = "GND"
+5 = "SW"
+6 = "BST"
+
+[[limit]]
+pins = ["VIN"]
+to = "GND"
+abs_max = { min = -0.3, max = 35.0, page = 4, note = "40 V for 400 ms" }
+recommended = { min = 3.8, max = 32, page = 4 }
+
+[[limit]]
+pins = ["EN"]
+to = "GND"
+abs_max = { min = -0.3, max = 35.0, page = 4 }
+recommended = { unknown = "the recommended operating conditions table lists only VIN" }
+
+[[limit]]
+pins = ["FB"]
+to = "GND"
+abs_max = { min = -0.3, max = 6.0, page = 4 }
+recommended = { unknown = "the recommended operating conditions table lists only VIN" }
+
+[[limit]]
+pins = ["SW"]
+to = "GND"
+abs_max = { min = -1.0, max = { pin = "VIN", plus = 0.3 }, page = 4 }
+recommended = { unknown = "the recommended operating conditions table lists only VIN; SW is the switch node" }
+
+[[limit]]
+pins = ["BST"]
+to = "SW"
+abs_max = { min = -0.3, max = 6.0, page = 4 }
+recommended = { unknown = "the recommended operating conditions table lists only VIN" }
+
+[[drive]]
+kind = "regulates"
+pin = "FB"
+to = "GND"
+range = { min = 0.792, max = 0.808, page = 5, note = "feedback voltage VFB in CCM, AP63200/AP63201" }

@@ -1,0 +1,91 @@
+mpn = "STM32F042G6U6TR"
+manufacturer = "STMicroelectronics"
+description = "Arm Cortex-M0 MCU, 32 KB flash, USB and CAN, UFQFPN-28"
+class = "ic"
+
+[datasheet]
+title = "STM32F042x4 STM32F042x6 ARM-based 32-bit MCU, up to 32 KB Flash, crystal-less USB FS 2.0, CAN, 9 timers, ADC & comm. interfaces, 2.0 - 3.6 V"
+document = "DocID025832 Rev 5"
+url = "https://www.lcsc.com/datasheet/C2971720.pdf"
+
+# UFQFPN28 column of Table 13 (pages 32 to 36). Pins 19 and 20 carry PA9/PA10 by default and PA11/PA12 after
+# remap; both are FTf. PA8 to PA15 are supplied by VDDIO2 (page 36, note 4).
+[pins]
+1 = "PB8-BOOT0"
+2 = "PF0-OSC_IN"
+3 = "PF1-OSC_OUT"
+4 = "NRST"
+5 = "VDDA"
+6 = "PA0"
+7 = "PA1"
+8 = "PA2"
+9 = "PA3"
+10 = "PA4"
+11 = "PA5"
+12 = "PA6"
+13 = "PA7"
+14 = "PB0"
+15 = "PB1"
+16 = "VSS"
+17 = "VDD"
+18 = "VDDIO2"
+19 = "PA9"
+20 = "PA10"
+21 = "PA13"
+22 = "PA14"
+23 = "PA15"
+24 = "PB3"
+25 = "PB4"
+26 = "PB5"
+27 = "PB6"
+28 = "PB7"
+
+[[limit]]
+pins = ["VDD"]
+to = "VSS"
+abs_max = { min = -0.3, max = 4.0, page = 45 }
+recommended = { min = 2.0, max = 3.6, page = 47 }
+
+[[limit]]
+pins = ["VDDIO2"]
+to = "VSS"
+abs_max = { min = -0.3, max = 4.0, page = 45 }
+recommended = { min = 1.65, max = 3.6, page = 47, note = "must not be supplied if VDD is not present" }
+
+[[limit]]
+pins = ["VDDA"]
+to = "VSS"
+abs_max = { min = -0.3, max = 4.0, page = 45 }
+recommended = { min = { pin = "VDD" }, max = 3.6, page = 47, note = "2.4 V minimum when the ADC is used" }
+
+[[limit]]
+pins = ["VDD"]
+to = "VDDA"
+abs_max = { min = { unknown = "the datasheet limits only VDD above VDDA" }, max = 0.4, page = 45 }
+recommended = { min = { unknown = "the datasheet limits only VDD above VDDA" }, max = 0, page = 47, note = "VDDA must be equal to or higher than VDD" }
+
+# FT and FTf pins supplied by VDD.
+[[limit]]
+pins = ["PB8-BOOT0", "PF0-OSC_IN", "PF1-OSC_OUT", "PB3", "PB4", "PB5", "PB6", "PB7"]
+to = "VSS"
+abs_max = { min = -0.3, max = { pin = "VDD", plus = 4.0 }, page = 45, note = "4 V maximum while the internal pull-up or pull-down is enabled" }
+recommended = { min = -0.3, max = 5.5, page = 47, note = "pull-up must be disabled above VDDIOx + 0.3 V" }
+
+# FT and FTf pins supplied by VDDIO2.
+[[limit]]
+pins = ["PA9", "PA10", "PA13", "PA14", "PA15"]
+to = "VSS"
+abs_max = { min = -0.3, max = { pin = "VDDIO2", plus = 4.0 }, page = 45, note = "4 V maximum while the internal pull-up or pull-down is enabled" }
+recommended = { min = -0.3, max = 5.5, page = 47, note = "pull-up must be disabled above VDDIOx + 0.3 V" }
+
+[[limit]]
+pins = ["PA0", "PA1", "PA2", "PA3", "PA4", "PA5", "PA6", "PA7", "PB0", "PB1"]
+to = "VSS"
+abs_max = { min = -0.3, max = 4.0, page = 45, note = "TTa pins: not 5 V tolerant" }
+recommended = { min = -0.3, max = { pin = "VDDA", plus = 0.3 }, page = 47 }
+
+[[limit]]
+pins = ["NRST"]
+to = "VSS"
+abs_max = { min = -0.3, max = 4.0, page = 45 }
+recommended = { min = -0.3, max = { pin = "VDD", plus = 0.3 }, page = 47, note = "RST I/O" }
