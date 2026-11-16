@@ -75,23 +75,72 @@ fn round(v: f64) -> f64 {
 }
 
 /// One step of the reasoning behind a net's range.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Why {
     pub text: String,
     /// Nets this step read, so an explanation can show where their ranges came from.
     pub from: Vec<usize>,
+    /// What this step sets never rises above the nets in `from`: a resistor pull, an output pin of a part they
+    /// supply, a diode or regulator fed from them.
+    pub bounded: bool,
+    /// This step's low end is only a floor, not a value the net is known to reach.
+    pub low_floor: bool,
+}
+
+/// What sets a net.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Driver {
+    /// An input, or a part's drive from its part file.
+    #[default]
+    Strong,
+    /// A resistor path to a driven net, or a push-pull or bidirectional output pin.
+    Pulled,
+    /// Only open-drain or tri-state outputs, connector pins or parts gerberus can't model: nothing proves the
+    /// net is driven.
+    Weak,
+    /// Nothing at all.
+    Floating,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NetVoltage {
     pub span: Span,
     pub why: Vec<Why>,
+    /// What sets the net.
+    pub driver: Driver,
+    /// The low end is only a floor the net can't go below, not a value it is known to reach: a regulator that
+    /// isn't held sags somewhere above 0 V. A check can pass on it but must not fail on it.
+    pub floor: bool,
+}
+
+/// Whether a regulator's supply leaves it enough room to hold its output.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Hold {
+    Held(String),
+    NotHeld(String),
+    Unknown(String),
+}
+
+/// One regulator's output, and whether its supply lets it hold it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Regulation {
+    pub reference: String,
+    pub mpn: String,
+    /// The net the regulator sets: its output, through the divider when it has one.
+    pub output: usize,
+    pub supply: usize,
+    pub hold: Hold,
+    /// The regulated pin, from the part file.
+    pub pin: String,
+    /// False for a feedback pin's own net, which a report needn't list separately from the output.
+    pub sets_output: bool,
 }
 
 /// The range of every net in a design, indexed like [`Design::nets`].
 #[derive(Debug, Clone)]
 pub struct Voltages {
     pub nets: Vec<NetVoltage>,
+    pub regulators: Vec<Regulation>,
 }
 
 impl Voltages {
@@ -106,6 +155,31 @@ impl Voltages {
         let mut seen = BTreeSet::new();
         self.explain_into(design, net, 0, &mut seen, &mut out);
         out
+    }
+
+    /// Whether `net` can never rise above `reference`: it is the same net, or every reason for its range reads
+    /// only nets that can't rise above `reference` and 0 V grounds. A resistor pull-up to a rail, an output pin
+    /// of a part that `reference` alone supplies, a regulator fed from it and a diode from it all qualify.
+    pub fn stays_below(&self, net: usize, reference: usize) -> bool {
+        self.stays_below_depth(net, reference, 0)
+    }
+
+    fn stays_below_depth(&self, net: usize, reference: usize, depth: usize) -> bool {
+        if net == reference {
+            return true;
+        }
+        if depth > 16 {
+            return false;
+        }
+        let nv = &self.nets[net];
+        !nv.why.is_empty()
+            && nv.why.iter().all(|w| {
+                w.bounded
+                    && !w.from.is_empty()
+                    && w.from.iter().all(|&f| {
+                        self.nets[f].span == Span::exact(0.0) || self.stays_below_depth(f, reference, depth + 1)
+                    })
+            })
     }
 
     fn explain_into(&self, design: &Design, net: usize, depth: usize, seen: &mut BTreeSet<usize>, out: &mut String) {
@@ -144,7 +218,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
             Span::exact(0.0),
             Why {
                 text: format!("0 V: the reference of input {} ({})", i.name, i.to),
-                from: vec![],
+                ..Default::default()
             },
         );
         merge(
@@ -155,7 +229,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
                     "input {} on {} from {}: {} to {} V ({})",
                     i.name, i.pin, i.to, i.min, i.max, i.source
                 ),
-                from: vec![],
+                ..Default::default()
             },
         );
         fixed[tn] = true;
@@ -183,6 +257,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
     let groups = build_groups(design, lib, inputs, &strong);
 
     // 4. Resolve whatever has everything it reads, until nothing changes.
+    let mut regulators = vec![];
     let mut done_groups = vec![false; groups.len()];
     loop {
         let mut progress = false;
@@ -192,7 +267,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
             }
             let mut nv: Option<NetVoltage> = None;
             for p in ps {
-                let (span, why) = p.eval(design, &out);
+                let (span, why) = p.eval(design, &out, &mut regulators);
                 merge(&mut nv, span, why);
             }
             // A connector pin on a driven net can bring in anything, unless inputs.toml says nothing outside
@@ -205,7 +280,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
                             "UNKNOWN: {pin} is a connector pin with no range in inputs.toml, so whatever is \
                              plugged in there can push this net anywhere"
                         ),
-                        from: vec![],
+                        ..Default::default()
                     });
                 }
             }
@@ -262,24 +337,43 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
             .into_iter()
             .map(|nv| nv.unwrap_or_else(|| unknown("UNKNOWN: not reached".into(), vec![])))
             .collect(),
+        regulators,
     }
 }
 
 fn unknown(text: String, from: Vec<usize>) -> NetVoltage {
     NetVoltage {
         span: Span::unknown(),
-        why: vec![Why { text, from }],
+        why: vec![Why {
+            text,
+            from,
+            ..Default::default()
+        }],
+        driver: Driver::Strong,
+        floor: false,
     }
 }
 
+/// Adds one source to a net. The low end stays a floor only while every source that reaches it is a floor.
 fn merge(slot: &mut Option<NetVoltage>, span: Span, why: Why) {
     match slot {
         Some(nv) => {
+            nv.floor = match (nv.span.min, span.min) {
+                (Some(a), Some(b)) if b < a => why.low_floor,
+                (Some(a), Some(b)) if b == a => nv.floor && why.low_floor,
+                (Some(_), Some(_)) => nv.floor,
+                _ => false,
+            };
             nv.span = nv.span.union(span);
             nv.why.push(why);
         }
         None => {
-            *slot = Some(NetVoltage { span, why: vec![why] });
+            *slot = Some(NetVoltage {
+                span,
+                floor: why.low_floor && span.min.is_some(),
+                why: vec![why],
+                driver: Driver::Strong,
+            });
         }
     }
 }
@@ -532,6 +626,62 @@ fn missing(drive: &Drive) -> String {
     )
 }
 
+/// The smallest and largest a resistor can be: its value, off by its tolerance plus its temperature drift over
+/// the board's temperature range (or its own rated range when `inputs.toml` gives none). Also says where the
+/// numbers come from.
+pub fn resistance_range(
+    lib: &Library,
+    inputs: &BoardInputs,
+    r: &str,
+    c: &Component,
+) -> Result<(f64, f64, String), String> {
+    let Some(ohms) = parse_ohms(&c.value).filter(|&v| v > 0.0) else {
+        return Err(format!("can't read a resistance from {r}'s value {:?}", c.value));
+    };
+    let Some(part) = lib.part_for(c) else {
+        return Err(format!(
+            "{r} ({}) has no part file, so its tolerance is unknown",
+            crate::limits::component_mpn(c)
+        ));
+    };
+    let Some(tol) = &part.tolerance else {
+        return Err(format!("{r}'s part file {} gives no tolerance", part.mpn));
+    };
+    let Some(tcr) = &part.tcr else {
+        return Err(format!("{r}'s part file {} gives no temperature coefficient", part.mpn));
+    };
+    let (tmin, tmax, twhere) = match (&inputs.temperature, &part.temperature) {
+        (Some(b), _) => (b.min, b.max, format!("the board's {} to {} °C", b.min, b.max)),
+        (None, Some(p)) => (
+            p.min,
+            p.max,
+            format!(
+                "its rated {} to {} °C (p{}), as inputs.toml gives no board temperature",
+                p.min, p.max, p.page
+            ),
+        ),
+        (None, None) => {
+            return Err(format!(
+                "neither inputs.toml nor {r}'s part file gives a temperature range, so its drift is unknown"
+            ));
+        }
+    };
+    let drift = tcr.ppm * 1e-6 * (tmax - 25.0).abs().max((25.0 - tmin).abs());
+    let dev = tol.value + drift;
+    let doc = part.datasheet.as_ref().map_or("", |d| d.document.as_str());
+    let note = format!(
+        "{r} {} ±{}% (p{}) plus {} ppm/°C (p{}) over {twhere}, so ±{}% ({} {doc})",
+        c.value,
+        round(tol.value * 100.0),
+        tol.page,
+        tcr.ppm,
+        tcr.page,
+        round(dev * 100.0),
+        part.mpn,
+    );
+    Ok((ohms * (1.0 - dev), ohms * (1.0 + dev), note))
+}
+
 /// The divider on a regulator's feedback net, and the net it sets. `Ok(None)` when no resistor is on the pin,
 /// so it is tied straight to the output and the drive sets the pin's own net. The error carries the output net
 /// when one was found, so it too is reported.
@@ -584,56 +734,16 @@ fn find_divider(
             ));
         }
     };
-    let fail = |s: String| Err((format!("UNKNOWN: {s}"), Some(out)));
     let mut ends = vec![];
     let mut notes = vec![];
     for (r, c) in [(rt_ref, rt), (rb_ref, rb)] {
-        let Some(ohms) = parse_ohms(&c.value).filter(|&v| v > 0.0) else {
-            return fail(format!("can't read a resistance from {r}'s value {:?}", c.value));
-        };
-        let Some(part) = lib.part_for(c) else {
-            return fail(format!(
-                "{r} ({}) has no part file, so its tolerance is unknown",
-                crate::limits::component_mpn(c)
-            ));
-        };
-        let Some(tol) = &part.tolerance else {
-            return fail(format!("{r}'s part file {} gives no tolerance", part.mpn));
-        };
-        let Some(tcr) = &part.tcr else {
-            return fail(format!("{r}'s part file {} gives no temperature coefficient", part.mpn));
-        };
-        // Drift from the 25 °C value over the board's temperature range, or the resistor's own rated range.
-        let (tmin, tmax, twhere) = match (&inputs.temperature, &part.temperature) {
-            (Some(b), _) => (b.min, b.max, format!("the board's {} to {} °C", b.min, b.max)),
-            (None, Some(p)) => (
-                p.min,
-                p.max,
-                format!(
-                    "its rated {} to {} °C (p{}), as inputs.toml gives no board temperature",
-                    p.min, p.max, p.page
-                ),
-            ),
-            (None, None) => {
-                return fail(format!(
-                    "neither inputs.toml nor {r}'s part file gives a temperature range, so its drift is unknown"
-                ));
+        match resistance_range(lib, inputs, r, c) {
+            Ok((lo, hi, note)) => {
+                ends.push((lo, hi));
+                notes.push(note);
             }
-        };
-        let drift = tcr.ppm * 1e-6 * (tmax - 25.0).abs().max((25.0 - tmin).abs());
-        let doc = part.datasheet.as_ref().map_or("", |d| d.document.as_str());
-        notes.push(format!(
-            "{r} {} ±{}% (p{}) plus {} ppm/°C (p{}) over {twhere}, so ±{}% ({} {doc})",
-            c.value,
-            round(tol.value * 100.0),
-            tol.page,
-            tcr.ppm,
-            tcr.page,
-            round((tol.value + drift) * 100.0),
-            part.mpn,
-        ));
-        let dev = tol.value + drift;
-        ends.push((ohms * (1.0 - dev), ohms * (1.0 + dev)));
+            Err(e) => return Err((format!("UNKNOWN: {e}"), Some(out))),
+        }
     }
     Ok(Some((
         Divider {
@@ -648,18 +758,27 @@ fn find_divider(
 }
 
 impl Plan<'_> {
-    fn eval(&self, design: &Design, out: &[Option<NetVoltage>]) -> (Span, Why) {
+    fn eval(&self, design: &Design, out: &[Option<NetVoltage>], regulators: &mut Vec<Regulation>) -> (Span, Why) {
         let name = |n: usize| design.nets[n].name.as_str();
         let who = format!("{} ({})", self.reference, self.part.mpn);
         let src = cite(self.part, &self.drive.range);
         match &self.how {
-            How::Fails(reason) => (
-                Span::unknown(),
-                Why {
-                    text: format!("{who}: {reason}"),
-                    from: vec![],
-                },
-            ),
+            How::Fails(reason) => {
+                if self.drive.kind == crate::limits::DriveKind::Regulates {
+                    regulators.push(self.regulation(
+                        Hold::Unknown(reason.clone()),
+                        *supply_of(&self.how).unwrap_or(&self.target),
+                        true,
+                    ));
+                }
+                (
+                    Span::unknown(),
+                    Why {
+                        text: format!("{who}: {reason}"),
+                        ..Default::default()
+                    },
+                )
+            }
             How::Forward { anode } => {
                 let a = span_of(out, *anode);
                 let (vf_lo, vf_hi, lo_note) = match &self.drive.range {
@@ -672,10 +791,13 @@ impl Plan<'_> {
                     }
                     Range::Unknown(_) => (0.0, None, "; the drop isn't given".into()),
                 };
+                let raw_min = a.min.zip(vf_hi).map(|(v, d)| v - d);
                 let span = Span {
-                    min: a.min.zip(vf_hi).map(|(v, d)| (v - d).max(0.0)),
+                    min: raw_min.map(|v| v.max(0.0)),
                     max: a.max.map(|v| v - vf_lo),
                 };
+                // Below the drop the diode is off, so 0 V is only a floor; so is a floor on the anode.
+                let low_floor = raw_min.is_some_and(|v| v < 0.0) || out[*anode].as_ref().is_some_and(|nv| nv.floor);
                 let hi_text = vf_hi.map_or("an unknown amount".into(), |v| format!("up to {v} V"));
                 (
                     span,
@@ -686,6 +808,8 @@ impl Plan<'_> {
                             name(self.target)
                         ),
                         from: vec![*anode],
+                        bounded: true,
+                        low_floor,
                     },
                 )
             }
@@ -721,6 +845,10 @@ impl Plan<'_> {
                             name(*supply)
                         ),
                         from: vec![*supply],
+                        // Bounded by the supply only when the datasheet says it swings no higher.
+                        bounded: matches!(&self.drive.range, Range::Known { max: Bound::Pin { pin, plus, .. }, .. }
+                            if pin == sup && *plus <= 0.0),
+                        low_floor: false,
                     },
                 )
             }
@@ -730,15 +858,26 @@ impl Plan<'_> {
                 divider,
                 on_output,
             } => {
+                let sets_output = *on_output || divider.is_none();
                 if span_of(out, *ground) != Span::exact(0.0) {
+                    regulators.push(self.regulation(
+                        Hold::Unknown(format!(
+                            "its reference pin is on {}, which isn't a 0 V ground",
+                            name(*ground)
+                        )),
+                        *supply,
+                        sets_output,
+                    ));
                     return not_ground(&who, name(*ground), *ground);
                 }
                 let Some((dlo, dhi)) = self.drive.range.values() else {
+                    let text = format!("the regulated range of {} isn't given", self.drive.pin);
+                    regulators.push(self.regulation(Hold::Unknown(text.clone()), *supply, sets_output));
                     return (
                         Span::unknown(),
                         Why {
-                            text: format!("{who}: UNKNOWN: the regulated range of {} isn't given", self.drive.pin),
-                            from: vec![],
+                            text: format!("{who}: UNKNOWN: {text}"),
+                            ..Default::default()
                         },
                     );
                 };
@@ -780,8 +919,16 @@ impl Plan<'_> {
                 let head = self.drive.headroom.as_ref();
                 // The lowest supply the range is specified at.
                 let needs = head.map(|h| (ohi + h.volts) / h.duty);
+                let hold;
                 let min = match (s.min, rec.0, needs) {
                     (Some(sn), Some(rn), Some(nd)) if sn >= rn && sn >= nd => {
+                        hold = Hold::Held(format!(
+                            "{} stays at or above {} V; the output needs {} V and {} at least {rn} V",
+                            name(*supply),
+                            round(sn),
+                            round(nd),
+                            sup
+                        ));
                         let h = head.expect("needs comes from headroom");
                         notes.push(format!(
                             "{} stays at or above {} V, which covers the {} V the output needs ({} p{}{}); line and \
@@ -796,24 +943,31 @@ impl Plan<'_> {
                         Some(lo)
                     }
                     (Some(sn), rn, nd) => {
+                        let (why, known) = match (rn, nd) {
+                            (Some(rn), _) if sn < rn => (format!("below its recommended minimum of {rn} V"), true),
+                            (None, _) => ("and its recommended minimum isn't known".into(), false),
+                            (_, Some(nd)) => (format!("below the {} V the output is specified at", round(nd)), true),
+                            (_, None) => ("and the part file gives no headroom the output needs".into(), false),
+                        };
+                        let text = format!("{} can fall to {} V, {why}", name(*supply), round(sn));
+                        hold = if known {
+                            Hold::NotHeld(text.clone())
+                        } else {
+                            Hold::Unknown(text.clone())
+                        };
                         notes.push(format!(
-                            "{} can fall to {} V, {}, so the output isn't held and its low end is taken as 0 V",
-                            name(*supply),
-                            round(sn),
-                            match (rn, nd) {
-                                (Some(rn), _) if sn < rn => format!("below its recommended minimum of {rn} V"),
-                                (None, _) => "and its recommended minimum isn't known".into(),
-                                (_, Some(nd)) => format!("below the {} V the output is specified at", round(nd)),
-                                (_, None) => "and the part file gives no headroom the output needs".into(),
-                            }
+                            "{text}, so the output isn't held: 0 V is only a floor for its low end, as nothing says how far it sags"
                         ));
                         Some(0.0)
                     }
                     (None, _, _) => {
+                        hold = Hold::Unknown(format!("{}'s minimum is UNKNOWN", name(*supply)));
                         notes.push(format!("{}'s minimum is UNKNOWN", name(*supply)));
                         None
                     }
                 };
+                let held = matches!(hold, Hold::Held(_));
+                regulators.push(self.regulation(hold, *supply, sets_output));
                 let what = match (divider, on_output) {
                     (Some(d), true) => format!(
                         "{who} holds {} at {dlo} to {dhi} V ({src}); through the divider {} over {} ({}) the output is {} to {} V",
@@ -831,6 +985,8 @@ impl Plan<'_> {
                     Why {
                         text: format!("{what}, powered from {}: {}", name(*supply), notes.join("; ")),
                         from: vec![*supply],
+                        bounded: true,
+                        low_floor: !held,
                     },
                 )
             }
@@ -844,8 +1000,30 @@ fn not_ground(who: &str, net: &str, n: usize) -> (Span, Why) {
         Why {
             text: format!("{who}: UNKNOWN: its reference pin is on {net}, which isn't a 0 V ground"),
             from: vec![n],
+            ..Default::default()
         },
     )
+}
+
+fn supply_of(how: &How) -> Option<&usize> {
+    match how {
+        How::Regulates { supply, .. } | How::Switches { supply, .. } => Some(supply),
+        _ => None,
+    }
+}
+
+impl Plan<'_> {
+    fn regulation(&self, hold: Hold, supply: usize, sets_output: bool) -> Regulation {
+        Regulation {
+            reference: self.reference.to_string(),
+            mpn: self.part.mpn.clone(),
+            output: self.target,
+            supply,
+            hold,
+            pin: self.drive.pin.clone(),
+            sets_output,
+        }
+    }
 }
 
 /// A bound of a drive range, where `{ pin = supply }` reads the supply net's value.
@@ -880,6 +1058,9 @@ enum Pull {
     Output {
         pin: String,
         supplies: Vec<usize>,
+        /// A push-pull or bidirectional pin, which can drive both ways; open-drain and tri-state pins can't
+        /// be relied on to.
+        push_pull: bool,
     },
     Unknown(String),
 }
@@ -912,7 +1093,9 @@ impl Group {
                     pins.join(", ")
                 )
             };
-            return unknown(text, vec![]);
+            let mut nv = unknown(text, vec![]);
+            nv.driver = Driver::Floating;
+            return nv;
         }
         let mut nv: Option<NetVoltage> = None;
         let shared = if self.nets.len() > 1 {
@@ -928,9 +1111,11 @@ impl Group {
                     Why {
                         text: format!("pulled through {via} toward {}{shared}", name(*net)),
                         from: vec![*net],
+                        bounded: true,
+                        low_floor: out[*net].as_ref().is_some_and(|nv| nv.floor),
                     },
                 ),
-                Pull::Output { pin, supplies } => {
+                Pull::Output { pin, supplies, .. } => {
                     let tops: Vec<Option<f64>> = supplies.iter().map(|&s| span_of(out, s).max).collect();
                     let top = tops.iter().try_fold(f64::NEG_INFINITY, |a, t| t.map(|t| a.max(t)));
                     (
@@ -943,6 +1128,8 @@ impl Group {
                                 "driven by output pin {pin}, which reaches at most its part's highest supply{shared}"
                             ),
                             from: supplies.clone(),
+                            bounded: true,
+                            low_floor: false,
                         },
                     )
                 }
@@ -950,13 +1137,19 @@ impl Group {
                     Span::unknown(),
                     Why {
                         text: format!("UNKNOWN: {reason}{shared}"),
-                        from: vec![],
+                        ..Default::default()
                     },
                 ),
             };
             merge(&mut nv, span, why);
         }
-        nv.expect("a group with pulls has a range")
+        let mut nv = nv.expect("a group with pulls has a range");
+        let real = self
+            .pulls
+            .iter()
+            .any(|p| matches!(p, Pull::Net { .. }) || matches!(p, Pull::Output { push_pull, .. } if *push_pull));
+        nv.driver = if real { Driver::Pulled } else { Driver::Weak };
+        nv
     }
 }
 
@@ -1037,6 +1230,7 @@ fn build_groups(design: &Design, lib: &Library, inputs: &BoardInputs, strong: &[
                                     pulls.push(Pull::Output {
                                         pin: format!("{r}.{pnum}"),
                                         supplies,
+                                        push_pull: matches!(pin.kind, PinKind::Output | PinKind::Bidirectional),
                                     });
                                 }
                             }

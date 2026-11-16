@@ -10,6 +10,7 @@ const USAGE: &str = "usage:
   gerberus parts <design> [--parts DIR]...
   gerberus pinout <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--parts DIR]...
   gerberus voltages <design> [--inputs FILE] [--parts DIR]... [--explain NET]...
+  gerberus check <design> [--inputs FILE] [--parts DIR]... [--all] [--json]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
 
 <design> is a KiCad root .kicad_sch, an Altium .PrjPcb project, or a single Altium .SchDoc. `pinout` reads
@@ -25,6 +26,12 @@ next to the schematic (same name, .kicad_pcb) unless --pcb names another, and th
 `voltages` works out the worst-case voltage range of every net, starting from the board inputs (`inputs.toml`
 next to the schematic unless --inputs is given). --explain prints the reasoning behind one net.
 
+`check` runs the voltage rules: every pin against its datasheet limits at its net's worst-case voltage, TVS
+breakdown and stand-off, capacitor voltage and resistor power, undriven inputs and power pins, regulator
+headroom, and parts with nothing to check against. FAILs cite the numbers, their datasheet pages and how each
+net got its range. --all also lists passes; --json prints the findings as JSON. It exits with status 1 when
+any error FAILs.
+
 `bom` looks up every BOM line by its LCSC part number: stock for --boards boards (default 10), LCSC's listing
 status, and similar parts from other makers. Answers are cached in --cache (default ~/.cache/gerberus/lcsc) for
 --max-age hours (default 24); --offline uses only the cache. It exits with status 1 when any line has an error.
@@ -38,6 +45,7 @@ fn main() -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "parts" => parts(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "pinout" => pinout(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "voltages" => voltages(Path::new(path), rest),
+        [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
         _ => {
             eprintln!("{USAGE}");
@@ -107,12 +115,24 @@ fn load_library(dirs: &[PathBuf]) -> Result<Library, String> {
     Library::load_dirs(&dirs.iter().map(PathBuf::as_path).collect::<Vec<_>>())
 }
 
-fn voltages(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let o = options(path, rest, &["--inputs", "--explain"])?;
+/// The design, its library and its worked-out net voltages.
+fn analyse(
+    path: &Path,
+    o: &Options,
+) -> Result<
+    (
+        gerberus::design::Design,
+        Library,
+        BoardInputs,
+        gerberus::voltage::Voltages,
+    ),
+    String,
+> {
     let lib = load_library(&o.dirs)?;
     let design = gerberus::load(path)?;
     let inputs_path = o
         .inputs
+        .clone()
         .unwrap_or_else(|| path.parent().unwrap_or(Path::new(".")).join("inputs.toml"));
     let inputs = BoardInputs::load(&inputs_path)?;
     let problems = inputs.problems(&design);
@@ -120,6 +140,32 @@ fn voltages(path: &Path, rest: &[String]) -> Result<bool, String> {
         return Err(format!("{}: {}", inputs_path.display(), problems.join("; ")));
     }
     let v = gerberus::voltage::compute(&design, &lib, &inputs);
+    Ok((design, lib, inputs, v))
+}
+
+fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let all = rest.iter().any(|a| a == "--all");
+    let json = rest.iter().any(|a| a == "--json");
+    let rest: Vec<String> = rest
+        .iter()
+        .filter(|a| *a != "--all" && *a != "--json")
+        .cloned()
+        .collect();
+    let o = options(path, &rest, &["--inputs"])?;
+    let (design, lib, inputs, v) = analyse(path, &o)?;
+    let policy = gerberus::policy::Policy::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("policy.toml"))?;
+    let report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
+    } else {
+        print!("{}", gerberus::rules::render(&design, &v, &report, all));
+    }
+    Ok(report.errors() == 0)
+}
+
+fn voltages(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let o = options(path, rest, &["--inputs", "--explain"])?;
+    let (design, _lib, _inputs, v) = analyse(path, &o)?;
     if o.explain.is_empty() {
         for (net, nv) in design.nets.iter().zip(&v.nets) {
             println!("{}: {}", net.name, nv.span);

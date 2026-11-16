@@ -8,6 +8,7 @@ pub mod kicad;
 pub mod limits;
 pub mod pinout;
 pub mod policy;
+pub mod rules;
 pub mod sexpr;
 pub mod voltage;
 

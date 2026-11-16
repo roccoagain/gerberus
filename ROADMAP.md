@@ -6,7 +6,7 @@ Each phase reads one more part of the design. It starts with the schematic, then
 
 ## v0.1 — Schematic
 
-- [ ] Voltage-aware schematic checks: worst-case voltage range on every net, with an explanation of where each range came from, plus the first 10 rules. *(Copies: Siemens Xpedition schematic analysis)*
+- [x] Voltage-aware schematic checks: worst-case voltage range on every net, with an explanation of where each range came from, plus the first 10 rules: `gerberus voltages` and `gerberus check`. *(Copies: Siemens Xpedition schematic analysis)*
 
 ## v0.2 — Parts
 

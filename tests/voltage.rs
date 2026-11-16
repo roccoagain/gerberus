@@ -383,3 +383,43 @@ fn explanations_dont_repeat() {
     assert!(text.contains("(explained above)"), "{text}");
     assert_eq!(text.matches("input VBUS on J1.1").count(), 1, "{text}");
 }
+
+/// `stays_below` only trusts steps that can't rise above their sources: a switch node that may overshoot its
+/// supply doesn't count.
+#[test]
+fn stays_below_needs_bounded_steps() {
+    use gerberus::limits::{Bound, DriveKind, Range};
+    let (d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let (sw, vdc) = (net_index(&d, "Net-(U1-SW)"), net_index(&d, "+VDC"));
+    let with_plus = |plus: f64| {
+        let mut lib = Library::load_dir(&root("parts")).unwrap();
+        let drive = lib
+            .parts
+            .get_mut("TPS560430YFDBVR")
+            .unwrap()
+            .drives
+            .iter_mut()
+            .find(|d| d.kind == DriveKind::Switches)
+            .unwrap();
+        drive.range = Range::Known {
+            min: Bound::Value(0.0),
+            max: Bound::Pin {
+                pin: "VIN".into(),
+                plus,
+                at_most: None,
+            },
+            page: Some(3),
+            note: None,
+        };
+        compute(&d, &lib, &inputs)
+    };
+    assert!(with_plus(0.0).stays_below(sw, vdc));
+    assert!(!with_plus(0.7).stays_below(sw, vdc));
+    // Pull-ups and outputs supplied from +3V3 stay below it.
+    let (_, v) = run("can-encoder", "can-encoder.kicad_sch");
+    assert!(v.stays_below(net_index(&d, "/SPI_CS"), net_index(&d, "+3V3")));
+    assert!(
+        !v.stays_below(net_index(&d, "/CAN_RX"), net_index(&d, "+3V3")),
+        "U4 also runs from +5V"
+    );
+}
