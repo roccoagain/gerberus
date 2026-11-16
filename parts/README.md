@@ -19,7 +19,7 @@ title = "TPS560430 ... Step-Down Converter"
 document = "SLVSE22B, revised June 2018"   # document number and revision, so pages can be checked
 url = "https://www.ti.com/lit/ds/symlink/tps560430.pdf"
 
-[pins]                              # pin number (as on the footprint) = datasheet pin name
+[pins]                              # pin number (as on the footprint) = datasheet pin name; list every pin
 1 = "CB"
 2 = "GND"
 5 = "VIN"
@@ -34,6 +34,13 @@ to = "GND"                          # measured from this pin
 abs_max = { min = -0.3, max = 38, page = 4 }
 recommended = { min = 4, max = 36, page = 4, note = "optional free text" }
 ```
+
+### Pin map
+
+`[pins]` is the datasheet's pin table for this package, and `gerberus pinout` compares it with the symbol and
+the footprint. List every pin, including `NC`, `DNC` and an exposed pad (by the number the footprint gives it),
+and write names as the datasheet prints them. Pads that are not pins at all, like a connector's mounting tabs,
+stay out. A pin named `DNC` (do not connect) must not be wired to anything; `NC` may be.
 
 ### Ranges
 
