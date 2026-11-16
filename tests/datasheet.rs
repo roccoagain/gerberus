@@ -447,3 +447,23 @@ fn finds_the_pdf_behind_an_lcsc_datasheet_page() {
     );
     assert_eq!(gerberus::datasheet::lcsc_pdf_link("<html>no link</html>"), None);
 }
+
+#[test]
+fn review_examples() {
+    let page = "
+                                                   Min      Typ     Max      Unit
+VIN       I/O input voltage     FT I/O             -0.3             VDDIOx+4.0   V
+Operating temperature                              -55°C~+125°C
+VDIF      Dropout voltage       IOUT = 100 mA               0.25    0.35     V
+";
+    // An offset is not a number of its own.
+    assert!(check_claim(&claim(4.0, Role::Max, Unit::Volt, &["VIN"]), page).is_problem());
+    // The wrong end of a `~` cell is a mismatch; the right one is found.
+    let o = check_claim(&claim(-55.0, Role::Max, Unit::Celsius, &[]), page);
+    assert_eq!(o.status, Status::Mismatch, "{o:?}");
+    let o = check_claim(&claim(-55.0, Role::Min, Unit::Celsius, &[]), page);
+    assert!(!o.is_problem(), "{o:?}");
+    // A typical dropout filed as the headroom rating is a mismatch.
+    let o = check_claim(&claim(0.25, Role::Value, Unit::Volt, &[]), page);
+    assert_eq!(o.status, Status::Mismatch, "{o:?}");
+}
