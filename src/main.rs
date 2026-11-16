@@ -16,6 +16,7 @@ const USAGE: &str = "usage:
   gerberus check <design> [--inputs FILE] [--parts DIR]... [REPORT]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
+  gerberus part show <MPN> [--parts DIR]...
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
@@ -66,6 +67,10 @@ capacitance of parts on the lines, then simulates each pair at 480 Mb/s and chec
 against the USB 2.0 Template 1 mask. --plots writes each pair's eye diagram and impedance profile (TDR) as SVG
 files into DIR. It reads part capacitance from the same part folders as `parts`, matched by footprint value.
 It exits with status 1 when any error FAILs.
+`part show` prints the part file the library has for a part number: the file itself, or the one its part family
+writes for it (see parts/README.md, \"Part families\"). Save it and run `datasheet verify` on it to check a
+family's values against its datasheet.
+
 `datasheet` checks part files against their datasheets (see .claude/skills/datasheet-to-part). `verify` downloads each
 file's datasheet (cached in --cache, default ~/.cache/gerberus/datasheets), or reads --pdf, and looks for every
 cited value on its page: in the right MIN/TYP/MAX column, in the right unit, on a row that names the pin. It
@@ -112,6 +117,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "si" => si(Path::new(path), rest),
         [cmd, sub, rest @ ..] if cmd == "datasheet" => datasheet(sub, rest),
+        [cmd, sub, mpn, rest @ ..] if cmd == "part" && sub == "show" => part_show(mpn, rest),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);
@@ -125,6 +131,40 @@ fn run(args: &[String]) -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+fn part_show(mpn: &str, rest: &[String]) -> Result<bool, String> {
+    let mut dirs = vec![];
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
+        match (a.as_str(), it.next()) {
+            ("--parts", Some(d)) => dirs.push(PathBuf::from(d)),
+            _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
+        }
+    }
+    let lib = load_library(&dirs)?;
+    if let Some(path) = lib.files.get(mpn) {
+        match gerberus::limits::builtin_text(path)
+            .map(str::to_string)
+            .or_else(|| std::fs::read_to_string(path).ok())
+        {
+            Some(text) => print!("{text}"),
+            None => println!("# {mpn} is in {}", path.display()),
+        }
+        return Ok(true);
+    }
+    for (path, family) in lib.families.iter().rev() {
+        if let Some(text) = family.part_text(mpn) {
+            println!(
+                "# Written by the {} family in {} for {mpn}.",
+                family.family,
+                path.display()
+            );
+            print!("{}", text.map_err(|e| format!("{}: {e}", path.display()))?);
+            return Ok(true);
+        }
+    }
+    Err(format!("no part file or part family has {mpn:?}"))
 }
 
 fn netlist(path: &Path) -> Result<bool, String> {
@@ -307,8 +347,9 @@ fn analyse(
     ),
     String,
 > {
-    let lib = load_library(&o.dirs)?;
+    let mut lib = load_library(&o.dirs)?;
     let design = gerberus::load(path)?;
+    lib.expand_families(&design);
     let inputs_path = o
         .inputs
         .clone()
@@ -456,8 +497,9 @@ fn loads(path: &Path, rest: &[String]) -> Result<bool, String> {
 }
 
 fn parts(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let lib = load_library(&options(path, rest, &[])?.dirs)?;
+    let mut lib = load_library(&options(path, rest, &[])?.dirs)?;
     let design = gerberus::load(path)?;
+    lib.expand_families(&design);
     let cov = coverage(&design, &lib);
     let (mut sheet, mut default, mut unchecked, mut bare) = (0, 0, 0, 0);
     for (r, c) in &cov {
@@ -569,8 +611,9 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
 fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
     let (show, rest) = Show::parse(rest)?;
     let opts = options(path, &rest, &["--pcb"])?;
-    let lib = load_library(&opts.dirs)?;
+    let mut lib = load_library(&opts.dirs)?;
     let design = gerberus::kicad::load(path)?;
+    lib.expand_families(&design);
     let pcb = opts
         .pcb
         .or_else(|| Some(path.with_extension("kicad_pcb")).filter(|p| p.is_file()));

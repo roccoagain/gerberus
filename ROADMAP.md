@@ -29,7 +29,8 @@ Point Gerberus at a new board and get useful answers in minutes. Every `UNKNOWN`
 - [x] `check` runs without an `inputs.toml`, and says what that leaves out. Pointing at `gerberus init` waits for `init`.
 - [ ] `gerberus init <design>`: writes a starter `inputs.toml` with every external connector pin and a range guessed from the connector type and net names, each marked as a guess with its reason. USB VBUS is 4.0–5.5 V (USB 3.x at the device), D+/D− 0–3.6 V with a "D± shorted to VBUS" fault case (USB 2.0 §7.1.1), and a net named like `12V` is taken at ±10 %. Findings that rest on a guess say so until a person replaces it.
 - [ ] Output readable like rustc's: each finding with the parts and nets involved, the numbers compared, and a `help:` line naming the fix.
-- [ ] Part families: one file covers a whole series by decoding its part number exactly (Yageo RC, UniRoyal 0402WGF, Samsung CL, Murata GRM, KEMET C-series ceramics). Within one series the size gives power and working voltage, and the voltage code gives a capacitor's rating, each cited to the series datasheet. The 28 resistors on rev 2 are one Yageo family.
+- [x] Part families: one file covers a whole series by decoding its part number exactly, and writes each part's file with every value cited to the series datasheet (`gerberus part show`). Yageo RC_L resistors and Samsung CL capacitors are built in; the 28 resistors on rev 2 are all Yageo RC_L.
+- [ ] More families: UniRoyal 0402WGF/0603WAF, Murata GRM, KEMET C-series ceramics, and inductors.
 - [ ] Bulk library: JLCPCB basic parts first, then the most-used extended parts, each through `datasheet verify` and a blind second reading. Track what share of the test boards' parts are covered.
 - [x] Test points are skipped instead of `UNCHECKED`. (Mounting holes, fiducials and logos left out of the BOM are already skipped.)
 - [ ] Net ties join their two nets in the voltage engine and in `stress`, instead of staying `UNCHECKED`.
