@@ -21,7 +21,7 @@ pub struct SchematicFile {
     pub buses: Vec<(Pt, Pt)>,
     /// Wire-to-bus entries, from `at` to `at + size`.
     pub bus_entries: Vec<(Pt, Pt)>,
-    /// `(bus_alias "NAME" (members ...))` items. KiCad 9 and later keep aliases in the project file instead.
+    /// `(bus_alias "NAME" (members ...))` items. KiCad 10 keep aliases in the project file instead.
     pub bus_aliases: Vec<(String, Vec<String>)>,
     pub junctions: Vec<Pt>,
     pub no_connects: Vec<Pt>,

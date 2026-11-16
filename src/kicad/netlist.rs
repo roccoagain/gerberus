@@ -41,27 +41,47 @@ fn read_tree(path: &Path, files: &mut HashMap<PathBuf, SchematicFile>, stack: &m
     Ok(())
 }
 
-/// Bus aliases come from the project file (KiCad 9 and later) when it has a `schematic.bus_aliases` table, and
-/// otherwise from `bus_alias` items in the sheets, as in KiCad.
+/// Every sheet file in hierarchy order: the root, then each sheet's files depth first, each file once.
+fn hierarchy_order(path: &Path, files: &HashMap<PathBuf, SchematicFile>, out: &mut Vec<PathBuf>) {
+    if out.iter().any(|p| p == path) {
+        return;
+    }
+    out.push(path.to_path_buf());
+    let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+    for sheet in &files[path].sheets {
+        hierarchy_order(&dir.join(&sheet.file), files, out);
+    }
+}
+
+/// Bus aliases come from the project file (KiCad 10 and later) when it defines a `schematic.bus_aliases`
+/// table, and otherwise from `bus_alias` items in the sheets, as in KiCad.
 fn bus_aliases(root: &Path, files: &HashMap<PathBuf, SchematicFile>, warnings: &mut Vec<String>) -> Aliases {
     let project = root.with_extension("kicad_pro");
     if let Ok(text) = std::fs::read_to_string(&project) {
         match serde_json::from_str::<serde_json::Value>(&text) {
             Ok(json) => {
-                // KiCad treats an empty table as "not set" and reads the sheets' aliases instead.
+                // Project files before schema 4 wrote an empty table without meaning "no aliases", so KiCad
+                // reads such a table as unset.
+                let schema = json.pointer("/meta/version").and_then(|v| v.as_u64()).unwrap_or(0);
                 if let Some(table) = json
                     .pointer("/schematic/bus_aliases")
                     .and_then(|t| t.as_object())
-                    .filter(|t| !t.is_empty())
+                    .filter(|t| schema >= 4 || !t.is_empty())
                 {
+                    // Like KiCad, trim names and members and drop empty ones.
                     return table
                         .iter()
-                        .map(|(name, members)| {
+                        .filter_map(|(name, members)| {
+                            let members = members.as_array()?;
+                            let name = name.trim();
                             let members = members
-                                .as_array()
-                                .map(|m| m.iter().filter_map(|v| v.as_str()).map(str::to_string).collect())
-                                .unwrap_or_default();
-                            (name.clone(), members)
+                                .iter()
+                                .filter_map(|v| v.as_str())
+                                .map(str::trim)
+                                .filter(|m| !m.is_empty())
+                                .map(str::to_string)
+                                .collect();
+                            (!name.is_empty()).then(|| (name.to_string(), members))
                         })
                         .collect();
                 }
@@ -72,21 +92,22 @@ fn bus_aliases(root: &Path, files: &HashMap<PathBuf, SchematicFile>, warnings: &
             )),
         }
     }
-    let mut paths: Vec<&PathBuf> = files.keys().collect();
-    paths.sort();
+    let mut order = Vec::new();
+    hierarchy_order(root, files, &mut order);
+    // KiCad loads sheets in hierarchy order and a later alias of the same name replaces an earlier one.
     let mut aliases = Aliases::new();
-    for path in paths {
-        for (name, members) in &files[path].bus_aliases {
-            match aliases.get(name) {
-                Some(have) if have != members => warnings.push(format!(
-                    "{}: bus alias `{name}` differs from another sheet's alias of that name; using the first",
+    for path in order {
+        for (name, members) in &files[&path].bus_aliases {
+            if let Some(have) = aliases.get(name)
+                && have != members
+            {
+                warnings.push(format!(
+                    "{}: bus alias `{name}` differs from an earlier sheet's alias of that name; using this one, \
+                     as KiCad does",
                     path.display()
-                )),
-                Some(_) => {}
-                None => {
-                    aliases.insert(name.clone(), members.clone());
-                }
+                ));
             }
+            aliases.insert(name.clone(), members.clone());
         }
     }
     aliases
@@ -112,9 +133,11 @@ struct Candidate {
     /// Depth of the sheet it sits on; a shallower name wins a tie.
     depth: usize,
     name: String,
-    /// A bus member's name. KiCad renames a net joined to a bus member after that member, unless the net has
-    /// a global name.
+    /// A bus member's name. KiCad renames the nets joined to a bus member on its sheet after that member,
+    /// unless they have a global name.
     bus: bool,
+    /// Instance path of the sheet it sits on.
+    sheet: String,
 }
 
 #[derive(Debug, Clone)]
@@ -543,6 +566,7 @@ impl Builder {
                         depth,
                         name: name.clone(),
                         bus: false,
+                        sheet: inst_path.to_string(),
                     });
                     g.links.push(format!("global:{name}"));
                     g.labels.push(name);
@@ -566,6 +590,7 @@ impl Builder {
                         depth,
                         name: shown,
                         bus: false,
+                        sheet: inst_path.to_string(),
                     });
                     g.labels.push(name);
                     g.links.push(link);
@@ -600,6 +625,7 @@ impl Builder {
                         depth,
                         name: shown,
                         bus: false,
+                        sheet: inst_path.to_string(),
                     });
                     g.labels.push(name);
                     g.links.push(link);
@@ -615,6 +641,7 @@ impl Builder {
                         depth,
                         name: format!("{name_path}{name}"),
                         bus: false,
+                        sheet: inst_path.to_string(),
                     });
                     g.links.push(format!("port:{sheet_path}:{name}"));
                 }
@@ -716,6 +743,7 @@ impl Builder {
                     depth,
                     name,
                     bus: true,
+                    sheet: inst_path.to_string(),
                 }],
                 ..Default::default()
             });
@@ -857,21 +885,16 @@ fn low_quality(name: &str) -> bool {
 }
 
 /// Picks a name source as KiCad's `ResolveDrivers` does. The power-symbol rank only applies within one group
-/// (`with_rank`); across groups KiCad compares priority and then name. A bus member's name beats any name
-/// that is not global, because KiCad renames the nets on a bus member after it.
+/// (`with_rank`); across groups KiCad compares priority and then name.
 fn best_candidate(candidates: &[Candidate], with_rank: bool) -> Option<&Candidate> {
-    let global = |c: &Candidate| c.priority >= Priority::GlobalPower;
-    let bus = |c: &Candidate| c.bus && !global(c);
     candidates.iter().min_by(|a, b| {
         let rank = if with_rank {
             a.rank.cmp(&b.rank)
         } else {
             Ordering::Equal
         };
-        global(b)
-            .cmp(&global(a))
-            .then(bus(b).cmp(&bus(a)))
-            .then(b.priority.cmp(&a.priority))
+        b.priority
+            .cmp(&a.priority)
             .then(rank)
             .then(a.depth.cmp(&b.depth))
             .then(low_quality(&a.name).cmp(&low_quality(&b.name)))
@@ -882,7 +905,16 @@ fn best_candidate(candidates: &[Candidate], with_rank: bool) -> Option<&Candidat
 /// `drivers` holds one name source per joined group. `pin_items` counts part pins before pins that share a
 /// number were merged.
 fn net_name(drivers: &[Candidate], pins: &[PlacedPin], pin_items: usize) -> String {
-    if let Some(c) = best_candidate(drivers, false) {
+    // KiCad first renames every net joined to a bus member on the bus's sheet after that member, unless the net
+    // has a global name, and only then picks the best name across the hierarchy. So a sheet with a bus member
+    // on this net offers only the member's name, and global names.
+    let bus_sheets: HashSet<&str> = drivers.iter().filter(|c| c.bus).map(|c| c.sheet.as_str()).collect();
+    let offered: Vec<Candidate> = drivers
+        .iter()
+        .filter(|c| c.bus || c.priority >= Priority::GlobalPower || !bus_sheets.contains(c.sheet.as_str()))
+        .cloned()
+        .collect();
+    if let Some(c) = best_candidate(&offered, false) {
         return c.name.clone();
     }
     if let ([p], 1) = (pins, pin_items) {
@@ -907,9 +939,16 @@ fn net_name(drivers: &[Candidate], pins: &[PlacedPin], pin_items: usize) -> Stri
 mod tests {
     use super::*;
 
-    fn sheet_with_alias(members: &[&str]) -> SchematicFile {
+    fn sheet_with_alias(members: &[&str], child: Option<&str>) -> SchematicFile {
         SchematicFile {
             bus_aliases: vec![("PWR".to_string(), members.iter().map(|m| m.to_string()).collect())],
+            sheets: child
+                .map(|file| schematic::Sheet {
+                    file: file.to_string(),
+                    ..Default::default()
+                })
+                .into_iter()
+                .collect(),
             ..Default::default()
         }
     }
@@ -919,26 +958,48 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("gerberus-alias-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let root = dir.join("board.kicad_sch");
-        let files = HashMap::from([(root.clone(), sheet_with_alias(&["A"]))]);
+        let files = HashMap::from([(root.clone(), sheet_with_alias(&["A"], None))]);
         let mut warnings = Vec::new();
         let project = dir.join("board.kicad_pro");
+        let aliases = |warnings: &mut Vec<String>, files: &HashMap<PathBuf, SchematicFile>| {
+            bus_aliases(&root, files, warnings).get("PWR").cloned()
+        };
 
-        // No project file, or an empty table: the sheet's alias.
+        // No project file, or an empty table in an older project file: the sheet's alias.
         let _ = std::fs::remove_file(&project);
-        assert_eq!(bus_aliases(&root, &files, &mut warnings)["PWR"], ["A"]);
-        std::fs::write(&project, r#"{"schematic": {"bus_aliases": {}}}"#).unwrap();
-        assert_eq!(bus_aliases(&root, &files, &mut warnings)["PWR"], ["A"]);
+        assert_eq!(aliases(&mut warnings, &files).unwrap(), ["A"]);
+        std::fs::write(
+            &project,
+            r#"{"meta": {"version": 3}, "schematic": {"bus_aliases": {}}}"#,
+        )
+        .unwrap();
+        assert_eq!(aliases(&mut warnings, &files).unwrap(), ["A"]);
 
-        // A project table replaces every sheet alias.
-        std::fs::write(&project, r#"{"schematic": {"bus_aliases": {"PWR": ["B", "C"]}}}"#).unwrap();
-        assert_eq!(bus_aliases(&root, &files, &mut warnings)["PWR"], ["B", "C"]);
+        // From schema 4 an empty table means no aliases at all.
+        std::fs::write(
+            &project,
+            r#"{"meta": {"version": 4}, "schematic": {"bus_aliases": {}}}"#,
+        )
+        .unwrap();
+        assert_eq!(aliases(&mut warnings, &files), None);
+
+        // A project table replaces every sheet alias, trimmed as KiCad trims it.
+        std::fs::write(
+            &project,
+            r#"{"meta": {"version": 4}, "schematic": {"bus_aliases": {" PWR ": ["B", " C ", ""]}}}"#,
+        )
+        .unwrap();
+        assert_eq!(aliases(&mut warnings, &files).unwrap(), ["B", "C"]);
         assert!(warnings.is_empty(), "{warnings:?}");
 
-        // Two sheets that disagree: the first sheet by path wins, with a warning.
+        // Two sheets that disagree: the later one in the hierarchy wins, with a warning. The child's name sorts
+        // first, so this is not path order.
         std::fs::remove_file(&project).unwrap();
-        let mut files = files;
-        files.insert(dir.join("z.kicad_sch"), sheet_with_alias(&["Z"]));
-        assert_eq!(bus_aliases(&root, &files, &mut warnings)["PWR"], ["A"]);
+        let files = HashMap::from([
+            (root.clone(), sheet_with_alias(&["A"], Some("a_child.kicad_sch"))),
+            (dir.join("a_child.kicad_sch"), sheet_with_alias(&["Z"], None)),
+        ]);
+        assert_eq!(aliases(&mut warnings, &files).unwrap(), ["Z"]);
         assert_eq!(warnings.len(), 1);
         std::fs::remove_dir_all(&dir).unwrap();
     }

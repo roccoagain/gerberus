@@ -147,15 +147,26 @@ child.label("label", "T[0..1]", (80, 220))
 child.tap(30, 220, "R25", "T1")
 child.tap(40, 220, "R26", "S0")
 
+# H: a net on a child-only bus that also leaves the sheet through a plain hierarchical label. The bus member
+# names it on the child sheet, but the root's local label still wins across the hierarchy.
+child.bus((20, 250), (70, 250))
+child.label("label", "K[0..1]", (20, 250))
+child.tap(30, 250, "R27", "K0")
+child.label("hierarchical_label", "HH", (32.54, 252.54))
+root.wire((140, 250), (120, 250))
+root.label("label", "PARENT", (120, 250))
+root.resistor("R28", (120, 253.81))
+
 FONT_L = "(effects (font (size 1.27 1.27)) (justify left))"
-sheet = f"""(sheet (at 140 30) (size 30 200) (fields_autoplaced) (stroke (width 0.1524) (type solid)) (fill (color 0 0 0 0.0000)) (uuid {SHEET_UUID})
+sheet = f"""(sheet (at 140 30) (size 30 230) (fields_autoplaced) (stroke (width 0.1524) (type solid)) (fill (color 0 0 0 0.0000)) (uuid {SHEET_UUID})
     (property "Sheetname" "child" (at 140 29 0) {FONT_L})
-    (property "Sheetfile" "child.kicad_sch" (at 140 231 0) {FONT_L})
+    (property "Sheetfile" "child.kicad_sch" (at 140 261 0) {FONT_L})
     (pin "B[0..3]" bidirectional (at 140 40 180) {FONT_L} (uuid {uid()}))
     (pin "USB{{DP DM}}" bidirectional (at 140 70 180) {FONT_L} (uuid {uid()}))
     (pin "{{CTRL}}" bidirectional (at 140 130 180) {FONT_L} (uuid {uid()}))
     (pin "MEM{{D[0..1] CLK}}" bidirectional (at 140 190 180) {FONT_L} (uuid {uid()}))
     (pin "S[0..1]" bidirectional (at 140 220 180) {FONT_L} (uuid {uid()}))
+    (pin "HH" bidirectional (at 140 250 180) {FONT_L} (uuid {uid()}))
     (instances (project "{PROJECT}" (path "/{ROOT_UUID}" (page "2")))))
   """
 alias = '(bus_alias "CTRL" (members "EN" "RST"))\n  '
