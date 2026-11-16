@@ -109,8 +109,8 @@ error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V
    = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx
    = help: add a divider, clamp or series resistor, or choose a part rated higher
 
-error: 18 errors, 9 warnings, 110 unknown, 402 passed
-   = note: 110 unknown and 402 passed not shown; --unknown or --all lists them
+error: 18 errors, 9 warnings, 109 unknown, 402 passed
+   = note: 109 unknown and 402 passed not shown; --unknown or --all lists them
    = note: --verbose shows how each net in a finding got its voltage range
 ```
 
