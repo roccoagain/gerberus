@@ -89,3 +89,15 @@ pins = ["NRST"]
 to = "VSS"
 abs_max = { min = -0.3, max = 4.0, page = 45 }
 recommended = { min = -0.3, max = { pin = "VDD", plus = 0.3 }, page = 47, derived = "-0.3 .. VDDIOx + 0.3; NRST is supplied by VDD", note = "RST I/O" }
+
+[[esd]]
+model = "hbm"
+volts = 2000
+page = 71
+note = "Table 47, JESD22-A114, all pins, TA = +25 °C"
+
+[[esd]]
+model = "cdm"
+volts = 500
+page = 71
+note = "Table 47, ANSI/ESD STM5.3.1, all pins"

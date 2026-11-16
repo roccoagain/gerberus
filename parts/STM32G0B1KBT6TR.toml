@@ -75,3 +75,15 @@ pins = ["PF2-NRST"]
 to = "VSS/VSSA"
 abs_max = { min = -0.3, max = 4.0, page = 66, note = "Table 12 lists no FT structure for this pin, so the any-other-pin row applies" }
 recommended = { min = -0.3, max = { unknown = "Table 24 gives only the generic I/O range, which is above this pin's 4.0 V absolute maximum" }, page = 68 }
+
+[[esd]]
+model = "hbm"
+volts = 2000
+page = 92
+note = "Table 52, ANSI/ESDA/JEDEC JS-001, class 2"
+
+[[esd]]
+model = "cdm"
+volts = 250
+page = 92
+note = "Table 52, ANSI/ESDA/JEDEC JS-002, class C2a"

@@ -52,6 +52,8 @@ cites the numbers, their datasheet pages and how each net got its range. The ten
 | `floating-input` | an input pin is on a net nothing drives (UNKNOWN when only open-drain or tri-state outputs, connectors or unmodelled parts reach it) | error |
 | `unpowered` | a power pin is on a net nothing supplies | error |
 | `regulator-headroom` | a regulator's supply can fall below what its datasheet output range needs | warning |
+| `esd` | an external connector pin's net has no TVS or ESD clamp, and a part on it (directly, or through one series resistor, inductor or diode with no clamp behind it) has no system-level ESD rating to `policy.toml`'s level | warning |
+| `reverse-polarity` | a supply input connected backwards (its fault case `<name> reversed`) takes a part past its absolute maximum ratings | error |
 | `unchecked` | (UNKNOWN only) a fitted part or pin has no limits to check against | |
 
 A bound relative to another pin (`VDD + 0.3 V`) passes only if it holds however the two nets move, or if
@@ -70,6 +72,17 @@ against `abs-max`, `tvs-breakdown` and `cap-voltage` (without derating). Resisto
 ratings are checked too, but can only PASS or be UNKNOWN there, since a fault's two ends needn't move together.
 Their findings say which fault they come from; `voltages --fault CASE` shows one case's nets.
 
+Every supply input (one with a positive minimum) is also checked connected backwards, as the fault case
+`<name> reversed`, unless its `inputs.toml` entry says why it can't be (`reverse = "keyed connector"`). A series
+diode blocks it: its cathode stays at 0 V or above. `reverse-polarity` sums the case up, counting only failures
+that normal operation doesn't already have.
+
+The `esd` rule looks at every connector pin `inputs.toml` names (inputs and undriven pins, not their ground
+references). A TVS or ESD diode on the net passes it. So does a clamp behind the one series part between the
+connector and the ICs it protects (VBUS → D1 → TVS). Otherwise every IC pin on the net needs an IEC 61000-4-2
+rating (`[[esd]]` in its part file) at `policy.toml`'s `[esd]` level: an HBM or CDM rating only covers handling
+in a factory, so it FAILs as a warning, and a part with no rating at all is UNKNOWN.
+
 On the test boards:
 
 - Rev 1 of the CAN encoder fails `tvs-breakdown`: its SMAJ18A (breakdown from 20 V) sits on a bus that reaches
@@ -79,7 +92,10 @@ On the test boards:
   (the TCAN1044A's widest VOD row, at the 2240 Ω arbitration load) is 213 mW against its 62.5 mW; even the
   3 V maximum at 50 to 65 Ω is 77 mW. The check is for a bus held dominant; normal traffic is dominant only part
   of the time.
-- The sniffer has no errors.
+- The sniffer's only errors are its supply connected backwards: nothing blocks VIN, so the ME6211's CE pin sees
+  -5.5 V. Both CAN encoders pass, as D1 blocks a reversed VBUS.
+- Every debug header (SWD) and the sniffer's UART reach STM32 pins rated only ±1 to ±2 kV HBM, so they fail `esd`
+  as warnings. The CAN pins pass: rev 1's NUP2105L clamps them, and rev 2's TCAN1044AV is rated ±8 kV contact.
 
 ## Pinout check
 

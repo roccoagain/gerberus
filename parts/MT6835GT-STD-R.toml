@@ -38,3 +38,15 @@ pins = ["U", "V", "W", "CAL_EN", "MISO", "MOSI", "SCK", "CSN", "OUT", "TEST", "T
 to = "VSS"
 abs_max = { min = -0.5, max = { pin = "VDD" }, page = 5, note = "section 3, pin input voltage range" }
 recommended = { unknown = "section 4 (normal operating conditions) lists no pin voltage range" }
+
+[[esd]]
+model = "hbm"
+volts = 8000
+page = 5
+note = "静电防护能力（人体放电模式）, AEC-Q100-002"
+
+[[esd]]
+model = "cdm"
+volts = 1500
+page = 5
+note = "静电防护能力（元件充电模式）, AEC-Q100-011"

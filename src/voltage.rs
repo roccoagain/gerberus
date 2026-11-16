@@ -868,9 +868,11 @@ impl Plan<'_> {
                     Range::Unknown(_) => (0.0, None, "; the drop isn't given".into()),
                 };
                 let raw_min = a.min.zip(vf_hi).map(|(v, d)| v - d);
+                // A diode only lets its anode pull the cathode up: with the anode below 0 V (a supply connected
+                // backwards) it blocks, and the cathode is left at the 0 V floor.
                 let span = Span {
                     min: raw_min.map(|v| v.max(0.0)),
-                    max: a.max.map(|v| v - vf_lo),
+                    max: a.max.map(|v| (v - vf_lo).max(0.0)),
                 };
                 // Below the drop the diode is off, so 0 V is only a floor; so is a floor on the anode.
                 let low_floor = raw_min.is_some_and(|v| v < 0.0) || out[*anode].as_ref().is_some_and(|nv| nv.floor);

@@ -41,3 +41,29 @@ pins = ["RXD"]
 to = "GND"
 abs_max = { min = -0.3, max = 5, page = 5 }
 recommended = { unknown = "RXD is an output; the recommended operating conditions table lists only its output current" }
+
+[[esd]]
+pins = ["TXD", "GND", "VCC", "RXD", "SHDN", "S"]
+model = "hbm"
+volts = 4000
+page = 5
+note = "ANSI/ESDA/JEDEC JS-001, all pins except CANH and CANL"
+
+[[esd]]
+pins = ["CANH", "CANL"]
+model = "hbm"
+volts = 25000
+page = 5
+
+[[esd]]
+model = "cdm"
+volts = 1500
+page = 5
+note = "JESD22-C101, all pins"
+
+[[esd]]
+pins = ["CANH", "CANL"]
+model = "iec-contact"
+volts = 12000
+page = 5
+note = "CANH and CANL terminals to GND; the table misprints the standard as IEC 61400-4-2 (p21 says IEC61000-4-2)"

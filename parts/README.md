@@ -115,6 +115,21 @@ temperature = { min = -55, max = 155, page = 5 }
 A pin no voltage limit mentions (other than `NC`/`DNC`) is reported by `gerberus parts` and must be treated
 as UNKNOWN by checkers.
 
+### ESD ratings
+
+```toml
+[[esd]]
+model = "hbm"          # "hbm", "cdm", "iec-contact" or "iec-air"
+volts = 4000           # the magnitude: ±4 kV is 4000
+pins = ["CANH", "CANL"]  # left out: every pin
+page = 4
+note = "..."
+```
+
+`iec-contact` and `iec-air` are system-level ratings: IEC 61000-4-2, or ISO 10605 as automotive parts print it
+(say which in `note`). Only these meet `policy.toml`'s `[esd]` level. A datasheet with no ESD rating gets no
+`[[esd]]` entry, and its pins on an external connector come out UNKNOWN.
+
 ### Which datasheet number goes where
 
 - `abs_max` takes what the datasheet calls absolute maximum or maximum ratings.
@@ -244,6 +259,10 @@ min = 7
 max = 26
 source = "..."
 ```
+
+Every supply input (a normal input with `min` above 0) is also checked connected backwards: the fault case
+`<name> reversed` puts `-max` to `-min` on its pin. A connector that can't be plugged in backwards says so with
+`reverse = "reason"` on the input, which skips the case.
 
 `inputs.toml` can also give `temperature = { min = 0, max = 70, source = "..." }` for the board's ambient.
 

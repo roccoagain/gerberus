@@ -49,3 +49,14 @@ pins = ["SDA", "SCL"]
 to = "GND"
 abs_max = { min = -0.3, max = { pin = "VDD", plus = 0.3 }, page = 4 }
 recommended = { min = { unknown = "only VIL max 0.3 x VDD is given" }, max = { pin = "VDD" }, page = 4, note = "VIH max 1 x VDD" }
+
+[[esd]]
+model = "hbm"
+volts = 2000
+page = 4
+note = "pads and metal cap"
+
+[[esd]]
+model = "cdm"
+volts = 500
+page = 4

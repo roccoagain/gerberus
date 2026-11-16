@@ -61,3 +61,13 @@ pin = "SW"
 to = "GND"
 supply = "VIN"
 range = { min = { unknown = "the undershoot below GND during dead time is not given" }, max = { unknown = "SW rises above VIN by a body-diode drop during dead time, which is not given" }, page = 3, note = "pin functions: SW connects to the high-side FET source and the low-side FET drain" }
+
+[[esd]]
+model = "hbm"
+volts = 2500
+page = 4
+
+[[esd]]
+model = "cdm"
+volts = 750
+page = 4
