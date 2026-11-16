@@ -48,7 +48,8 @@ pub struct Part {
     pub esd: Vec<Esd>,
     /// Junction-to-ambient thermal resistance of this package, in °C/W.
     pub theta_ja: Option<Rated>,
-    /// The hottest the junction may get, in °C (the absolute maximum junction temperature).
+    /// The hottest the junction may get, in °C: the recommended or operating junction limit where the datasheet
+    /// gives one, else the absolute maximum.
     pub tj_max: Option<Rated>,
     /// Worst-case operating current into supply pins, per group of pins.
     #[serde(default)]
