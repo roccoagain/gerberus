@@ -31,6 +31,17 @@ pub struct LibSymbol {
     pub power: Option<PowerScope>,
     pub extends: Option<String>,
     pub pins: Vec<LibPin>,
+    /// KiCad 10: pins that share a number are joined inside the part.
+    pub duplicate_pins_are_jumpers: bool,
+    /// KiCad 10: groups of pin numbers joined inside the part, such as a closed solder jumper.
+    pub jumper_pin_groups: Vec<Vec<String>>,
+}
+
+impl LibSymbol {
+    /// Number of units, such as 2 for a dual op-amp. Pins shared by every unit count as unit 0.
+    pub fn unit_count(&self) -> u32 {
+        self.pins.iter().map(|p| p.unit).max().unwrap_or(0).max(1)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,20 +96,21 @@ impl SymbolInstance {
 
     /// Converts a library pin position to a schematic point.
     ///
-    /// Matches KiCad: flip Y, mirror, then rotate counter-clockwise, then move to the symbol's position.
+    /// Matches KiCad (`SCH_SYMBOL::SetOrientation`): flip Y, rotate counter-clockwise, mirror on screen, then
+    /// move to the symbol's position.
     pub fn place(&self, lib: (f64, f64)) -> Pt {
-        let (mut x, mut y) = (lib.0, -lib.1);
-        match self.mirror {
-            Some('x') => y = -y,
-            Some('y') => x = -x,
-            _ => {}
-        }
-        let (x, y) = match self.rotation.rem_euclid(360) {
+        let (x, y) = (lib.0, -lib.1);
+        let (mut x, mut y) = match self.rotation.rem_euclid(360) {
             90 => (y, -x),
             180 => (-x, -y),
             270 => (-y, x),
             _ => (x, y),
         };
+        match self.mirror {
+            Some('x') => y = -y,
+            Some('y') => x = -x,
+            _ => {}
+        }
         (to_iu(self.at.0 + x), to_iu(self.at.1 + y))
     }
 }
@@ -252,6 +264,17 @@ fn read_lib_symbol(s: &Sexp) -> LibSymbol {
         power,
         extends: s.child("extends").and_then(|e| e.arg(1)).map(str::to_string),
         pins,
+        duplicate_pins_are_jumpers: s.flag("duplicate_pin_numbers_are_jumpers").unwrap_or(false),
+        jumper_pin_groups: s
+            .child("jumper_pin_groups")
+            .map(|g| {
+                g.items()
+                    .iter()
+                    .filter(|grp| matches!(grp, Sexp::List(_)))
+                    .map(|grp| grp.items().iter().filter_map(Sexp::text).map(str::to_string).collect())
+                    .collect()
+            })
+            .unwrap_or_default(),
     }
 }
 
@@ -328,7 +351,11 @@ mod tests {
         // Mirror Y swaps left and right; mirror X swaps up and down.
         assert_eq!(sym(0, Some('y')).place((5.08, 0.0)), (to_iu(94.92), to_iu(50.0)));
         assert_eq!(sym(0, Some('x')).place((0.0, -3.81)), (to_iu(100.0), to_iu(46.19)));
-        // KiCad mirrors first, then rotates.
-        assert_eq!(sym(90, Some('y')).place((5.08, 0.0)), (to_iu(100.0), to_iu(55.08)));
+        // KiCad rotates first, then mirrors on screen. With (at 100 50 90) (mirror y) KiCad's transform is
+        // (0, -1, -1, 0), which puts a library pin at (5.08, 0) at (100, 44.92).
+        assert_eq!(sym(90, Some('y')).place((5.08, 0.0)), (to_iu(100.0), to_iu(44.92)));
+        // (at 100 50 90) (mirror x) gives the transform (0, 1, 1, 0).
+        assert_eq!(sym(90, Some('x')).place((0.0, -3.81)), (to_iu(103.81), to_iu(50.0)));
+        assert_eq!(sym(270, Some('y')).place((5.08, 0.0)), (to_iu(100.0), to_iu(55.08)));
     }
 }
