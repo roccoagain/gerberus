@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817737,
+  "listing": {
+    "code": "C45783",
+    "mpn": "CL21A226MAQNNNE",
+    "manufacturer": "Samsung Electro-Mechanics",
+    "stock": 132340,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0805",
+    "similar": [
+      {
+        "code": "C129303",
+        "mpn": "0805X226M250NT",
+        "manufacturer": "FH",
+        "stock": 73120,
+        "status": "normal",
+        "package": "0805",
+        "description": "22uF ±20% 25V Ceramic Capacitor X5R 0805"
+      },
+      {
+        "code": "C20416420",
+        "mpn": "TCC0805X5R226M250FT",
+        "manufacturer": "CCTC",
+        "stock": 146135,
+        "status": "normal",
+        "package": "0805",
+        "description": "22uF ±20% 25V Ceramic Capacitor X5R 0805"
+      },
+      {
+        "code": "C2686248",
+        "mpn": "TMK212BBJ226MG-TT",
+        "manufacturer": "Taiyo Yuden",
+        "stock": 2056,
+        "status": "normal",
+        "package": "0805",
+        "description": "22uF ±20% 25V Ceramic Capacitor X5R 0805"
+      },
+      {
+        "code": "C33546009",
+        "mpn": "HGC0805R5226M250NSLJ",
+        "manufacturer": "Chinocera",
+        "stock": 200315,
+        "status": "normal",
+        "package": "0805",
+        "description": "22uF ±20% 25V Ceramic Capacitor X5R 0805"
+      },
+      {
+        "code": "C338078",
+        "mpn": "C2012X5R1E226MT000E",
+        "manufacturer": "TDK",
+        "stock": 30080,
+        "status": "normal",
+        "package": "0805",
+        "description": "22uF ±20% 25V Ceramic Capacitor X5R 0805"
+      }
+    ]
+  }
+}

@@ -37,4 +37,6 @@ recommended = { unknown = "VOUT is the regulated output; no separate operating r
 kind = "regulates"
 pin = "VOUT"
 to = "VSS"
+supply = "VIN"
+headroom = { volts = 1.0, page = 8, note = "the output range is specified at VIN = VOUT + 1 V; the dropout has no maximum" }
 range = { min = 3.234, max = 3.366, page = 8, note = "ME6211C33 output voltage, 0.98 to 1.02 x 3.3 V at IOUT = 30 mA, VIN = VOUT + 1 V, 25 C" }

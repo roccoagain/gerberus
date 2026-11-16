@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817765,
+  "listing": {
+    "code": "C15849",
+    "mpn": "CL10A105KB8NNNC",
+    "manufacturer": "Samsung Electro-Mechanics",
+    "stock": 49300,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0603",
+    "similar": [
+      {
+        "code": "C126631",
+        "mpn": "GRT188R61H105KE13D",
+        "manufacturer": "muRata",
+        "stock": 57440,
+        "status": "normal",
+        "package": "0603",
+        "description": "1uF ±10% 50V Ceramic Capacitor X5R 0603"
+      },
+      {
+        "code": "C128624",
+        "mpn": "CC0603KRX5R9BB105",
+        "manufacturer": "YAGEO",
+        "stock": 183120,
+        "status": "normal",
+        "package": "0603",
+        "description": "1uF ±10% 50V Ceramic Capacitor X5R 0603"
+      },
+      {
+        "code": "C141872",
+        "mpn": "0603X105K500CT",
+        "manufacturer": "Walsin",
+        "stock": 2750,
+        "status": "normal",
+        "package": "0603",
+        "description": "1uF ±10% 50V Ceramic Capacitor X5R 0603"
+      },
+      {
+        "code": "C157684",
+        "mpn": "0603X105K500NT",
+        "manufacturer": "FH",
+        "stock": 697100,
+        "status": "normal",
+        "package": "0603",
+        "description": "1uF ±10% 50V Ceramic Capacitor X5R 0603"
+      },
+      {
+        "code": "C20070310",
+        "mpn": "CSA0603X5R105K500JT",
+        "manufacturer": "HRE",
+        "stock": 1618250,
+        "status": "normal",
+        "package": "0603",
+        "description": "1uF X5R ±10% 50V 0603 Ceramic Capacitors"
+      }
+    ]
+  }
+}

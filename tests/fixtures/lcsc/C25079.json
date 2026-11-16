@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817740,
+  "listing": {
+    "code": "C25079",
+    "mpn": "0402WGF1200TCE",
+    "manufacturer": "UNI-ROYAL",
+    "stock": 2818900,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0402",
+    "similar": [
+      {
+        "code": "C474070",
+        "mpn": "0402WGD1200TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 6300,
+        "status": "normal",
+        "package": "0402",
+        "description": "120Ω ±0.5% 62.5mW 0402 Thick Film Resistor"
+      },
+      {
+        "code": "C2784791",
+        "mpn": "PS02W8F1200TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "125mW 120Ω 50V Thick Film Resistor ±100ppm/℃ ±1% 0402 Chip Resistor - Surface Mount"
+      },
+      {
+        "code": "C966873",
+        "mpn": "CQ02WGF1200TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "120Ω ±1% 62.5mW 0402 Thick Film Resistor AEC-Q200"
+      },
+      {
+        "code": "C2772367",
+        "mpn": "ES02WGF1200TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "62.5mW 120Ω 50V Thick Film Resistor ±1% 0402 Chip Resistor - Surface Mount"
+      },
+      {
+        "code": "C2791334",
+        "mpn": "HQ02WAF1200TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "100mW 120Ω 50V ±100ppm/℃ ±1% 0402 Chip Resistor - Surface Mount"
+      }
+    ]
+  }
+}

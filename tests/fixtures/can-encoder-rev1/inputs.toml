@@ -10,3 +10,9 @@ to = "J1.4"
 min = 7
 max = 25.2
 source = "hardware/can-encoder/DESIGN.md: the C610s run from the 24 V battery bus (6S, up to 25.2 V)"
+
+# Connector pins nothing outside drives. Every other connector pin with no input makes its net UNKNOWN.
+
+[[undriven]]
+pin = "J3.1"
+source = "hardware/can-encoder/rev1-archive/DESIGN.md, J3 row: same pinout as the sniffer, 1 VCC. Assumes the probe senses the target voltage on VCC (VTref) and doesn't power the board through it"

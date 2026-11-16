@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817741,
+  "listing": {
+    "code": "C3236207",
+    "mpn": "TCAN1044AVDDFRQ1",
+    "manufacturer": "TI",
+    "stock": 0,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "TSOT-23-8",
+    "similar": [
+      {
+        "code": "C1855774",
+        "mpn": "TCAN1044VDDFR",
+        "manufacturer": "TI",
+        "stock": 7631,
+        "status": "normal",
+        "package": "TSOT-23-8",
+        "description": "4.5V~5.5V CAN FD Transceiver 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
+      },
+      {
+        "code": "C3236212",
+        "mpn": "TCAN1044ADDFRQ1",
+        "manufacturer": "TI",
+        "stock": 267,
+        "status": "normal",
+        "package": "TSOT-23-8",
+        "description": "4.5V~5.5V CAN FD Transceiver 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
+      },
+      {
+        "code": "C3236204",
+        "mpn": "TCAN1057ADDFRQ1",
+        "manufacturer": "TI",
+        "stock": 31,
+        "status": "normal",
+        "package": "TSOT-23-8",
+        "description": "4.5V~5.5V CAN FD Transceiver 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
+      },
+      {
+        "code": "C3236208",
+        "mpn": "TCAN1057AVDDFRQ1",
+        "manufacturer": "TI",
+        "stock": 86,
+        "status": "normal",
+        "package": "TSOT-23-8",
+        "description": "4.5V~5.5V CAN FD Transceiver 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
+      },
+      {
+        "code": "C2877177",
+        "mpn": "TCAN1044VDDFRQ1",
+        "manufacturer": "TI",
+        "stock": 0,
+        "status": "normal",
+        "package": "TSOT-23-8",
+        "description": "4.5V~5.5V CAN FD Transceiver 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
+      }
+    ]
+  }
+}

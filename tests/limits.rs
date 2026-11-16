@@ -436,3 +436,65 @@ fn inputs_reject_same_net_and_repeated_names() {
     );
     assert!(problems.contains("A: the name is used twice"), "{problems}");
 }
+
+/// Regulators and switch nodes name the pin that powers them, and only a switch node's range may follow it.
+#[test]
+fn drives_name_their_supply() {
+    let parse = |extra: &str| -> String {
+        // Top-level keys go before the tables.
+        let (top, tail) = if extra.starts_with('[') {
+            ("", extra)
+        } else {
+            (extra, "")
+        };
+        let text = format!("{top}\n{HEAD}[datasheet]\ntitle = \"t\"\ndocument = \"d\"\nurl = \"u\"\n{tail}");
+        let part: gerberus::limits::Part = toml::from_str(&text).unwrap();
+        part.problems().join("\n")
+    };
+    let p = parse("[[drive]]\nkind = \"regulates\"\npin = \"A\"\nto = \"B\"\nrange = { min = 1, max = 2, page = 1 }");
+    assert!(p.contains("needs `supply`"), "{p}");
+    let p = parse(
+        "[[drive]]\nkind = \"regulates\"\npin = \"A\"\nto = \"B\"\nsupply = \"C\"\nrange = { min = 1, max = 2, page = 1 }",
+    );
+    assert!(p.contains("\"C\""), "{p}");
+    let p = parse(
+        "[[drive]]\nkind = \"regulates\"\npin = \"A\"\nto = \"B\"\nsupply = \"B\"\nrange = { min = 1, max = { pin = \"B\" }, page = 1 }",
+    );
+    assert!(p.contains("only a switch node's range can be relative"), "{p}");
+    let p = parse(
+        "[[drive]]\nkind = \"switches\"\npin = \"A\"\nto = \"B\"\nsupply = \"B\"\nrange = { min = { unknown = \"x\" }, max = { pin = \"B\" }, page = 1 }",
+    );
+    assert!(p.is_empty(), "{p}");
+    let p = parse(
+        "[[drive]]\nkind = \"forward\"\npin = \"A\"\nto = \"B\"\nfeedback = true\nrange = { min = 0, max = 1, page = 1 }",
+    );
+    assert!(p.contains("only a regulator has `feedback`"), "{p}");
+    let p = parse(
+        "[[drive]]\nkind = \"regulates\"\npin = \"A\"\nto = \"B\"\nsupply = \"B\"\nheadroom = { duty = 1.5, page = 1 }\nrange = { min = 1, max = 2, page = 1 }",
+    );
+    assert!(p.contains("headroom needs"), "{p}");
+    let p = parse("tcr = { ppm = -1, page = 1 }");
+    assert!(p.contains("tcr"), "{p}");
+    let p = parse("tolerance = { value = 1.5, page = 1 }");
+    assert!(p.contains("tolerance"), "{p}");
+}
+
+/// Resistors carry the tolerance their part number encodes, for divider math.
+#[test]
+fn resistors_give_their_tolerance() {
+    let lib = library();
+    let mut missing = vec![];
+    for (mpn, part) in &lib.parts {
+        if part.class == gerberus::limits::Class::Resistor {
+            match &part.tolerance {
+                Some(t) => {
+                    assert_eq!(t.value, 0.01, "{mpn}");
+                    assert_eq!(part.tcr.as_ref().map(|t| t.ppm), Some(100.0), "{mpn}");
+                    assert!(part.temperature.is_some(), "{mpn}");
+                }
+                None => missing.push(mpn.as_str()),
+            }
+        }
+    }
+    assert!(missing.is_empty(), "no tolerance: {missing:?}");
+}

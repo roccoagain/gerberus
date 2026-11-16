@@ -15,3 +15,13 @@ to = "J1.4"
 min = 0
 max = 3.3
 source = "the board's interface contract in hardware/sniffer/DESIGN.md: treat the UART as 3.3 V only. This is what hosts are told to drive, not a limit of the MCU (PA3 is FT_ea)"
+
+# Connector pins nothing outside drives. Every other connector pin with no input makes its net UNKNOWN.
+
+[[undriven]]
+pin = "J1.2"
+source = "hardware/sniffer/DESIGN.md, J1 row: 2 TX (board → host); the host only listens on it"
+
+[[undriven]]
+pin = "J2.1"
+source = "hardware/sniffer/DESIGN.md, J2 row: ARM 6-pin pinout, 1 VCC. Assumes the probe senses the target voltage on VCC (VTref) and doesn't power the board through it"

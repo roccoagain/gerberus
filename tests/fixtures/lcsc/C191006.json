@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817764,
+  "listing": {
+    "code": "C191006",
+    "mpn": "TCAN330GDCNR",
+    "manufacturer": "TI",
+    "stock": 1446,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SOT-23-8",
+    "similar": [
+      {
+        "code": "C165159",
+        "mpn": "TCAN334DCNR",
+        "manufacturer": "TI",
+        "stock": 64,
+        "status": "normal",
+        "package": "SOT-23-8",
+        "description": "3.3V CAN FD Transceiver 5Mbps SOT-23-8 Drivers, Receivers, Transceivers RoHS"
+      },
+      {
+        "code": "C191005",
+        "mpn": "TCAN334GDCNR",
+        "manufacturer": "TI",
+        "stock": 1281,
+        "status": "normal",
+        "package": "SOT-23-8",
+        "description": "3.3V CAN FD Transceiver 5Mbps SOT-23-8 Drivers, Receivers, Transceivers RoHS"
+      },
+      {
+        "code": "C191007",
+        "mpn": "TCAN332GDCNR",
+        "manufacturer": "TI",
+        "stock": 497,
+        "status": "normal",
+        "package": "SOT-23-8",
+        "description": "3.3V CAN FD Transceiver 5Mbps SOT-23-8 Drivers, Receivers, Transceivers RoHS"
+      },
+      {
+        "code": "C41369236",
+        "mpn": "TPT1334-T8TR",
+        "manufacturer": "3PEAK",
+        "stock": 0,
+        "status": "normal",
+        "package": "SOT-23-8",
+        "description": "CAN FD Transceiver 3V~3.6V 5Mbps SOT-23-8 Drivers, Receivers, Transceivers RoHS"
+      },
+      {
+        "code": "C30111221",
+        "mpn": "TCAN3413DDFR",
+        "manufacturer": "TI",
+        "stock": 0,
+        "status": "normal",
+        "package": "TSOT-23-8",
+        "description": "CAN FD Transceiver 3V~3.6V 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
+      }
+    ]
+  }
+}

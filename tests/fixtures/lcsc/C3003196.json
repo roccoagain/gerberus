@@ -1,0 +1,32 @@
+{
+  "fetched": 1794817763,
+  "listing": {
+    "code": "C3003196",
+    "mpn": "MT6701CT-STD-R",
+    "manufacturer": "NOVOSENSE",
+    "stock": 876,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SOP-8",
+    "similar": [
+      {
+        "code": "C3202694",
+        "mpn": "MT6701CT-ACD-R",
+        "manufacturer": "NOVOSENSE",
+        "stock": 3896,
+        "status": "normal",
+        "package": "SOP-8",
+        "description": "SOP-8 Angle, Linear Position Measuring RoHS"
+      },
+      {
+        "code": "C5451785",
+        "mpn": "MT6701CT-STD",
+        "manufacturer": "NOVOSENSE",
+        "stock": 399,
+        "status": "sold_out",
+        "package": "SOP-8",
+        "description": "SOP-8 Angle, Linear Position Measuring RoHS"
+      }
+    ]
+  }
+}

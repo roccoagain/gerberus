@@ -50,4 +50,14 @@ recommended = { unknown = "the recommended operating conditions table lists no C
 kind = "regulates"
 pin = "FB"
 to = "GND"
+supply = "VIN"
+feedback = true
+headroom = { duty = 0.98, page = 1, note = "98 % maximum duty cycle; switch and inductor drops are not modelled" }
 range = { min = 0.985, max = 1.015, page = 5, note = "reference voltage VREF, TJ -40 to 125 C" }
+
+[[drive]]
+kind = "switches"
+pin = "SW"
+to = "GND"
+supply = "VIN"
+range = { min = { unknown = "the undershoot below GND during dead time is not given" }, max = { unknown = "SW rises above VIN by a body-diode drop during dead time, which is not given" }, page = 3, note = "pin functions: SW connects to the high-side FET source and the low-side FET drain" }
