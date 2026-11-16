@@ -69,16 +69,29 @@ fn parse_repeat(s: &str) -> Option<(String, Vec<String>)> {
     Some((name, parts.collect()))
 }
 
+/// The most channels a `Repeat()` or members a bus range may have; a larger one is read as a plain name.
+const MAX_CHANNELS: i64 = 4096;
+
 /// Channels a sheet symbol places: `(room, channel number)`.
 fn channels(designator: &str) -> Vec<(String, i64)> {
     if let Some((name, args)) = parse_repeat(designator)
         && let [a, b] = args.as_slice()
         && let (Ok(a), Ok(b)) = (a.parse::<i64>(), b.parse::<i64>())
         && b > a
+        && b - a < MAX_CHANNELS
     {
         return (a..=b).map(|i| (format!("{name}{i}"), i)).collect();
     }
     vec![(designator.to_string(), 1)]
+}
+
+/// Whether channel instances all lie on one branch of the sheet tree (each placed, maybe indirectly, by the
+/// next), so a net among them stays inside one channel.
+fn one_channel_path(insts: &BTreeSet<usize>, instances: &[Instance]) -> bool {
+    let mut keys: Vec<&str> = insts.iter().map(|&i| instances[i].key.as_str()).collect();
+    keys.sort_by_key(|k| k.len());
+    keys.windows(2)
+        .all(|w| w[1].starts_with(w[0]) && w[1][w[0].len()..].starts_with('/'))
 }
 
 /// Expands `NAME[a..b]` into its members.
@@ -87,6 +100,9 @@ fn expand_range(s: &str) -> Option<Vec<String>> {
     let inner = s[open + 1..].strip_suffix(']')?;
     let (a, b) = inner.split_once("..")?;
     let (a, b) = (a.trim().parse::<i64>().ok()?, b.trim().parse::<i64>().ok()?);
+    if a.abs_diff(b) >= MAX_CHANNELS as u64 {
+        return None;
+    }
     let prefix = &s[..open];
     Some((a.min(b)..=a.max(b)).map(|i| format!("{prefix}{i}")).collect())
 }
@@ -157,18 +173,21 @@ impl SegIndex {
     fn add(&mut self, a: Pt, b: Pt, node: usize) {
         let i = self.segs.len();
         self.segs.push((a, b, node));
-        let (x0, x1) = (
-            (a.0.min(b.0) - TOUCH).div_euclid(CELL),
-            (a.0.max(b.0) + TOUCH).div_euclid(CELL),
-        );
-        let (y0, y1) = (
-            (a.1.min(b.1) - TOUCH).div_euclid(CELL),
-            (a.1.max(b.1) + TOUCH).div_euclid(CELL),
-        );
-        for x in x0..=x1 {
-            for y in y0..=y1 {
-                self.cells.entry((x, y)).or_default().push(i);
+        // Step along the segment a cell at a time, adding the cells within reach of each step, so a long
+        // diagonal costs its length rather than its bounding box.
+        let steps = (b.0 - a.0).abs().max((b.1 - a.1).abs()) / CELL + 1;
+        let mut cells = BTreeSet::new();
+        for k in 0..=steps {
+            let x = a.0 + (b.0 - a.0) * k / steps;
+            let y = a.1 + (b.1 - a.1) * k / steps;
+            for cx in (x - CELL / 2 - TOUCH).div_euclid(CELL)..=(x + CELL / 2 + TOUCH).div_euclid(CELL) {
+                for cy in (y - CELL / 2 - TOUCH).div_euclid(CELL)..=(y + CELL / 2 + TOUCH).div_euclid(CELL) {
+                    cells.insert((cx, cy));
+                }
             }
+        }
+        for c in cells {
+            self.cells.entry(c).or_default().push(i);
         }
     }
     /// Nodes with a segment touching `p`.
@@ -372,7 +391,11 @@ fn build(project: &Project, docs: &[(PathBuf, SchDoc)], mut warnings: Vec<String
         stack: &mut Vec<usize>,
         out: &mut Vec<Instance>,
         warnings: &mut Vec<String>,
-    ) -> usize {
+    ) -> Option<usize> {
+        if stack.contains(&doc) {
+            warnings.push(format!("{}: sheet places itself", docs[doc].0.display()));
+            return None;
+        }
         let me = out.len();
         out.push(Instance {
             doc,
@@ -381,10 +404,6 @@ fn build(project: &Project, docs: &[(PathBuf, SchDoc)], mut warnings: Vec<String
             order: order.clone(),
             children: Vec::new(),
         });
-        if stack.contains(&doc) {
-            warnings.push(format!("{}: sheet places itself", docs[doc].0.display()));
-            return me;
-        }
         stack.push(doc);
         let mut children = Vec::new();
         for (si, s) in docs[doc].1.sheet_symbols.iter().enumerate() {
@@ -394,18 +413,36 @@ fn build(project: &Project, docs: &[(PathBuf, SchDoc)], mut warnings: Vec<String
                     let child_key = format!("{key}/{si}.{n}");
                     let mut path = order.clone();
                     path.push((designator_key(&room), std::cmp::Reverse((doc, si))));
-                    let i = place(c, child_key, room, path, docs, child_doc, stack, out, warnings);
-                    placed.push((i, n));
+                    if let Some(i) = place(c, child_key, room, path, docs, child_doc, stack, out, warnings) {
+                        placed.push((i, n));
+                    }
                 }
             }
             children.push(placed);
         }
         stack.pop();
         out[me].children = children;
-        me
+        Some(me)
     }
     for (i, _) in docs.iter().enumerate() {
         if !placed.contains(&i) {
+            let order = vec![(Default::default(), std::cmp::Reverse((i, 0)))];
+            place(
+                i,
+                format!("/{i}"),
+                String::new(),
+                order,
+                docs,
+                &child_doc,
+                &mut Vec::new(),
+                &mut instances,
+                &mut warnings,
+            );
+        }
+    }
+    // Sheets that only place each other in a loop have no root: start each such loop at its first sheet.
+    for i in 0..docs.len() {
+        if !instances.iter().any(|inst| inst.doc == i) {
             let order = vec![(Default::default(), std::cmp::Reverse((i, 0)))];
             place(
                 i,
@@ -1129,11 +1166,12 @@ impl Builder<'_> {
             let mut names: Vec<Name> = Vec::new();
             let mut leaves = false;
             let mut nc = false;
-            let mut channels_on: BTreeSet<usize> = BTreeSet::new(); // channel indices the net reaches
+            // The channel instances the net reaches.
+            let mut channels_on: BTreeSet<usize> = BTreeSet::new();
             for &m in members {
                 let g = &mut self.subgraphs[m];
-                if let Some((_, index)) = g.inst.and_then(|i| channel_of.get(&i)) {
-                    channels_on.insert(*index);
+                if let Some(i) = g.inst.filter(|i| channel_of.contains_key(i)) {
+                    channels_on.insert(i);
                 }
                 pins.append(&mut g.pins);
                 names.extend(g.names.iter().cloned());
@@ -1173,7 +1211,7 @@ impl Builder<'_> {
                     // A net that stays inside one channel of a multi-channel sheet is named the way the
                     // channel's parts are, unless it is a supply.
                     if let Some((room, index)) = channel_of.get(&nm.inst)
-                        && channels_on.len() == 1
+                        && one_channel_path(&channels_on, instances)
                         && !self.power_names.contains(&key(&nm.name))
                     {
                         name = channel_name(&self.project.channel_designator_format, &name, room, *index);

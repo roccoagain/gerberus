@@ -40,8 +40,10 @@ impl Record {
     }
 
     /// A coordinate in hundred-thousandths of an Altium unit (10 mil): the whole part and its `_FRAC`.
+    /// Values are clamped to a sheet far larger than any Altium allows, so arithmetic on them can't overflow.
     pub fn coord(&self, key: &str) -> i64 {
-        self.int(key) * 100_000 + self.int(&format!("{key}_FRAC"))
+        const LIMIT: i64 = 1_000_000;
+        self.int(key).clamp(-LIMIT, LIMIT) * 100_000 + self.int(&format!("{key}_FRAC")).clamp(-99_999, 99_999)
     }
 }
 

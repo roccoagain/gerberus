@@ -217,3 +217,27 @@ fn fmc_dio_matches_board() {
         },
     );
 }
+
+/// Hand-written sheets with broken or extreme input: the reader warns or carries on rather than panicking,
+/// looping or running out of memory.
+#[test]
+fn malformed_projects_load() {
+    // A sheet that places itself is placed once, with a warning.
+    let d = altium::load(&fixture("malformed/self-placing/P.PrjPcb")).unwrap();
+    assert_eq!(d.warnings.len(), 1, "{:?}", d.warnings);
+    assert!(d.pin_net("R1", "1").is_some());
+
+    // Two sheets that only place each other still load, each once.
+    let d = altium::load(&fixture("malformed/loop/P.PrjPcb")).unwrap();
+    assert_eq!(d.warnings.len(), 1, "{:?}", d.warnings);
+    assert!(d.pin_net("RA", "1").is_some() && d.pin_net("RB", "1").is_some());
+
+    // A wire from a channel of one sheet to a channel of another reaches two channels, so it keeps its plain
+    // name whichever channels they are.
+    let d = altium::load(&fixture("malformed/channels/P.PrjPcb")).unwrap();
+    assert_eq!(d.pin_net("R1_XA", "1").unwrap().name, "SIG");
+
+    // Coordinates, wires and `Repeat()` counts far beyond any real sheet.
+    altium::load(&fixture("malformed/huge-coordinate.SchDoc")).unwrap();
+    altium::load(&fixture("malformed/huge.SchDoc")).unwrap();
+}

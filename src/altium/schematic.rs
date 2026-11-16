@@ -154,8 +154,15 @@ pub fn load(path: &Path) -> Result<SchDoc, String> {
     Ok(from_records(&recs, &additional))
 }
 
+/// How far along its side of the box a sheet or harness entry sits: steps of 10 units, plus millionths of one.
+fn along(r: &Record) -> i64 {
+    r.int("DISTANCEFROMTOP").clamp(-1_000_000, 1_000_000) * 10 * UNIT
+        + r.int("DISTANCEFROMTOP_FRAC1").clamp(-1_000_000, 1_000_000) * 10 * UNIT / 1_000_000
+}
+
 fn polyline(r: &Record) -> Vec<Pt> {
-    let n = r.int("LOCATIONCOUNT").max(0) as usize;
+    // A record holds at most as many vertices as it has fields.
+    let n = (r.int("LOCATIONCOUNT").max(0) as usize).min(r.fields.len());
     (1..=n)
         .map(|i| (r.coord(&format!("X{i}")), r.coord(&format!("Y{i}"))))
         .collect()
@@ -226,8 +233,7 @@ pub fn from_records(recs: &[Record], additional: &[Record]) -> SchDoc {
                 let sym = &body[r.owner().unwrap()];
                 let (x, y) = location(sym);
                 let (w, h) = (sym.coord("XSIZE"), sym.coord("YSIZE"));
-                let along =
-                    r.int("DISTANCEFROMTOP") * 10 * UNIT + r.int("DISTANCEFROMTOP_FRAC1") * 10 * UNIT / 1_000_000;
+                let along = along(r);
                 let at = on_edge((x, y), (w, h), r.int("SIDE"), along);
                 doc.sheet_symbols[si].entries.push(SheetEntry {
                     name: r.text("NAME").to_string(),
@@ -338,8 +344,7 @@ fn harness_records(doc: &mut SchDoc, additional: &[Record]) {
                     Some(v) => v.trim().parse().unwrap_or(0),
                     None => [1, 0, 3, 2][side.clamp(0, 3) as usize],
                 };
-                let along =
-                    r.int("DISTANCEFROMTOP") * 10 * UNIT + r.int("DISTANCEFROMTOP_FRAC1") * 10 * UNIT / 1_000_000;
+                let along = along(r);
                 c.entries.push(SheetEntry {
                     name: r.text("NAME").to_string(),
                     at: on_edge(at, size, entry_side, along),
