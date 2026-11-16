@@ -75,7 +75,7 @@ On the test boards:
 - Rev 1 of the CAN encoder fails `tvs-breakdown`: its SMAJ18A (breakdown from 20 V) sits on a bus that reaches
   25.2 V. With VBUS shorted onto CANH or CANL, its TCAN330 (bus pins ±14 V) fails `abs-max`, as its own
   DESIGN.md warned. Rev 2's TCAN1044AV passes both faults.
-- Both revisions fail `resistor-power` on R4, the 0402 120 Ω termination: 5 V of dominant bus differential
+- Both revisions fail `resistor-power` and `recommended` on R4 (its rated voltage is √(P·R) = 2.74 V), the 0402 120 Ω termination: 5 V of dominant bus differential
   (the TCAN1044A's widest VOD row, at the 2240 Ω arbitration load) is 213 mW against its 62.5 mW; even the
   3 V maximum at 50 to 65 Ω is 77 mW. The check is for a bus held dominant; normal traffic is dominant only part
   of the time.
@@ -121,6 +121,32 @@ ratings. LCSC needs no API key, but it can't tell whether the manufacturer has m
 manufacturer lifecycle is reported as unknown. Answers are cached in `~/.cache/gerberus/lcsc` for 24 hours;
 `--offline` uses only the cache; when a fresh lookup fails, an older cached answer is used with a warning. The
 command exits with status 1 when any line has an error and 2 when it can't run.
+
+## Datasheet checks
+
+```sh
+cargo run -- datasheet verify parts/TPS560430YFDBVR.toml
+cargo run -- datasheet blank parts/TPS560430YFDBVR.toml > second.toml   # a second reader fills it in blind
+cargo run -- datasheet compare parts/TPS560430YFDBVR.toml second.toml
+```
+
+Part files are written by reading datasheets, by a person or an LLM. Gerberus checks that reading in two
+independent ways, and decides nothing itself:
+
+- `verify` downloads the datasheet (cached in `~/.cache/gerberus/datasheets`; `--pdf` reads a local copy) and
+  looks for every cited value on its page with poppler's `pdftotext`. It finds the table's MIN, TYP and MAX
+  columns and its UNIT column, so a typical value filed as a limit, a value in the wrong unit or one from the
+  wrong page shows up. A temperature on a storage row and a value in the other end's column are mismatches;
+  a `derived` range's arithmetic is evaluated against the bound. Each value comes out CONFIRMED (right column, unit and a row naming the pin or part
+  number), DERIVED (worked out from printed numbers by the range's `derived` arithmetic, or a non-polar rating's
+  negative end), PLAUSIBLE (on the page, with the doubts listed), NO TEXT (a scanned page to read by eye),
+  NOT FOUND or MISMATCH. It exits with status 1 on the last two.
+- `blank` writes the part file with every datasheet value replaced by `"?"`, and `compare` lists every value
+  where two readings disagree. Two readers who haven't seen each other's work rarely make the same mistake.
+
+[`.claude/skills/datasheet-to-part`](.claude/skills/datasheet-to-part/SKILL.md) is the whole procedure for an
+agent: read, write, verify, a blind second reading by a separate agent, and settling every difference against
+the page.
 
 ## Tests
 

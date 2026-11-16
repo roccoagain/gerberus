@@ -2,6 +2,8 @@ mpn = "CL05A105KA5NQNC"
 manufacturer = "Samsung Electro-Mechanics"
 description = "1 uF 25 V X5R MLCC, 0402"
 class = "capacitor"
+tolerance = { value = 0.1, page = 19, note = "K = +/-10 % (lineup row 14; code K on page 4)" }
+temperature = { min = -55, max = 85, page = 5, note = "code A = X5R operation temperature range" }
 
 [datasheet]
 title = "Samsung Electro-Mechanics MLCC catalogue"

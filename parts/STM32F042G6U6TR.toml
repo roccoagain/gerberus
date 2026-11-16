@@ -68,14 +68,14 @@ recommended = { min = { unknown = "the datasheet limits only VDD above VDDA" }, 
 [[limit]]
 pins = ["PB8-BOOT0", "PF0-OSC_IN", "PF1-OSC_OUT", "PB3", "PB4", "PB5", "PB6", "PB7"]
 to = "VSS"
-abs_max = { min = -0.3, max = { pin = "VDD", plus = 4.0 }, page = 45, note = "4 V maximum while the internal pull-up or pull-down is enabled" }
+abs_max = { min = -0.3, max = { pin = "VDD", plus = 4.0 }, page = 45, derived = "-0.3 .. VDDIOx + 4.0; VDDIOx is VDD for these pins (p36 note 4)", note = "4 V maximum while the internal pull-up or pull-down is enabled" }
 recommended = { min = -0.3, max = 5.5, page = 47, note = "pull-up must be disabled above VDDIOx + 0.3 V" }
 
 # FT and FTf pins supplied by VDDIO2.
 [[limit]]
 pins = ["PA9", "PA10", "PA13", "PA14", "PA15"]
 to = "VSS"
-abs_max = { min = -0.3, max = { pin = "VDDIO2", plus = 4.0 }, page = 45, note = "4 V maximum while the internal pull-up or pull-down is enabled" }
+abs_max = { min = -0.3, max = { pin = "VDDIO2", plus = 4.0 }, page = 45, derived = "-0.3 .. VDDIOx + 4.0; PA8 to PA15 are supplied by VDDIO2 (p36 note 4)", note = "4 V maximum while the internal pull-up or pull-down is enabled" }
 recommended = { min = -0.3, max = 5.5, page = 47, note = "pull-up must be disabled above VDDIOx + 0.3 V" }
 
 [[limit]]
@@ -88,4 +88,4 @@ recommended = { min = -0.3, max = { pin = "VDDA", plus = 0.3 }, page = 47 }
 pins = ["NRST"]
 to = "VSS"
 abs_max = { min = -0.3, max = 4.0, page = 45 }
-recommended = { min = -0.3, max = { pin = "VDD", plus = 0.3 }, page = 47, note = "RST I/O" }
+recommended = { min = -0.3, max = { pin = "VDD", plus = 0.3 }, page = 47, derived = "-0.3 .. VDDIOx + 0.3; NRST is supplied by VDD", note = "RST I/O" }

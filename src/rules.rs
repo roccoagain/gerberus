@@ -1269,6 +1269,7 @@ mod tests {
             max: Bound::Value(3.3),
             page: Some(1),
             note: None,
+            derived: None,
         };
         let ends = compare(Span::new(0.0, 3.5), (true, false), &range, &none);
         assert_eq!(ends.iter().map(is).collect::<Vec<_>>(), ["unknown", "fail"]);

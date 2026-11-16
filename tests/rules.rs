@@ -55,11 +55,11 @@ fn rev1_tvs_conducts_on_the_bus() {
     for want in ["+12V", "25.2 V", "20 V", "SMAJ18A", "p2"] {
         assert!(f.message.contains(want), "missing {want:?}: {}", f.message);
     }
-    // The other errors are the termination resistor and the two VBUS-on-the-bus faults, and the report
-    // explains how +12V gets to 25.2 V.
-    assert_eq!(r.errors(), 4, "{:#?}", fails(&r));
+    // The other errors are the termination resistor (its power and its rated voltage, √(P·R) = 2.74 V) and the
+    // two VBUS-on-the-bus faults, and the report explains how +12V gets to 25.2 V.
+    assert_eq!(r.errors(), 5, "{:#?}", fails(&r));
     let text = render(&d, &v, &r, false);
-    for want in ["D1 (B5819W SL)", "input VBUS on J1.1", "4 errors"] {
+    for want in ["D1 (B5819W SL)", "input VBUS on J1.1", "5 errors"] {
         assert!(text.contains(want), "missing {want:?} in\n{text}");
     }
     // The stand-off is exceeded too, as a warning.
@@ -71,9 +71,10 @@ fn rev1_tvs_conducts_on_the_bus() {
 
 #[test]
 fn rev2_and_sniffer_errors() {
-    // Rev 2's only error is its 0402 termination resistor (below); the sniffer has none.
+    // Rev 2's only errors are its 0402 termination resistor's power and rated voltage (below); the sniffer has
+    // none.
     let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
-    assert_eq!(r.errors(), 1, "{:#?}", fails(&r));
+    assert_eq!(r.errors(), 2, "{:#?}", fails(&r));
     let (_, _, r) = run("sniffer", "sniffer.kicad_sch");
     assert_eq!(r.errors(), 0, "{:#?}", fails(&r));
 }
@@ -137,13 +138,13 @@ fn vbus_on_the_bus_faults() {
     let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
     let faults: Vec<_> = r.findings.iter().filter(|f| f.case.is_some()).collect();
     assert!(!faults.is_empty());
-    // Everything passes but R4's power: with VBUS on one end it can't be proven either way, as the two ends
-    // needn't move together in a fault.
+    // Everything passes but R4's power and rated voltage: with VBUS on one end they can't be proven either way,
+    // as the two ends needn't move together in a fault.
     let (r4, rest): (Vec<&&gerberus::rules::Finding>, Vec<_>) = faults
         .iter()
-        .partition(|f| f.reference == "R4" && f.rule == "resistor-power");
+        .partition(|f| f.reference == "R4" && matches!(f.rule, "resistor-power" | "recommended"));
     assert!(rest.iter().all(|f| f.verdict == Verdict::Pass), "{rest:#?}");
-    assert_eq!(r4.len(), 2, "{r4:#?}");
+    assert_eq!(r4.len(), 4, "{r4:#?}");
     assert!(
         r4.iter()
             .all(|f| f.verdict == Verdict::Unknown && f.message.contains("may overstate it"))
@@ -195,9 +196,10 @@ fn rev2_tvs_passes() {
 /// The warnings on the clean boards are real datasheet findings.
 #[test]
 fn known_warnings() {
-    // XC6206 ±2 % reaches 3.366 V; the oscillator's supply range ends at 3.3 V (YSO110TR sheet p1).
+    // XC6206 ±2 % reaches 3.366 V; the oscillator's supply range ends at 3.3 V (YSO110TR sheet p1). The other
+    // two are R4's errors.
     let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
-    assert_eq!(fails(&r).len(), 2, "{:#?}", fails(&r));
+    assert_eq!(fails(&r).len(), 3, "{:#?}", fails(&r));
     assert!(
         r.by_rule("recommended")
             .any(|f| f.reference == "Y1" && f.verdict == Verdict::Fail)

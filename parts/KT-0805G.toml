@@ -16,7 +16,7 @@ url = "https://www.lcsc.com/datasheet/C2297.pdf"
 pins = ["K"]
 to = "A"
 abs_max = { min = { unknown = "forward voltage is set by the forward current, not rated" }, max = 5, page = 3, note = "reverse voltage VR" }
-recommended = { unknown = "the datasheet has only an absolute maximum ratings table" }
+recommended = { min = { unknown = "forward voltage is set by the forward current, not rated" }, max = 5, page = 10, note = "caution 11.6.4: the reverse voltage across the LED shall not be higher than 5 V when lit or tested" }
 
 [[limit]]
 quantity = "current"
