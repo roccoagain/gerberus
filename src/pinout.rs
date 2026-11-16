@@ -164,7 +164,7 @@ impl Findings<'_> {
     }
 }
 
-fn symbol_vs_footprint(c: &Component, fp: &Footprint, part: Option<&Part>, out: &mut Findings) {
+fn symbol_vs_footprint(c: &Component, fp: &Footprint, part: Option<&Part>, out: &mut Findings<'_>) {
     if !c.footprint.is_empty() && !fp.lib_id.is_empty() && c.footprint != fp.lib_id {
         out.warning(format!(
             "the schematic names footprint {} but the board has {} (update the PCB from the schematic?)",
@@ -200,7 +200,7 @@ fn symbol_vs_footprint(c: &Component, fp: &Footprint, part: Option<&Part>, out: 
     }
 }
 
-fn symbol_vs_datasheet(design: &Design, c: &Component, part: &Part, fp: Option<&Footprint>, out: &mut Findings) {
+fn symbol_vs_datasheet(design: &Design, c: &Component, part: &Part, fp: Option<&Footprint>, out: &mut Findings<'_>) {
     let mpn = &part.mpn;
     let ds = &part.pins;
     let has_pad = |n: &str| fp.is_some_and(|f| f.pads.iter().any(|p| p.number == n));
@@ -317,7 +317,7 @@ fn symbol_vs_datasheet(design: &Design, c: &Component, part: &Part, fp: Option<&
     }
 }
 
-fn footprint_vs_datasheet(c: &Component, fp: &Footprint, part: &Part, out: &mut Findings) {
+fn footprint_vs_datasheet(c: &Component, fp: &Footprint, part: &Part, out: &mut Findings<'_>) {
     let pads: BTreeSet<&str> = fp.pad_numbers().into_iter().collect();
     let extra: Vec<&str> = pads
         .iter()

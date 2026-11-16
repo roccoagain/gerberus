@@ -322,11 +322,7 @@ fn read_symbol(s: &Sexp) -> SymbolInstance {
                     .and_then(|r| r.arg(1))
                     .unwrap_or_default()
                     .to_string();
-                let u = path
-                    .child("unit")
-                    .and_then(|u| u.arg_f64(1))
-                    .map(|u| u as u32)
-                    .unwrap_or(1);
+                let u = path.child("unit").and_then(|u| u.arg_f64(1)).map_or(1, |u| u as u32);
                 instances.push((p, r, u));
             }
         }
@@ -337,17 +333,12 @@ fn read_symbol(s: &Sexp) -> SymbolInstance {
         at: (x, y),
         rotation,
         mirror: s.child("mirror").and_then(|m| m.arg(1)).and_then(|m| m.chars().next()),
-        unit: s
-            .child("unit")
-            .and_then(|u| u.arg_f64(1))
-            .map(|u| u as u32)
-            .unwrap_or(1),
+        unit: s.child("unit").and_then(|u| u.arg_f64(1)).map_or(1, |u| u as u32),
         body_style: s
             .child("body_style")
             .or_else(|| s.child("convert"))
             .and_then(|c| c.arg_f64(1))
-            .map(|c| c as u32)
-            .unwrap_or(1),
+            .map_or(1, |c| c as u32),
         dnp: s.flag("dnp").unwrap_or(false),
         in_bom: s.flag("in_bom").unwrap_or(true),
         on_board: s.flag("on_board").unwrap_or(true),

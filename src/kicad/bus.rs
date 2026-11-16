@@ -160,7 +160,7 @@ fn parse_vector(text: &str) -> Option<(String, Vec<String>)> {
                 nesting += 1;
                 prefix.push('{');
             }
-            '{' => return None,
+            '{' | ' ' | ']' => return None,
             '}' => {
                 nesting -= 1;
                 prefix.push('}');
@@ -169,7 +169,6 @@ fn parse_vector(text: &str) -> Option<(String, Vec<String>)> {
                 prefix.push(' ');
                 i += 1;
             }
-            ' ' | ']' => return None,
             '[' => {
                 if nesting > 0
                     && let Some(open) = prefix.iter().rposition(|&p| p == '{')

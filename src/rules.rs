@@ -5,7 +5,7 @@
 //! an UNKNOWN says what was missing. Nothing unknown is ever counted as a pass.
 
 use std::collections::BTreeSet;
-use std::fmt;
+use std::fmt::{self, Write as _};
 
 use serde::Serialize;
 
@@ -443,70 +443,67 @@ struct Seen {
 
 /// The voltage each limited pin sees, from the limit's `to` pin or, with no `to`, between each pair of its
 /// pins. Each entry: what it describes, the span, the nets it reads, and the `to` net for relative bounds.
-fn seen(ctx: &Ctx, limit: &Limit) -> Vec<Seen> {
+fn seen(ctx: &Ctx<'_>, limit: &Limit) -> Vec<Seen> {
     let mut out = vec![];
-    match &limit.to {
-        Some(to) => {
-            let tn = ctx.net(to);
-            for p in &limit.pins {
-                match (ctx.net(p), tn) {
-                    (Some(pn), Some(tn)) => {
-                        // Signed: `bidirectional` only makes `breakdown` a magnitude.
-                        let s = ctx.diff(pn, tn);
-                        let floor = (ctx.volts.nets[pn].floor, ctx.volts.nets[tn].floor);
-                        let what = if ctx.span(tn) == Span::exact(0.0) {
-                            ctx.at(p, pn)
-                        } else {
-                            format!("{} from {}", ctx.at(p, pn), ctx.at(to, tn))
-                        };
-                        out.push(Seen {
-                            what,
-                            span: Some(s),
-                            floor,
-                            nets: vec![pn, tn],
-                            to: Some(tn),
-                        });
-                    }
-                    _ => out.push(Seen {
-                        what: format!("{}.{p}", ctx.reference),
-                        span: None,
-                        floor: (false, false),
-                        nets: vec![],
-                        to: None,
-                    }),
+    if let Some(to) = &limit.to {
+        let tn = ctx.net(to);
+        for p in &limit.pins {
+            match (ctx.net(p), tn) {
+                (Some(pn), Some(tn)) => {
+                    // Signed: `bidirectional` only makes `breakdown` a magnitude.
+                    let s = ctx.diff(pn, tn);
+                    let floor = (ctx.volts.nets[pn].floor, ctx.volts.nets[tn].floor);
+                    let what = if ctx.span(tn) == Span::exact(0.0) {
+                        ctx.at(p, pn)
+                    } else {
+                        format!("{} from {}", ctx.at(p, pn), ctx.at(to, tn))
+                    };
+                    out.push(Seen {
+                        what,
+                        span: Some(s),
+                        floor,
+                        nets: vec![pn, tn],
+                        to: Some(tn),
+                    });
                 }
+                _ => out.push(Seen {
+                    what: format!("{}.{p}", ctx.reference),
+                    span: None,
+                    floor: (false, false),
+                    nets: vec![],
+                    to: None,
+                }),
             }
         }
-        None => {
-            let nets: Vec<(String, usize)> = limit
-                .pins
-                .iter()
-                .filter_map(|p| ctx.net(p).map(|n| (p.clone(), n)))
-                .collect();
-            let mut worst: Option<f64> = Some(0.0);
-            let mut read = BTreeSet::new();
-            for (i, (_, a)) in nets.iter().enumerate() {
-                for (_, b) in &nets[i + 1..] {
-                    let d = magnitude(ctx.diff(*a, *b));
-                    read.insert(*a);
-                    read.insert(*b);
-                    worst = worst.zip(d.max).map(|(w, m)| w.max(m));
-                }
+    } else {
+        let nets: Vec<(String, usize)> = limit
+            .pins
+            .iter()
+            .filter_map(|p| ctx.net(p).map(|n| (p.clone(), n)))
+            .collect();
+        let mut worst: Option<f64> = Some(0.0);
+        let mut read = BTreeSet::new();
+        for (i, (_, a)) in nets.iter().enumerate() {
+            for (_, b) in &nets[i + 1..] {
+                let d = magnitude(ctx.diff(*a, *b));
+                read.insert(*a);
+                read.insert(*b);
+                worst = worst.zip(d.max).map(|(w, m)| w.max(m));
             }
-            let worst = Some(Span {
-                min: Some(0.0),
-                max: worst,
-            });
-            let names: Vec<&str> = nets.iter().map(|(p, _)| p.as_str()).collect();
-            let any_floor = read.iter().any(|&n| ctx.volts.nets[n].floor);
-            out.push(Seen {
-                what: format!("{} between pins {}", ctx.reference, names.join(", ")),
-                span: worst,
-                floor: (any_floor, any_floor),
-                nets: read.into_iter().collect(),
-                to: None,
-            });
         }
+        let worst = Some(Span {
+            min: Some(0.0),
+            max: worst,
+        });
+        let names: Vec<&str> = nets.iter().map(|(p, _)| p.as_str()).collect();
+        let any_floor = read.iter().any(|&n| ctx.volts.nets[n].floor);
+        out.push(Seen {
+            what: format!("{} between pins {}", ctx.reference, names.join(", ")),
+            span: worst,
+            floor: (any_floor, any_floor),
+            nets: read.into_iter().collect(),
+            to: None,
+        });
     }
     out
 }
@@ -527,7 +524,7 @@ fn magnitude(s: Span) -> Span {
     }
 }
 
-fn voltage_rules(ctx: &Ctx, policy: &Policy, limit: &Limit, r: &mut Report) {
+fn voltage_rules(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report) {
     let class = ctx.part.class;
     let passive = matches!(
         class,
@@ -631,7 +628,7 @@ fn value_of(b: &Bound) -> Option<f64> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn tvs(ctx: &Ctx, limit: &Limit, span: Span, floor: (bool, bool), head: &str, nets: &[usize], r: &mut Report) {
+fn tvs(ctx: &Ctx<'_>, limit: &Limit, span: Span, floor: (bool, bool), head: &str, nets: &[usize], r: &mut Report) {
     // Breakdown: a rail that can sit at or above the lowest breakdown voltage drives current through the part
     // continuously, and it burns. A bidirectional part breaks down either way, so its magnitude counts.
     if let Some(bd) = &limit.breakdown {
@@ -685,7 +682,7 @@ fn tvs(ctx: &Ctx, limit: &Limit, span: Span, floor: (bool, bool), head: &str, ne
     let mut unknown = vec![];
     match (span.max, hi) {
         (Some(x), Some(s)) if x > s + 1e-9 => {
-            fails.push((format!("reaches {}, above the stand-off of {}", v(x), v(s)), floor.1))
+            fails.push((format!("reaches {}, above the stand-off of {}", v(x), v(s)), floor.1));
         }
         (Some(_), Some(_)) => {}
         (None, _) => unknown.push("the net's maximum is UNKNOWN".to_string()),
@@ -694,7 +691,7 @@ fn tvs(ctx: &Ctx, limit: &Limit, span: Span, floor: (bool, bool), head: &str, ne
     if limit.bidirectional {
         match (span.min, lo) {
             (Some(x), Some(s)) if x < s - 1e-9 => {
-                fails.push((format!("falls to {}, below the stand-off of {}", v(x), v(s)), floor.0))
+                fails.push((format!("falls to {}, below the stand-off of {}", v(x), v(s)), floor.0));
             }
             (Some(_), Some(_)) => {}
             (None, _) => unknown.push("the net's minimum is UNKNOWN".to_string()),
@@ -727,7 +724,7 @@ fn tvs(ctx: &Ctx, limit: &Limit, span: Span, floor: (bool, bool), head: &str, ne
 /// Capacitors: the signed voltage against the signed rating, then against the derating policy.
 #[allow(clippy::too_many_arguments)]
 fn cap_voltage(
-    ctx: &Ctx,
+    ctx: &Ctx<'_>,
     policy: &Policy,
     limit: &Limit,
     span: Span,
@@ -811,7 +808,7 @@ fn cap_voltage(
         .push(ctx.finding("cap-voltage", vd, severity, msg, nets.to_vec()));
 }
 
-fn resistor_power(ctx: &Ctx, policy: &Policy, limit: &Limit, r: &mut Report) {
+fn resistor_power(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report) {
     let a = limit.pins.first().and_then(|p| ctx.net(p));
     let b = limit.to.as_deref().and_then(|p| ctx.net(p));
     let (Some(a), Some(b)) = (a, b) else {
@@ -899,7 +896,7 @@ fn resistor_power(ctx: &Ctx, policy: &Policy, limit: &Limit, r: &mut Report) {
 }
 
 /// The smallest the resistor can be, from its tolerance and temperature drift, and where that comes from.
-fn smallest_resistance(ctx: &Ctx) -> Result<(f64, String), String> {
+fn smallest_resistance(ctx: &Ctx<'_>) -> Result<(f64, String), String> {
     let mut lib = Library::default();
     lib.parts
         .insert(crate::limits::component_mpn(ctx.c).to_string(), ctx.part.clone());
@@ -995,19 +992,20 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, all: bool) -> 
             Verdict::Fail => format!("FAIL {}", f.severity),
             other => other.to_string(),
         };
-        out += &format!("{label:<13} {:<18} {}\n", f.rule, f.message);
+        let _ = writeln!(out, "{label:<13} {:<18} {}", f.rule, f.message);
         if f.verdict == Verdict::Fail {
             let mut seen = BTreeSet::new();
             for &n in &f.nets {
                 if seen.insert(n) && volts.nets[n].span != Span::exact(0.0) {
                     for line in volts.explain(design, n).lines() {
-                        out += &format!("{:<32} {line}\n", "");
+                        let _ = writeln!(out, "{:<32} {line}", "");
                     }
                 }
             }
         }
     }
-    out += &format!(
+    let _ = write!(
+        out,
         "\n{} errors, {} warnings, {} unknown, {} passed\n",
         report.errors(),
         report.warnings(),

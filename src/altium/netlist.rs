@@ -289,8 +289,7 @@ fn designator_key(s: &str) -> (String, u64, String) {
     let start = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
     let end = s[start..]
         .find(|c: char| !c.is_ascii_digit())
-        .map(|e| start + e)
-        .unwrap_or(s.len());
+        .map_or(s.len(), |e| start + e);
     (
         sort_text(&s[..start]),
         s[start..end].parse().unwrap_or(0),
@@ -399,9 +398,9 @@ fn build(project: &Project, docs: &[(PathBuf, SchDoc)], mut warnings: Vec<String
         let me = out.len();
         out.push(Instance {
             doc,
-            key: key.clone(),
+            key,
             room,
-            order: order.clone(),
+            order,
             children: Vec::new(),
         });
         stack.push(doc);
@@ -410,8 +409,8 @@ fn build(project: &Project, docs: &[(PathBuf, SchDoc)], mut warnings: Vec<String
             let mut placed = Vec::new();
             if let Some(c) = child_doc(&s.file) {
                 for (room, n) in channels(&s.name) {
-                    let child_key = format!("{key}/{si}.{n}");
-                    let mut path = order.clone();
+                    let child_key = format!("{}/{si}.{n}", out[me].key);
+                    let mut path = out[me].order.clone();
                     path.push((designator_key(&room), std::cmp::Reverse((doc, si))));
                     if let Some(i) = place(c, child_key, room, path, docs, child_doc, stack, out, warnings) {
                         placed.push((i, n));

@@ -58,7 +58,7 @@ fn reads_lcsc_product_detail() {
     assert_eq!(l.code, "C22624");
     assert_eq!(l.mpn, "B5819WS");
     assert_eq!(l.manufacturer, "JSCJ");
-    assert_eq!(l.stock, 629540);
+    assert_eq!(l.stock, 629_540);
     assert_eq!(l.status, "normal");
     assert_eq!(l.assembly.as_deref(), Some("extended"));
     assert_eq!(l.package, "SOD-323");

@@ -112,3 +112,21 @@ from the same schematic. It also checks that every part on the test boards has a
 every pin it uses, and that the boards' pinouts agree (no errors, and only the known warnings). BOM health tests
 run against a snapshot of LCSC's answers in `tests/fixtures/lcsc`, so they don't need the network. The boards come
 from [roccoagain/hardware](https://github.com/roccoagain/hardware).
+
+## Checks
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request, and weekly for new advisories:
+
+- `cargo fmt --check` (`rustfmt.toml`) and `cargo clippy --all-targets -D warnings`, with the lint levels in the
+  `[lints]` table of `Cargo.toml`: clippy's pedantic group, minus the lints listed there as noise for this code.
+- `cargo test` with every proxy pointed at a closed port, so a test that reaches for the network fails.
+- `cargo check` on the oldest supported Rust (`rust-version` in `Cargo.toml`). Day-to-day builds use the toolchain
+  pinned in `rust-toolchain.toml`.
+- `cargo deny check` (`deny.toml`): RustSec advisories, permissive licenses only, crates.io only.
+- Line coverage with `cargo llvm-cov`, shown in the job summary and failing below 80% (about 86% today).
+
+To run the formatting and clippy checks before each commit, turn on the hook once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```

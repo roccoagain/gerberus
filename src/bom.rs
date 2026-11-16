@@ -158,8 +158,8 @@ pub struct Similar {
 impl Listing {
     /// Reads LCSC's product detail JSON. `Ok(None)` means LCSC answered but has no listing for the code.
     pub fn from_lcsc_json(json: &serde_json::Value) -> Result<Option<Listing>, String> {
-        if json.get("ok").and_then(|v| v.as_bool()) != Some(true)
-            || json.get("code").and_then(|v| v.as_i64()) != Some(200)
+        if json.get("ok").and_then(serde_json::Value::as_bool) != Some(true)
+            || json.get("code").and_then(serde_json::Value::as_i64) != Some(200)
         {
             let msg = json.get("msg").and_then(|v| v.as_str()).unwrap_or("no message");
             return Err(format!("LCSC answered with an error: {msg}"));
@@ -169,7 +169,7 @@ impl Listing {
             Some(r) => r,
         };
         let s = |v: &serde_json::Value, k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
-        let n = |v: &serde_json::Value, k: &str| v.get(k).and_then(|x| x.as_u64()).unwrap_or(0);
+        let n = |v: &serde_json::Value, k: &str| v.get(k).and_then(serde_json::Value::as_u64).unwrap_or(0);
         let need = |k: &str| {
             let v = s(r, k);
             if v.is_empty() {
@@ -208,7 +208,7 @@ impl Listing {
             manufacturer: s(r, "brandNameEn"),
             stock: r
                 .get("stockNumber")
-                .and_then(|x| x.as_u64())
+                .and_then(serde_json::Value::as_u64)
                 .ok_or("LCSC's answer has no stockNumber")?,
             status: need("productCycle")?,
             assembly,
@@ -295,13 +295,13 @@ impl Lcsc {
             .map_err(|e| format!("cache file {} is damaged: {e}", path.display()))
     }
 
-    fn write_cache(&self, code: &str, listing: &Option<Listing>) {
+    fn write_cache(&self, code: &str, listing: Option<&Listing>) {
         // A cache that can't be written only costs a repeat lookup, so it is not an error. Writing to a
         // temporary file and renaming it means a reader never sees half a file.
         let Some(path) = self.cache_path(code) else { return };
         let entry = CacheEntry {
             fetched: now(),
-            listing: listing.clone(),
+            listing: listing.cloned(),
         };
         let Ok(text) = serde_json::to_string_pretty(&entry) else {
             return;
@@ -348,7 +348,7 @@ fn now() -> u64 {
 }
 
 impl Source for Lcsc {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "LCSC"
     }
 
@@ -373,7 +373,7 @@ impl Source for Lcsc {
         }
         match self.fetch(code) {
             Ok(listing) => {
-                self.write_cache(code, &listing);
+                self.write_cache(code, listing.as_ref());
                 Ok(listing)
             }
             Err(e) => match cached {
@@ -396,7 +396,7 @@ impl Source for Lcsc {
 pub struct Fixed(pub BTreeMap<String, Option<Listing>>);
 
 impl Source for Fixed {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "LCSC"
     }
 
@@ -472,7 +472,7 @@ impl Default for Options {
 /// `SM04B-GHS-TB_LF_SN` match.
 fn squash(s: &str) -> String {
     s.chars()
-        .filter(|c| c.is_ascii_alphanumeric())
+        .filter(char::is_ascii_alphanumeric)
         .map(|c| c.to_ascii_uppercase())
         .collect()
 }
@@ -496,7 +496,7 @@ pub fn check(design: &Design, source: &mut dyn Source, opts: Options) -> Vec<Hea
                     severity,
                     topic,
                     message,
-                })
+                });
             };
             let listing = match (&line.lcsc, &line.bad_lcsc) {
                 (_, Some(bad)) => {

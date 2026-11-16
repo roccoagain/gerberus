@@ -381,7 +381,7 @@ impl Part {
             .filter(|n| !matches!(*n, "NC" | "DNC"))
             .filter(|n| self.limits_involving(Quantity::Voltage, n).next().is_none())
             .collect();
-        out.sort();
+        out.sort_unstable();
         out.dedup();
         out
     }
@@ -446,7 +446,7 @@ impl Part {
                     .into_iter()
                     .filter(|n| !pins.values().any(|p| p == n))
                     .collect();
-                missing.sort();
+                missing.sort_unstable();
                 missing.dedup();
                 if !missing.is_empty() {
                     out.push(format!("variant {:?} has no pin named {}", v.mpn, missing.join(", ")));
@@ -681,7 +681,7 @@ impl Part {
         let mut out = vec![(self.mpn.clone(), base.clone())];
         for v in &self.variants {
             let mut p = base.clone();
-            p.mpn = v.mpn.clone();
+            p.mpn.clone_from(&v.mpn);
             if let Some(pins) = &v.pins {
                 p.pins = pins.clone();
             }
