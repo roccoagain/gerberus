@@ -62,11 +62,13 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
 
 /// The folder the latest release tag is remembered in: the user's cache folder, `gerberus` in it.
 pub fn default_cache_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".cache")))
-        .or_else(|| std::env::var_os("LOCALAPPDATA").map(PathBuf::from))?;
+    let var = |v: &str| std::env::var_os(v).filter(|x| !x.is_empty()).map(PathBuf::from);
+    // On Windows, the same folder whichever shell runs it (Git Bash and MSYS2 set HOME, PowerShell doesn't).
+    let local = if cfg!(windows) { var("LOCALAPPDATA") } else { None };
+    let base = local
+        .or_else(|| var("XDG_CACHE_HOME"))
+        .or_else(|| var("HOME").map(|h| h.join(".cache")))
+        .or_else(|| var("LOCALAPPDATA"))?;
     Some(base.join("gerberus"))
 }
 
@@ -108,7 +110,7 @@ pub fn fetch_latest() -> Result<Option<String>, String> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .tls_config(tls)
         .proxy(ureq::Proxy::try_from_env())
-        .timeout_global(Some(Duration::from_secs(10)))
+        .timeout_global(Some(Duration::from_secs(5)))
         .http_status_as_error(false)
         .user_agent(concat!("gerberus/", env!("CARGO_PKG_VERSION")))
         .build()
@@ -165,6 +167,30 @@ pub fn updater_next_to(exe: &Path) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
+/// Moves the running binary `exe` to `<exe>.old`, so an installer can write a new one in its place (Windows
+/// can't overwrite a running program, but can rename it). Removes an `.old` left by an earlier update first.
+pub fn set_aside(exe: &Path) -> Result<PathBuf, String> {
+    let mut name = exe
+        .file_name()
+        .ok_or("the running binary has no file name")?
+        .to_os_string();
+    name.push(".old");
+    let aside = exe.with_file_name(name);
+    if aside.exists() {
+        std::fs::remove_file(&aside).map_err(|e| format!("{}: {e}", aside.display()))?;
+    }
+    std::fs::rename(exe, &aside).map_err(|e| format!("moving {} aside: {e}", exe.display()))?;
+    Ok(aside)
+}
+
+/// Undoes [`set_aside`] after a failed update, unless the installer already put a new binary at `exe`.
+pub fn restore(exe: &Path, aside: &Path) -> Result<(), String> {
+    if exe.exists() {
+        return Ok(());
+    }
+    std::fs::rename(aside, exe).map_err(|e| format!("putting {} back: {e}", exe.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,6 +240,27 @@ mod tests {
         assert_eq!(remembered(&dir), (Some("v0.2.0".to_string()), false));
         remember(&dir, "v0.3.0").unwrap();
         assert_eq!(remembered(&dir).0.as_deref(), Some("v0.3.0"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn sets_the_binary_aside_and_restores_it() {
+        let dir = std::env::temp_dir().join(format!("gerberus-aside-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("gerberus.exe");
+        std::fs::write(&exe, "old").unwrap();
+        std::fs::write(dir.join("gerberus.exe.old"), "older").unwrap();
+        let aside = set_aside(&exe).unwrap();
+        assert_eq!(aside, dir.join("gerberus.exe.old"));
+        assert!(!exe.exists());
+        assert_eq!(std::fs::read_to_string(&aside).unwrap(), "old");
+        restore(&exe, &aside).unwrap();
+        assert_eq!(std::fs::read_to_string(&exe).unwrap(), "old");
+        // When the installer has already written a new binary, it stays.
+        let aside = set_aside(&exe).unwrap();
+        std::fs::write(&exe, "new").unwrap();
+        restore(&exe, &aside).unwrap();
+        assert_eq!(std::fs::read_to_string(&exe).unwrap(), "new");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

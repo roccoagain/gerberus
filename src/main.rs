@@ -143,16 +143,14 @@ impl UpdateCheck {
         let (remembered, stale) = update::remembered(&dir);
         let fresh = stale.then(|| {
             let (tx, rx) = std::sync::mpsc::channel();
-            let known = remembered.clone();
+            // Mark today's check as done before asking, so a slow or unreachable GitHub (whose answer this run
+            // may not wait for) is asked once a day, not on every run. A failed answer keeps the last tag.
+            let _ = update::remember(&dir, remembered.as_deref().unwrap_or(""));
             std::thread::spawn(move || {
-                // Remember even a failed answer (keeping the last tag GitHub gave), so an offline machine asks
-                // once a day, not every run.
-                let tag = match update::fetch_latest() {
-                    Ok(tag) => tag,
-                    Err(_) => known,
-                };
-                let _ = update::remember(&dir, tag.as_deref().unwrap_or(""));
-                let _ = tx.send(tag);
+                if let Ok(tag) = update::fetch_latest() {
+                    let _ = update::remember(&dir, tag.as_deref().unwrap_or(""));
+                    let _ = tx.send(tag);
+                }
             });
             rx
         });
@@ -197,17 +195,36 @@ fn update() -> ExitCode {
         );
         return ExitCode::from(2);
     };
-    match std::process::Command::new(&updater).status() {
-        Ok(s) if s.success() => ExitCode::SUCCESS,
+    // Windows won't let the installer overwrite this running gerberus.exe, but it does let it be renamed, so
+    // move it aside for the installer and put it back if the update fails.
+    let aside = match exe.as_deref().filter(|_| cfg!(windows)) {
+        Some(exe) => match gerberus::update::set_aside(exe) {
+            Ok(aside) => Some((exe, aside)),
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
+    };
+    let (code, ok) = match std::process::Command::new(&updater).status() {
+        Ok(s) if s.success() => (ExitCode::SUCCESS, true),
         Ok(s) => {
             eprintln!("error: {} exited with {s}", updater.display());
-            ExitCode::from(1)
+            (ExitCode::from(1), false)
         }
         Err(e) => {
             eprintln!("error: {}: {e}", updater.display());
-            ExitCode::from(2)
+            (ExitCode::from(2), false)
         }
+    };
+    if let Some((exe, aside)) = aside
+        && !ok
+        && let Err(e) = gerberus::update::restore(exe, &aside)
+    {
+        eprintln!("error: {e}");
     }
+    code
 }
 
 /// Command-line options shared by the commands that read part files.
