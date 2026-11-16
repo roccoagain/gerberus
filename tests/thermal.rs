@@ -269,6 +269,7 @@ fn add(d: &mut Design, reference: &str, lib_id: &str, mpn: Option<&str>, pins: &
                 kind: PinKind::Passive,
                 no_connect: false,
                 net,
+                stack: None,
             },
         );
     }
