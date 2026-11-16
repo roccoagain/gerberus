@@ -53,3 +53,36 @@ pins = ["RXD"]
 to = "GND"
 abs_max = { min = -0.3, max = 6, page = 4 }
 recommended = { unknown = "RXD is an output; the recommended operating conditions table lists only its output current" }
+
+[[esd]]
+model = "hbm"
+volts = 4000
+page = 4
+note = "AEC Q100-002, all pins, classification level 3A"
+
+[[esd]]
+pins = ["CANH", "CANL"]
+model = "hbm"
+volts = 10000
+page = 4
+note = "AEC Q100-002, global pins CANH and CANL with respect to GND, level 3B"
+
+[[esd]]
+model = "cdm"
+volts = 750
+page = 4
+note = "AEC Q100-011, all pins, level C5"
+
+[[esd]]
+pins = ["CANH", "CANL"]
+model = "iec-contact"
+volts = 8000
+page = 4
+note = "system level, CAN bus terminals to GND: unpowered contact discharge per ISO 10605 (tested to IEC 62228-3), and powered contact discharge per SAE J2962-2"
+
+[[esd]]
+pins = ["CANH", "CANL"]
+model = "iec-air"
+volts = 15000
+page = 4
+note = "system level, CAN bus terminals to GND: powered air discharge per SAE J2962-2 / ISO 10605"

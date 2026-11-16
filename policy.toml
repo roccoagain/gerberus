@@ -7,3 +7,10 @@ class = "capacitor"
 quantity = "voltage"
 factor = 0.8
 reason = "keep MLCCs at or below 80 % of rated voltage; X5R/X7R lose capacitance under DC bias and margin covers ripple"
+
+# A pin on an external connector meets ESD when a TVS or ESD diode clamps its net, or when every part on the net is
+# rated to this IEC 61000-4-2 level. Component ratings (HBM, CDM) only cover handling in a factory.
+[esd]
+contact = 8000
+air = 15000
+reason = "IEC 61000-4-2 level 4 (8 kV contact, 15 kV air), the usual target for a connector a person plugs cables into"

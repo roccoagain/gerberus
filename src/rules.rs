@@ -16,7 +16,7 @@ use crate::policy::Policy;
 use crate::voltage::{Driver, Hold, Span, Voltages, resistance_range};
 
 /// The rules, in report order: name and what it checks.
-pub const RULES: [(&str, &str); 10] = [
+pub const RULES: [(&str, &str); 12] = [
     ("abs-max", "every pin stays inside its absolute maximum ratings"),
     (
         "recommended",
@@ -42,6 +42,14 @@ pub const RULES: [(&str, &str); 10] = [
         "every regulator's supply stays high enough for it to hold its output",
     ),
     ("unchecked", "every fitted part and pin has limits to check against"),
+    (
+        "esd",
+        "every external connector pin is clamped, or reaches only parts rated to the policy's IEC 61000-4-2 level",
+    ),
+    (
+        "reverse-polarity",
+        "every supply input connected backwards stays inside every part's absolute maximum ratings",
+    ),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -105,9 +113,12 @@ pub struct Report {
 }
 
 impl Report {
+    /// Counts findings, leaving out summaries (`reverse-polarity`), whose FAILs are the fault case's own
+    /// findings, already counted.
     fn count(&self, verdict: Verdict, severity: Option<Severity>) -> usize {
         self.findings
             .iter()
+            .filter(|f| !SUMMARY_RULES.contains(&f.rule))
             .filter(|f| f.verdict == verdict && severity.is_none_or(|s| f.severity == s))
             .count()
     }
@@ -133,6 +144,9 @@ impl Report {
         self.findings.iter().filter(move |f| f.rule == rule)
     }
 }
+
+/// Rules whose findings sum up other findings, and so aren't counted again in a report's totals.
+pub const SUMMARY_RULES: [&str; 1] = ["reverse-polarity"];
 
 /// The rules a fault case runs: only damage. A fault is checked against absolute maximum ratings, TVS breakdown
 /// and capacitor ratings (without derating). Operating ranges of ICs don't apply while a fault lasts.
@@ -181,12 +195,26 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
     undriven_pins(design, lib, volts, &mut r);
     regulator_headroom(design, volts, &mut r);
 
-    // Fault cases. A finding that reads only nets the fault doesn't change says nothing new, so it is left out.
-    for fault in inputs.faults() {
-        let case_inputs = inputs.case(design, fault);
+    crate::protection::esd(design, lib, policy, inputs, &mut r.findings);
+
+    // Fault cases, including each supply connected backwards. A finding that reads only nets the fault doesn't
+    // change says nothing new, so it is left out.
+    let all = inputs.with_reversals();
+    let reversed: Vec<(String, String)> = inputs
+        .reversible()
+        .into_iter()
+        .map(|i| (BoardInputs::reversed_case(i), i.name.clone()))
+        .collect();
+    for fault in all.faults() {
+        let case_inputs = all.case(design, fault);
         let cv = crate::voltage::compute(design, lib, &case_inputs);
         let mut fr = Report::default();
         part_rules(design, lib, &Policy::default(), &case_inputs, &cv, true, &mut fr);
+        if let Some((_, input)) = reversed.iter().find(|(c, _)| c == fault) {
+            let summary =
+                crate::protection::reverse_polarity(design, lib, inputs, input, fault, &fr.findings, &r.findings, &cv);
+            r.findings.push(summary);
+        }
         for mut f in fr.findings {
             // The same finding, word for word, in normal operation: the fault changes nothing it read.
             let same = |n: &Finding| {

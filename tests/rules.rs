@@ -48,7 +48,10 @@ fn fails(r: &Report) -> Vec<String> {
 #[test]
 fn rev1_tvs_conducts_on_the_bus() {
     let (d, v, r) = run("can-encoder-rev1", "can-encoder.kicad_sch");
-    let f: Vec<_> = r.by_rule("tvs-breakdown").filter(|f| f.reference == "D2").collect();
+    let f: Vec<_> = r
+        .by_rule("tvs-breakdown")
+        .filter(|f| f.reference == "D2" && f.case.is_none())
+        .collect();
     assert_eq!(f.len(), 1, "{f:?}");
     let f = f[0];
     assert_eq!((f.verdict, f.severity), (Verdict::Fail, Severity::Error));
@@ -71,12 +74,22 @@ fn rev1_tvs_conducts_on_the_bus() {
 
 #[test]
 fn rev2_and_sniffer_errors() {
-    // Rev 2's only errors are its 0402 termination resistor's power and rated voltage (below); the sniffer has
-    // none.
+    // Rev 2's only errors are its 0402 termination resistor's power and rated voltage (below). The sniffer's
+    // are its supply connected backwards: nothing blocks VIN, so the ME6211's CE pin sees -5.5 V, and its output
+    // sits above its reversed input. The reverse-polarity summary isn't counted again.
     let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
     assert_eq!(r.errors(), 2, "{:#?}", fails(&r));
     let (_, _, r) = run("sniffer", "sniffer.kicad_sch");
-    assert_eq!(r.errors(), 0, "{:#?}", fails(&r));
+    assert_eq!(r.errors(), 2, "{:#?}", fails(&r));
+    let f: Vec<_> = r.by_rule("reverse-polarity").collect();
+    assert!(
+        f.len() == 1 && f[0].verdict == Verdict::Fail && f[0].message.contains("U1"),
+        "{f:#?}"
+    );
+    assert!(r.findings.iter().any(|f| f.case.as_deref() == Some("VIN reversed")
+        && f.rule == "abs-max"
+        && f.verdict == Verdict::Fail
+        && f.message.contains("U1.CE")));
 }
 
 /// The bus's differential voltage reaches 5 V (VOD(DOM) at the 2240 Ω arbitration load) across R4, the 120 Ω
@@ -140,7 +153,13 @@ fn vbus_on_the_bus_faults() {
     assert!(!faults.is_empty());
     // Everything passes but R4's power and rated voltage: with VBUS on one end they can't be proven either way,
     // as the two ends needn't move together in a fault.
-    let (r4, rest): (Vec<&&gerberus::rules::Finding>, Vec<_>) = faults
+    // VBUS connected backwards is blocked by D1, so nothing fails there; its unknowns are the pins at 0 V that
+    // have no rated minimum.
+    let (reversed, faults): (Vec<_>, Vec<_>) = faults
+        .into_iter()
+        .partition(|f| f.case.as_deref() == Some("VBUS reversed"));
+    assert!(!reversed.is_empty() && reversed.iter().all(|f| f.verdict != Verdict::Fail));
+    let (r4, rest): (Vec<&gerberus::rules::Finding>, Vec<_>) = faults
         .iter()
         .partition(|f| f.reference == "R4" && matches!(f.rule, "resistor-power" | "recommended"));
     assert!(rest.iter().all(|f| f.verdict == Verdict::Pass), "{rest:#?}");
@@ -188,7 +207,10 @@ fn a_fault_that_only_drops_a_differential_still_reports() {
 fn rev2_tvs_passes() {
     let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
     for rule in ["tvs-breakdown", "tvs-standoff"] {
-        let f: Vec<_> = r.by_rule(rule).filter(|f| f.reference == "D2").collect();
+        let f: Vec<_> = r
+            .by_rule(rule)
+            .filter(|f| f.reference == "D2" && f.case.is_none())
+            .collect();
         assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{rule}: {f:?}");
     }
 }
@@ -198,15 +220,19 @@ fn rev2_tvs_passes() {
 fn known_warnings() {
     // XC6206 ±2 % reaches 3.366 V; the oscillator's supply range ends at 3.3 V (YSO110TR sheet p1). The other
     // two are R4's errors.
+    // (The ESD warnings on the debug headers are checked in `esd_on_the_test_boards`.)
+    let not_esd = |r: &Report| -> Vec<String> { fails(r).into_iter().filter(|f| !f.contains(" esd ")).collect() };
     let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
-    assert_eq!(fails(&r).len(), 3, "{:#?}", fails(&r));
+    assert_eq!(not_esd(&r).len(), 3, "{:#?}", fails(&r));
     assert!(
         r.by_rule("recommended")
             .any(|f| f.reference == "Y1" && f.verdict == Verdict::Fail)
     );
-    // The sniffer's 3.6 V input is below the ME6211's specified VOUT + 1 V.
+    // The sniffer's 3.6 V input is below the ME6211's specified VOUT + 1 V. The other three are the reversed
+    // supply's two errors and their summary.
     let (_, _, r) = run("sniffer", "sniffer.kicad_sch");
-    assert_eq!(fails(&r).len(), 1, "{:#?}", fails(&r));
+    assert_eq!(not_esd(&r).len(), 4, "{:#?}", fails(&r));
+    assert_eq!(r.errors(), 2);
     assert!(
         r.by_rule("regulator-headroom")
             .any(|f| f.reference == "U1" && f.verdict == Verdict::Fail)
@@ -231,7 +257,7 @@ fn pins_bounded_by_their_own_supply_pass() {
     let (_, _, r) = run("sniffer", "sniffer.kicad_sch");
     let f = r
         .by_rule("abs-max")
-        .find(|f| f.reference == "U3" && f.message.contains("SCL"))
+        .find(|f| f.reference == "U3" && f.message.contains("SCL") && f.case.is_none())
         .unwrap();
     assert_eq!(f.verdict, Verdict::Pass, "{}", f.message);
 }
@@ -583,7 +609,8 @@ fn floors_carry_through_resistors() {
     d.nets[f].pins.push(("U3".into(), num));
     let (v, r) = run_on(&d, &inputs);
     assert!(v.nets[f].floor);
-    assert_eq!(r.errors(), 0, "{:#?}", fails(&r));
+    // Only the reversed supply's two errors, as on the unchanged sniffer.
+    assert_eq!(r.errors(), 2, "{:#?}", fails(&r));
     assert!(
         r.findings
             .iter()
@@ -627,4 +654,84 @@ fn a_capacitor_keeps_a_node_from_tracking_its_pull() {
     assert!(v.nets[node].between.is_empty());
     let f = r.by_rule("resistor-power").find(|f| f.reference == "R99").unwrap();
     assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
+}
+
+/// Connector pins: the bus pins are clamped or rated for system-level ESD; the debug headers and the sniffer's
+/// UART reach STM32 pins rated only for handling (HBM), which is a warning.
+#[test]
+fn esd_on_the_test_boards() {
+    let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
+    let esd = |r: &Report, at: &str| -> Verdict {
+        let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with(at)).collect();
+        assert_eq!(f.len(), 1, "{at}: {f:#?}");
+        assert_eq!(f[0].severity, Severity::Warning);
+        f[0].verdict
+    };
+    // VBUS reaches its ICs only through D1, with the SMF26A behind it.
+    assert_eq!(esd(&r, "J1.1 (VBUS)"), Verdict::Pass);
+    assert_eq!(esd(&r, "J1.2 (/CANH)"), Verdict::Pass);
+    assert_eq!(esd(&r, "J3.2 (/SWDIO)"), Verdict::Fail);
+    let (_, _, r) = run("can-encoder-rev1", "can-encoder.kicad_sch");
+    assert_eq!(esd(&r, "J1.2 (/CANH)"), Verdict::Pass);
+    // The NUP2105L breaks down at up to 32 V, above the TCAN330's 14 V bus pins, so it isn't counted as their
+    // clamp; the TCAN330's own ±12 kV contact rating passes them.
+    let f: Vec<_> = r
+        .by_rule("esd")
+        .filter(|f| f.message.starts_with("J1.2 (/CANH)"))
+        .collect();
+    assert!(
+        f[0].message.contains("U5 (NUP2105LT1G) breaks down only at up to 32 V"),
+        "{}",
+        f[0].message
+    );
+    assert!(
+        f[0].message.contains("±12 kV IEC 61000-4-2 contact"),
+        "{}",
+        f[0].message
+    );
+    let (_, _, r) = run("sniffer", "sniffer.kicad_sch");
+    assert_eq!(esd(&r, "J1.2 (/UART_TX)"), Verdict::Fail);
+    // The ME6211 gives no ESD rating.
+    assert_eq!(esd(&r, "J1.1 (+5V)"), Verdict::Unknown);
+}
+
+/// A part that fails its maximum in normal operation and its minimum when reversed still counts as damaged by
+/// the reversal: the two failures are different findings.
+#[test]
+fn reversal_failures_count_by_finding_not_by_pin() {
+    let (d, mut inputs) = board("sniffer", "sniffer.kicad_sch");
+    inputs.inputs[0].max = 30.0.into();
+    let (_, r) = run_on(&d, &inputs);
+    let caps: Vec<_> = r
+        .findings
+        .iter()
+        .filter(|f| f.rule == "cap-voltage" && f.verdict == Verdict::Fail && f.severity == Severity::Error)
+        .collect();
+    assert!(caps.iter().any(|f| f.case.is_none()), "{caps:#?}");
+    let reversed: Vec<_> = caps
+        .iter()
+        .filter(|f| f.case.as_deref() == Some("VIN reversed"))
+        .collect();
+    assert!(!reversed.is_empty(), "{caps:#?}");
+    let summary = r.by_rule("reverse-polarity").next().unwrap();
+    assert!(summary.message.contains(&reversed[0].reference), "{}", summary.message);
+}
+
+/// A pull-down on a connector pin doesn't make the connector reach every ground pin on the board.
+#[test]
+fn esd_does_not_follow_pulls_onto_rails() {
+    let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    let swo = d.components["J2"].pins["6"].net;
+    let gnd = net(&d, "GND");
+    add(
+        &mut d,
+        "R99",
+        "Device:R",
+        "10k",
+        Some("0402WGF1002TCE"),
+        vec![pin("1", PinKind::Passive, swo), pin("2", PinKind::Passive, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J2.6")).collect();
+    assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
 }

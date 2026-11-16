@@ -74,6 +74,9 @@ pub struct Input {
     /// analysis. Each case is checked on its own: its inputs (every input with that name) replace the normal
     /// inputs on the nets they touch.
     pub fault: Option<String>,
+    /// Why this input can't be connected backwards. Without it, an input that is always above 0 V (a supply)
+    /// is also checked reversed, as the fault case `<name> reversed`.
+    pub reverse: Option<String>,
 }
 
 /// The top of an input's range.
@@ -149,6 +152,43 @@ impl BoardInputs {
             if !out.contains(&f) {
                 out.push(f);
             }
+        }
+        out
+    }
+
+    /// The supply inputs that are checked connected backwards: every normal input whose range stays above 0 V,
+    /// unless it says why it can't be reversed. Each is the fault case `<name> reversed`.
+    pub fn reversible(&self) -> Vec<&Input> {
+        self.inputs
+            .iter()
+            .filter(|i| i.fault.is_none() && i.reverse.is_none() && i.min > 0.0)
+            .filter(|i| i.max.value().is_some())
+            .collect()
+    }
+
+    /// The name of the fault case that connects an input backwards.
+    pub fn reversed_case(input: &Input) -> String {
+        format!("{} reversed", input.name)
+    }
+
+    /// These inputs plus a fault case for each [`BoardInputs::reversible`] input, with its range negated: a
+    /// supply plugged in backwards puts its voltage on the ground pin, which is the same as minus that voltage
+    /// on the supply pin.
+    pub fn with_reversals(&self) -> BoardInputs {
+        let mut out = self.clone();
+        for i in self.reversible() {
+            let case = Self::reversed_case(i);
+            if self.inputs.iter().any(|j| j.fault.as_deref() == Some(case.as_str())) {
+                continue;
+            }
+            out.inputs.push(Input {
+                name: case.clone(),
+                min: -i.max.value().unwrap_or(i.min),
+                max: Max::Value(-i.min),
+                source: format!("{} connected backwards ({})", i.name, i.source),
+                fault: Some(case),
+                ..i.clone()
+            });
         }
         out
     }

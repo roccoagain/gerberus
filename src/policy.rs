@@ -12,6 +12,17 @@ use crate::limits::{Class, Limit, Part, Quantity};
 pub struct Policy {
     #[serde(default, rename = "derate")]
     pub derates: Vec<Derate>,
+    /// The ESD level a pin on an external connector must survive without a clamp.
+    pub esd: Option<EsdLevel>,
+}
+
+/// IEC 61000-4-2 levels, in volts. Level 4 is 8 kV contact and 15 kV air.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EsdLevel {
+    pub contact: f64,
+    pub air: f64,
+    pub reason: String,
 }
 
 /// Use only `factor` of a rating, for parts of a class (or one part number) and one quantity.

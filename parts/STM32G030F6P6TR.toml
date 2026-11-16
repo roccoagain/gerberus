@@ -43,3 +43,15 @@ pins = ["PB7/PB8", "PB9/PC14", "PC15", "NRST", "PA0", "PA1", "PA2", "PA3", "PA4"
 to = "VSS/VSSA"
 abs_max = { min = -0.3, max = { pin = "VDD/VDDA", plus = 4.0 }, page = 40, note = "FT_xx pins; above 4 V the internal pull-up and pull-down must be disabled" }
 recommended = { min = -0.3, max = { pin = "VDD/VDDA", plus = 3.6, at_most = 5.5 }, page = 41, note = "pull-up and pull-down must be disabled above VDD + 0.3 V" }
+
+[[esd]]
+model = "hbm"
+volts = 1000
+page = 58
+note = "Table 45, ANSI/ESDA/JEDEC JS-001, class 1C"
+
+[[esd]]
+model = "cdm"
+volts = 500
+page = 58
+note = "Table 45, ANSI/ESDA/JEDEC JS-002, class C2a"

@@ -868,9 +868,11 @@ impl Plan<'_> {
                     Range::Unknown(_) => (0.0, None, "; the drop isn't given".into()),
                 };
                 let raw_min = a.min.zip(vf_hi).map(|(v, d)| v - d);
+                // A diode only lets its anode pull the cathode up: with the anode below 0 V (a supply connected
+                // backwards) it blocks, and the cathode is left at the 0 V floor.
                 let span = Span {
                     min: raw_min.map(|v| v.max(0.0)),
-                    max: a.max.map(|v| v - vf_lo),
+                    max: a.max.map(|v| (v - vf_lo).max(0.0)),
                 };
                 // Below the drop the diode is off, so 0 V is only a floor; so is a floor on the anode.
                 let low_floor = raw_min.is_some_and(|v| v < 0.0) || out[*anode].as_ref().is_some_and(|nv| nv.floor);
@@ -1045,6 +1047,20 @@ impl Plan<'_> {
                         notes.push(format!("{}'s minimum is UNKNOWN", name(*supply)));
                         None
                     }
+                };
+                // A supply below 0 V (connected backwards) can pull the output down with it, through the body
+                // diode many CMOS regulators have from output to input. Part files don't say whether this one
+                // has it, so the supply's low end is only a floor for the output, and nothing drives it above 0 V.
+                let (min, max) = match s.min {
+                    Some(sn) if sn < 0.0 => {
+                        notes.push(format!(
+                            "{} can fall to {} V, below 0 V: the output may follow it down through the regulator, as                              far as the part file says nothing to rule out",
+                            name(*supply),
+                            round(sn)
+                        ));
+                        (Some(sn * ratio_hi), max.map(|m| m.max(0.0)))
+                    }
+                    _ => (min, max),
                 };
                 let held = matches!(hold, Hold::Held(_));
                 regulators.push(self.regulation(hold, *supply, sets_output));
