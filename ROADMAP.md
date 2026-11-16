@@ -21,13 +21,49 @@ Each phase reads one more part of the design. It starts with the schematic, then
 - [x] Derating against reliability standards. *(Copies: Relyence, Windchill reliability prediction)*
 - [x] ESD and reverse-polarity protection on every external connector. *(Copies: what a human design review checks)*
 
-## v0.4 — Layout
+## v0.4 — Any board
+
+Point Gerberus at any KiCad or Altium design and get useful answers in minutes. Every `UNKNOWN` says exactly what to add and where, and adding it takes one command. Found by running Gerberus on the capstone audio board rev 2: 39 of 58 parts unchecked, `check` refusing to run until someone wrote an `inputs.toml`, and 6 false errors from behaviour Gerberus can't describe.
+
+**Tell the user what's missing**
+
+- [ ] `gerberus doctor <design>`: one to-do list of everything missing, ranked by how many results it unlocks: parts with no part file, datasheets that can't be downloaded (the file name to save and the folder to save it in), connector pins with no input range. `--json` for agents.
+- [ ] No `inputs.toml` isn't an error. `check` runs, says which connector pins it had to assume nothing about, and points at `gerberus init`.
+- [ ] `gerberus init <design>`: writes a starter `inputs.toml` with every external connector pin, a guessed range from the connector type and net names (USB → VBUS 4.75–5.5 V, D+/D− 0–3.6 V; barrel jack; JST battery), and `guess = "why"` on each. Findings that rest on a guess say so until a person replaces it.
+- [ ] Output readable like rustc's: each finding with the parts and nets involved, the numbers compared, and a `help:` line naming the fix. *(Another thread is doing this.)*
+
+**Grow the part library**
+
+- [ ] Part families: one file covers a whole series by decoding the part number (Yageo RC, UniRoyal, Samsung CL, Murata GRM, KEMET). Size gives power and working voltage; the voltage code gives a capacitor's rating. The 28 resistors on rev 2 are one Yageo family.
+- [ ] Bulk library: JLCPCB basic parts first, then the most-used extended parts, each through `datasheet verify` and a blind second reading. Track what share of the test boards' parts are covered.
+- [ ] Parts with nothing electrical to check (test points, mounting holes, fiducials, logos, net ties) are skipped instead of `UNCHECKED`.
+- [ ] Modules and dev boards (Daisy Seed, ESP32 and STM32 modules, Raspberry Pi Pico) as parts with their header pinout and limits.
+- [ ] A variant missing from its maker's datasheet (PESD5V0S1BAF): a part file can map it to the base part with a source for why.
+- [ ] BOM health by manufacturer part number through DigiKey or Mouser, not only LCSC codes.
+
+**Add your own parts**
+
+- [ ] `gerberus part new <mpn> [--pdf FILE]`: writes a part file into the project's `parts/` folder from the schematic (pins from the symbol, class from the reference, every value `unknown`), ready to fill in and `datasheet verify`.
+- [ ] A `datasheets/` folder next to the schematic for PDFs that can't be downloaded (MAX9722A, Daisy Seed), read by `datasheet verify` and `doctor` without `--pdf`.
+- [ ] Ship the datasheet-to-part agent skill with each release (`gerberus skill install`), so an agent working in a board's own repo can add parts the same checked way.
+
+**Accept a finding on purpose**
+
+- [ ] Waivers: `waivers.toml` next to the schematic accepts a finding with a reason, who, and when. Waived findings still show, marked waived; a waiver that no longer matches anything is flagged.
+
+**Behaviour Gerberus doesn't model yet**
+
+- [ ] Inputs that bias themselves: a part-file field for pins the part biases internally, such as the AC-coupled inputs of the TPA3118 and TPA6130A2, so `floating-input` doesn't fire on them.
+- [ ] MOSFET channels: a FET that is switched on passes its rail through (load switches, reverse-polarity P-FETs).
+- [ ] Analog signal paths in SPICE (gain stages, filters), not only power.
+
+## v0.5 — Layout
 
 - [ ] Layout electrical rules: trace width vs current (IPC-2152), decoupling cap distance, high-speed traces crossing plane splits, loop area. *(Copies: HyperLynx DRC)*
 - [x] Trace impedance and length matching for USB 2.0 high speed, with an eye-diagram simulation (`gerberus si`). I²S and SPI still to do. *(Copies: Polar Si9000, HyperLynx SI)*
 - [ ] Voltage drop and current density across copper. *(Copies: HyperLynx PI, Altium Power Analyzer)*
 
-## v0.5 — Build
+## v0.6 — Build
 
 - [ ] Assembly and manufacturing checks: tombstoning, thermal reliefs, fiducials. *(Copies: Siemens Valor NPI)*
 - [ ] Test-point coverage on every net. *(Copies: XJTAG, Valor test planning)*
