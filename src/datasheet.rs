@@ -32,6 +32,8 @@ pub enum Unit {
     Ppm,
     /// A fraction (0.01) that a datasheet prints as a percentage (1 %).
     Fraction,
+    /// Farads. Part files give capacitance in pF; claims carry it in farads.
+    Farad,
 }
 
 impl Unit {
@@ -51,6 +53,7 @@ impl Unit {
             Unit::Celsius => "°C",
             Unit::Ppm => "ppm",
             Unit::Fraction => "",
+            Unit::Farad => "F",
         }
     }
 }
@@ -62,6 +65,8 @@ pub enum Role {
     Max,
     /// A single figure, such as a tolerance.
     Value,
+    /// A typical value, which belongs in a TYP column.
+    Typ,
 }
 
 /// What the part file says.
@@ -155,6 +160,25 @@ pub fn claims(part: &Part) -> Vec<Claim> {
             other_end: None,
             avoid: vec![],
         });
+    }
+    for (i, c) in part.capacitance.iter().enumerate() {
+        let mut pins: Vec<&str> = c.pins.iter().map(String::as_str).collect();
+        pins.push(&c.to);
+        let context = named(&pins);
+        for (role, v, end) in [(Role::Typ, c.typ, "typ"), (Role::Max, c.max, "max")] {
+            let Some(v) = v else { continue };
+            out.push(Claim {
+                label: format!("capacitance {} ({} to {}) {end}", i + 1, c.pins.join(", "), c.to),
+                value: Claimed::Number(v * 1e-12),
+                role,
+                unit: Unit::Farad,
+                page: c.page,
+                context: context.clone(),
+                derived: None,
+                other_end: None,
+                avoid: vec![],
+            });
+        }
     }
     if let Some(t) = &part.temperature {
         for (role, v, end) in [(Role::Min, t.min, "min"), (Role::Max, t.max, "max")] {
@@ -439,6 +463,7 @@ fn unit_word(chars: &[char], i: usize) -> Option<(Unit, f64, usize)> {
         'µ' | 'μ' => (1e-6, &rest['µ'.len_utf8()..]),
         'u' => (1e-6, &rest[1..]),
         'n' => (1e-9, &rest[1..]),
+        'p' if !rest.starts_with("ppm") => (1e-12, &rest[1..]),
         'k' | 'K' => (1e3, &rest[1..]),
         _ => (1.0, rest.as_str()),
     };
@@ -451,6 +476,8 @@ fn unit_word(chars: &[char], i: usize) -> Option<(Unit, f64, usize)> {
         (Unit::Amp, 1)
     } else if after.starts_with('W') && boundary(after, 1) {
         (Unit::Watt, 1)
+    } else if after.starts_with('F') && boundary(after, 1) {
+        (Unit::Farad, 1)
     } else if after.starts_with('℃') {
         (Unit::Celsius, 1)
     } else if after.starts_with("°C") || after.starts_with("ºC") {
@@ -460,8 +487,8 @@ fn unit_word(chars: &[char], i: usize) -> Option<(Unit, f64, usize)> {
     } else {
         return None;
     };
-    // A scale prefix only goes with V, A and W.
-    if scale != 1.0 && !matches!(unit, Unit::Volt | Unit::Amp | Unit::Watt) {
+    // A scale prefix only goes with V, A, W and F.
+    if scale != 1.0 && !matches!(unit, Unit::Volt | Unit::Amp | Unit::Watt | Unit::Farad) {
         return None;
     }
     let prefix = usize::from(scale != 1.0);
@@ -729,8 +756,10 @@ fn unit_column(lines: &[&str], at: usize, header_line: usize, own: &[String]) ->
     })
 }
 
+/// Whether two values are the same number. The tolerance is relative, so picofarads and nanoamps compare as
+/// finely as volts; the tiny floor only absorbs rounding around zero.
 fn close(a: f64, b: f64) -> bool {
-    (a - b).abs() <= 1e-9_f64.max(1e-6 * a.abs().max(b.abs()))
+    (a - b).abs() <= 1e-15_f64.max(1e-6 * a.abs().max(b.abs()))
 }
 
 /// Whether `name` appears in `text` as a word of its own (case-insensitive): `VIN` in `VIN to GND`, but not in
@@ -1095,7 +1124,11 @@ fn row_mentions(claim: &Claim, lines: &[&str], n: usize) -> bool {
 fn role_fits(role: Role, col: Col, plus_minus: bool) -> bool {
     match (role, col) {
         // A one-figure rating (a tolerance, a duty cycle) is often printed in a MIN or MAX column on its own.
-        (_, Col::Value) | (Role::Min, Col::Min) | (Role::Max, Col::Max) | (Role::Value, Col::Min | Col::Max) => true,
+        (_, Col::Value)
+        | (Role::Min, Col::Min)
+        | (Role::Max, Col::Max)
+        | (Role::Typ, Col::Typ)
+        | (Role::Value, Col::Min | Col::Max) => true,
         // ±15 kV in a MAX column bounds both ends.
         (Role::Min, Col::Max) => plus_minus,
         _ => false,
@@ -1107,6 +1140,7 @@ fn as_role(role: Role) -> &'static str {
         Role::Min => "a minimum",
         Role::Max => "a maximum",
         Role::Value => "a rating",
+        Role::Typ => "a typical value",
     }
 }
 
@@ -1350,7 +1384,7 @@ pub fn render(mpn: &str, outcomes: &[Outcome], all: bool) -> String {
 }
 
 /// The keys of a part file whose values a second reader fills in.
-const VALUE_KEYS: [&str; 12] = [
+const VALUE_KEYS: [&str; 14] = [
     "description",
     "note",
     "volts",
@@ -1363,6 +1397,8 @@ const VALUE_KEYS: [&str; 12] = [
     "tolerance",
     "tcr",
     "temperature",
+    "typ",
+    "max",
 ];
 
 /// A copy of a part file's TOML with every value from the datasheet replaced by `"?"`, for a second reader
@@ -1597,6 +1633,35 @@ pub fn compare(first: &Part, second: &Part) -> Vec<Difference> {
     for x in eb.iter().filter(|x| !ea.contains(x)) {
         out.push(Difference {
             at: "esd".into(),
+            first: "absent or different".into(),
+            second: x.clone(),
+        });
+    }
+    let capacitance = |p: &Part| -> Vec<String> {
+        let mut v: Vec<String> = p
+            .capacitance
+            .iter()
+            .map(|c| {
+                format!(
+                    "{:?} to {}: typ {:?} max {:?} pF (page {})",
+                    c.pins, c.to, c.typ, c.max, c.page
+                )
+            })
+            .collect();
+        v.sort();
+        v
+    };
+    let (ca, cb) = (capacitance(first), capacitance(second));
+    for x in ca.iter().filter(|x| !cb.contains(x)) {
+        out.push(Difference {
+            at: "capacitance".into(),
+            first: x.clone(),
+            second: "absent or different".into(),
+        });
+    }
+    for x in cb.iter().filter(|x| !ca.contains(x)) {
+        out.push(Difference {
+            at: "capacitance".into(),
             first: "absent or different".into(),
             second: x.clone(),
         });

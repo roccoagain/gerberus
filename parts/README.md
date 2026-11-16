@@ -112,6 +112,19 @@ tcr = { ppm = 100, page = 6 }
 temperature = { min = -55, max = 155, page = 5 }
 ```
 
+A part that loads a signal line, such as an ESD diode on a USB line, can give the capacitance its pins add, in pF.
+`gerberus si` adds it to the lines those pins sit on. Give `typ`, `max` or both, as printed; checks use `max`
+when there is one.
+
+```toml
+[[capacitance]]
+pins = ["I/O"]
+to = "GND"
+typ = 0.42
+page = 7
+note = "line capacitance CL, VIO = 2.5 V, f = 1 MHz"
+```
+
 A pin no voltage limit mentions (other than `NC`/`DNC`) is reported by `gerberus parts` and must be treated
 as UNKNOWN by checkers.
 

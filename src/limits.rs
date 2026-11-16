@@ -43,6 +43,10 @@ pub struct Part {
     /// diode's forward drop. A checker uses these to work out the voltage on the nets the part drives.
     #[serde(default, rename = "drive")]
     pub drives: Vec<Drive>,
+    /// Capacitance a pin adds to the net it is on, such as an ESD diode's line capacitance. Signal-integrity
+    /// checks load high-speed lines with it.
+    #[serde(default)]
+    pub capacitance: Vec<Capacitance>,
     /// Electrostatic discharge ratings, per group of pins.
     #[serde(default)]
     pub esd: Vec<Esd>,
@@ -85,6 +89,26 @@ pub struct Esd {
     pub volts: f64,
     pub page: u32,
     pub note: Option<String>,
+}
+
+/// The capacitance from `pins` to `to`, in pF, as the datasheet gives it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Capacitance {
+    pub pins: Vec<String>,
+    pub to: String,
+    pub typ: Option<f64>,
+    pub max: Option<f64>,
+    /// 1-based page of the datasheet PDF.
+    pub page: u32,
+    pub note: Option<String>,
+}
+
+impl Capacitance {
+    /// The value to design against: the maximum when the datasheet gives one, else the typical.
+    pub fn worst(&self) -> Option<f64> {
+        self.max.or(self.typ)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -516,6 +540,18 @@ impl Part {
                 }
             }
         }
+        for (i, c) in self.capacitance.iter().enumerate() {
+            let at = |what: &str| format!("capacitance {} ({}): {what}", i + 1, c.pins.join(", "));
+            for p in c.pins.iter().chain([&c.to]) {
+                if !names.contains(&p.as_str()) {
+                    out.push(at(&format!("pin {p:?} is not in [pins]")));
+                }
+            }
+            let ok = |v: Option<f64>| v.is_none_or(|v| v.is_finite() && v >= 0.0);
+            if c.worst().is_none() || !ok(c.typ) || !ok(c.max) || c.page == 0 || self.datasheet.is_none() {
+                out.push(at("needs typ or max in pF (0 or more) and a datasheet page"));
+            }
+        }
         for (i, l) in self.limits.iter().enumerate() {
             let at = |what: &str| format!("limit {} ({}): {what}", i + 1, l.pins.join(", "));
             if l.pins.is_empty() {
@@ -821,6 +857,7 @@ pub fn class_default(c: &Component) -> Option<Part> {
             breakdown: None,
         }],
         drives: Vec::new(),
+        capacitance: Vec::new(),
         esd: Vec::new(),
     })
 }

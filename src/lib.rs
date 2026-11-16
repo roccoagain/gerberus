@@ -12,6 +12,7 @@ pub mod policy;
 pub mod protection;
 pub mod rules;
 pub mod sexpr;
+pub mod si;
 pub mod voltage;
 
 /// Loads a design from any supported format, chosen by file extension: a KiCad `.kicad_sch`, or an Altium

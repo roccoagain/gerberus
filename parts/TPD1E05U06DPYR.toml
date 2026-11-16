@@ -1,0 +1,27 @@
+mpn = "TPD1E05U06DPYR"
+manufacturer = "Texas Instruments"
+description = "1-channel 0.42 pF ESD diode for high-speed lines, X1SON-2 (0402)"
+class = "tvs"
+
+[datasheet]
+title = "TPDxE05U06 1-, 4-, and 6-Channel Ultra-Low-Capacitance IEC ESD Protection Diode"
+document = "SLVSBO7O, revised August 2024"
+url = "https://www.ti.com/lit/ds/symlink/tpd1e05u06.pdf"
+
+[pins]
+1 = "I/O"
+2 = "GND"
+
+[[limit]]
+pins = ["I/O"]
+to = "GND"
+abs_max = { unknown = "the maximum ratings table gives only pulse ratings (2.5 A, 40 W at 8/20 µs); there is no DC voltage maximum" }
+recommended = { min = { unknown = "the datasheet gives no negative operating limit" }, max = 5.5, page = 7, note = "reverse stand-off voltage VRWM at IIO < 10 µA" }
+breakdown = { min = 6.5, max = 8.5, page = 7, note = "VBR at IIO = 1 mA" }
+
+[[capacitance]]
+pins = ["I/O"]
+to = "GND"
+typ = 0.42
+page = 7
+note = "line capacitance CL of the DPY package, VIO = 2.5 V, f = 1 MHz; no maximum is given"
