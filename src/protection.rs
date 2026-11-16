@@ -5,9 +5,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::design::Design;
+use crate::design::{Design, PinKind};
 use crate::inputs::BoardInputs;
-use crate::limits::{Class, DriveKind, EsdModel, Library, Lookup, Part};
+use crate::limits::{Bound, Class, DriveKind, EsdModel, Library, Lookup, Part, Quantity, Range};
 use crate::policy::Policy;
 use crate::rules::{Finding, Severity, Verdict};
 use crate::voltage::Voltages;
@@ -67,22 +67,48 @@ struct Reached<'a> {
     through: Option<String>,
 }
 
+/// A net with a power pin on it: a supply rail or ground.
+fn is_rail(design: &Design, net: usize) -> bool {
+    design.nets[net].pins.iter().any(|(r, p)| {
+        design
+            .components
+            .get(r)
+            .and_then(|c| c.pins.get(p))
+            .is_some_and(|p| matches!(p.kind, PinKind::PowerIn | PinKind::PowerOut))
+    })
+}
+
 /// The TVS clamps and IC pins an external net reaches. Clamps are keyed by the series part they sit behind
 /// (`None` for the net itself): a clamp behind a series resistor or diode protects what is behind that part, not
 /// a pin on the connector's side of it.
 type Clamps = BTreeMap<Option<String>, Vec<String>>;
 
-fn reached<'a>(design: &Design, lib: &'a Library, net: usize) -> (Clamps, Vec<Reached<'a>>) {
+fn reached<'a>(design: &Design, lib: &'a Library, net: usize) -> (Clamps, Vec<Reached<'a>>, Vec<String>) {
     let mut clamps = Clamps::new();
     let mut ics = vec![];
-    let visit = |n: usize, through: Option<String>, clamps: &mut Clamps, ics: &mut Vec<Reached<'a>>| {
+    let mut raw: BTreeMap<Option<String>, Vec<(String, Option<f64>)>> = BTreeMap::new();
+    let visit = |n: usize,
+                 through: Option<String>,
+                 raw: &mut BTreeMap<Option<String>, Vec<(String, Option<f64>)>>,
+                 ics: &mut Vec<Reached<'a>>| {
         for (r, p) in &design.nets[n].pins {
             let Some(part) = part_of(design, lib, r) else { continue };
             match part.class {
-                Class::Tvs => clamps
-                    .entry(through.clone())
-                    .or_default()
-                    .push(format!("{r} ({})", part.mpn)),
+                Class::Tvs => {
+                    let breakdown = part
+                        .limits
+                        .iter()
+                        .filter_map(|l| match &l.breakdown {
+                            Some(Range::Known {
+                                max: Bound::Value(v), ..
+                            }) => Some(*v),
+                            _ => None,
+                        })
+                        .reduce(f64::max);
+                    raw.entry(through.clone())
+                        .or_default()
+                        .push((format!("{r} ({})", part.mpn), breakdown));
+                }
                 Class::Ic => ics.push(Reached {
                     reference: r.clone(),
                     pin: p.clone(),
@@ -93,23 +119,63 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize) -> (Clamps, Vec<Re
             }
         }
     };
-    visit(net, None, &mut clamps, &mut ics);
+    visit(net, None, &mut raw, &mut ics);
     for (r, _) in &design.nets[net].pins {
         let Some(c) = design.components.get(r) else { continue };
-        let series = part_of(design, lib, r)
-            .is_some_and(|p| matches!(p.class, Class::Resistor | Class::Inductor | Class::Diode));
+        let class = part_of(design, lib, r).map(|p| p.class);
+        let series = matches!(class, Some(Class::Resistor | Class::Inductor | Class::Diode));
         if !series || c.pins.len() != 2 {
             continue;
         }
-        for p in c.pins.values().filter(|p| p.net != net) {
-            visit(p.net, Some(r.clone()), &mut clamps, &mut ics);
+        let pull = class == Some(Class::Resistor);
+        // A pull-up or pull-down ends on a rail or ground, which every IC on the board shares: the discharge goes
+        // into that rail's decoupling, not into one pin, so the far side isn't followed.
+        for p in c
+            .pins
+            .values()
+            .filter(|p| p.net != net && !(pull && is_rail(design, p.net)))
+        {
+            visit(p.net, Some(r.clone()), &mut raw, &mut ics);
+        }
+    }
+    // A TVS only protects the pins beside it when it breaks down before they do: an SMF26A (up to 32 V) on a
+    // 3.3 V logic pin lets the pin take the discharge first.
+    let mut too_high = vec![];
+    for (through, list) in raw {
+        let weakest = ics
+            .iter()
+            .filter(|ic| ic.through == through)
+            .filter_map(|ic| {
+                let name = pin_name(ic.part, &ic.pin);
+                ic.part
+                    .limits
+                    .iter()
+                    .filter(|l| l.quantity == Quantity::Voltage && l.pins.iter().any(|p| p == name))
+                    .filter_map(|l| match &l.abs_max {
+                        Range::Known {
+                            max: Bound::Value(v), ..
+                        } => Some((*v, format!("{}.{name}", ic.reference))),
+                        _ => None,
+                    })
+                    .min_by(|a, b| a.0.total_cmp(&b.0))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0));
+        for (label, breakdown) in list {
+            match (&weakest, breakdown) {
+                (Some((pin_max, pin)), Some(b)) if b > *pin_max => {
+                    too_high.push(format!(
+                        "{label} breaks down only at up to {b} V, above the {pin_max} V {pin} survives"
+                    ));
+                }
+                _ => clamps.entry(through.clone()).or_default().push(label),
+            }
         }
     }
     for v in clamps.values_mut() {
         v.sort();
         v.dedup();
     }
-    (clamps, ics)
+    (clamps, ics, too_high)
 }
 
 /// The `esd` rule: every net an external connector pin is on is clamped by a TVS or ESD diode, or everything on
@@ -117,7 +183,12 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize) -> (Clamps, Vec<Re
 pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs, r: &mut Vec<Finding>) {
     for (net, pins) in external_nets(design, inputs) {
         let at = format!("{} ({})", pins.join(", "), design.nets[net].name);
-        let (clamps, ics) = reached(design, lib, net);
+        let (clamps, ics, too_high) = reached(design, lib, net);
+        let at = if too_high.is_empty() {
+            at
+        } else {
+            format!("{at} ({})", too_high.join("; "))
+        };
         let finding = |verdict, reference: &str, message: String| Finding {
             rule: "esd",
             verdict,
@@ -335,11 +406,15 @@ pub fn reverse_polarity(
     normal: &[Finding],
     volts: &Voltages,
 ) -> Finding {
-    let passed_before = |f: &Finding| {
+    // A finding is new to the reversed case unless normal operation has the same one: same rule, part, pin,
+    // range and reason. Matching on the part and pin alone would hide a pin that fails its maximum normally and
+    // its minimum when reversed.
+    let prefix = format!("fault {case_name:?}: ");
+    let same_as_normal = |f: &Finding| {
+        let text = f.message.strip_prefix(&prefix).unwrap_or(&f.message);
         normal
             .iter()
-            .filter(|n| n.case.is_none() && subject(n) == subject(f))
-            .all(|n| n.verdict == Verdict::Pass)
+            .any(|n| n.case.is_none() && n.rule == f.rule && n.verdict == f.verdict && n.message == text)
     };
     let input = inputs.inputs.iter().find(|i| i.name == input_name);
     let at = input.map_or_else(|| input_name.to_string(), |i| format!("{input_name} on {}", i.pin));
@@ -351,14 +426,16 @@ pub fn reverse_polarity(
     let crow = crowbars(design, lib, &case, volts);
     let failed: Vec<&Finding> = findings
         .iter()
-        .filter(|f| f.verdict == Verdict::Fail && f.severity == Severity::Error)
-        .filter(|f| {
-            normal
-                .iter()
-                .filter(|n| n.case.is_none() && subject(n) == subject(f))
-                .all(|n| n.verdict != Verdict::Fail)
-        })
+        .filter(|f| f.verdict == Verdict::Fail && f.severity == Severity::Error && !same_as_normal(f))
         .collect();
+    // An UNKNOWN counts only when the same pin passed in normal operation: a pin with no rated minimum is
+    // UNKNOWN either way, and listing it here would only repeat that.
+    let passed_before = |f: &Finding| {
+        normal
+            .iter()
+            .filter(|n| n.case.is_none() && subject(n) == subject(f))
+            .all(|n| n.verdict == Verdict::Pass)
+    };
     let unknown: Vec<&Finding> = findings
         .iter()
         .filter(|f| f.verdict == Verdict::Unknown && passed_before(f))

@@ -113,9 +113,12 @@ pub struct Report {
 }
 
 impl Report {
+    /// Counts findings, leaving out summaries (`reverse-polarity`), whose FAILs are the fault case's own
+    /// findings, already counted.
     fn count(&self, verdict: Verdict, severity: Option<Severity>) -> usize {
         self.findings
             .iter()
+            .filter(|f| !SUMMARY_RULES.contains(&f.rule))
             .filter(|f| f.verdict == verdict && severity.is_none_or(|s| f.severity == s))
             .count()
     }
@@ -141,6 +144,9 @@ impl Report {
         self.findings.iter().filter(move |f| f.rule == rule)
     }
 }
+
+/// Rules whose findings sum up other findings, and so aren't counted again in a report's totals.
+pub const SUMMARY_RULES: [&str; 1] = ["reverse-polarity"];
 
 /// The rules a fault case runs: only damage. A fault is checked against absolute maximum ratings, TVS breakdown
 /// and capacitor ratings (without derating). Operating ranges of ICs don't apply while a fault lasts.

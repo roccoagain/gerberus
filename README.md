@@ -74,11 +74,15 @@ Their findings say which fault they come from; `voltages --fault CASE` shows one
 
 Every supply input (one with a positive minimum) is also checked connected backwards, as the fault case
 `<name> reversed`, unless its `inputs.toml` entry says why it can't be (`reverse = "keyed connector"`). A series
-diode blocks it: its cathode stays at 0 V or above. `reverse-polarity` sums the case up, counting only failures
-that normal operation doesn't already have.
+diode blocks it: its cathode stays at 0 V or above. A regulator fed a negative supply may pass it to its output (many CMOS
+regulators have a body diode from output to input), so its output's low end becomes a floor at the supply's
+minimum: pins on it come out UNKNOWN rather than PASS. `reverse-polarity` sums the case up, counting only
+findings that normal operation doesn't already have; the summary isn't counted again in the error total.
 
 The `esd` rule looks at every connector pin `inputs.toml` names (inputs and undriven pins, not their ground
-references). A TVS or ESD diode on the net passes it. So does a clamp behind the one series part between the
+references). A TVS or ESD diode on the net passes it, if it breaks down below the absolute maximum of the IC
+pins beside it (an SMF26A on a 3.3 V logic pin doesn't count). A pull-up or pull-down isn't followed onto its
+rail. So does a clamp behind the one series part between the
 connector and the ICs it protects (VBUS → D1 → TVS). Otherwise every IC pin on the net needs an IEC 61000-4-2
 rating (`[[esd]]` in its part file) at `policy.toml`'s `[esd]` level: an HBM or CDM rating only covers handling
 in a factory, so it FAILs as a warning, and a part with no rating at all is UNKNOWN.
@@ -93,9 +97,10 @@ On the test boards:
   3 V maximum at 50 to 65 Ω is 77 mW. The check is for a bus held dominant; normal traffic is dominant only part
   of the time.
 - The sniffer's only errors are its supply connected backwards: nothing blocks VIN, so the ME6211's CE pin sees
-  -5.5 V. Both CAN encoders pass, as D1 blocks a reversed VBUS.
+  -5.5 V and its output sits above its reversed input. Both CAN encoders pass, as D1 blocks a reversed VBUS.
 - Every debug header (SWD) and the sniffer's UART reach STM32 pins rated only ±1 to ±2 kV HBM, so they fail `esd`
-  as warnings. The CAN pins pass: rev 1's NUP2105L clamps them, and rev 2's TCAN1044AV is rated ±8 kV contact.
+  as warnings. The CAN pins pass on the transceivers' own system-level ratings: rev 1's TCAN330 is rated ±12 kV contact
+  (its NUP2105L breaks down only at up to 32 V, above the TCAN330's 14 V bus pins), and rev 2's TCAN1044AV ±8 kV.
 
 ## Pinout check
 
