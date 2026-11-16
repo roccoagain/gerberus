@@ -2,6 +2,8 @@ mpn = "GRM21BR61H106KE43L"
 manufacturer = "Murata"
 description = "10 uF 50 V X5R MLCC, 0805"
 class = "capacitor"
+tolerance = { value = 0.1, page = 1, note = "K = +/-10 %, Rated Value table" }
+temperature = { min = -55, max = 85, page = 1, note = "Operating Temp. Range, Rated Value table (X5R)" }
 
 [datasheet]
 title = "GRM21BR61H106KE43 reference sheet"

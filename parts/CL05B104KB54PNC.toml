@@ -2,6 +2,8 @@ mpn = "CL05B104KB54PNC"
 manufacturer = "Samsung Electro-Mechanics"
 description = "100 nF 50 V X7R MLCC, 0402"
 class = "capacitor"
+tolerance = { value = 0.1, page = 4, note = "K = +/-10 % (part numbering, tolerance code)" }
+temperature = { min = -55, max = 125, page = 5, note = "code B = X7R operation temperature range" }
 
 [datasheet]
 title = "Samsung Electro-Mechanics MLCC catalogue"

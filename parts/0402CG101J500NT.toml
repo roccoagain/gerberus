@@ -2,6 +2,8 @@ mpn = "0402CG101J500NT"
 manufacturer = "Fenghua (FH)"
 description = "100 pF 50 V C0G MLCC, 0402"
 class = "capacitor"
+tolerance = { value = 0.05, page = 4, note = "J = +/-5 %" }
+temperature = { min = -55, max = 125, page = 5, note = "C0G operation temperature range" }
 
 [datasheet]
 title = "Fenghua general type MLCC"

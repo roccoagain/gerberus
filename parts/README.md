@@ -48,6 +48,9 @@ A range is either `{ min = ..., max = ..., page = N, note = "..." }` or `{ unkno
 
 - `page` is the 1-based page of the PDF at `url` (not the printed page number). It is required whenever a bound
   is known.
+- `derived = "..."` says how a value the page doesn't print was worked out from what it does print, such as
+  `"3.3 V ± 2 %"` for an LDO's output range, or `"VDDIOx + 4.0, and VDDIOx is VDD for these pins"`.
+  `gerberus datasheet verify` then checks that the numbers in it are on the page.
 - Each bound is one of:
   - a number: `38`
   - another pin of the same part: `{ pin = "VIN", plus = 0.3 }`, optionally capped:
@@ -118,6 +121,12 @@ as UNKNOWN by checkers.
   pin at low VDD). Checkers use the tighter of the two at the voltages they work out.
 - Rated values of passives and connectors go in `recommended`, not `abs_max`: a capacitor's rated voltage is the
   most it may see continuously, and the withstanding-voltage test above it is a short test, not a rating.
+
+### Checking a part file
+
+Every value is read twice from the datasheet, by readers who haven't seen each other's work, and checked against
+its page by `gerberus datasheet verify` (see the main README and `.claude/skills/datasheet-to-part`). Nobody signs
+off on a file by hand, so a value that both readings and the page don't back stays `{ unknown = "..." }`.
 
 ### Where limits come from
 
@@ -248,6 +257,19 @@ against the PDF at that URL.
 Not covered: footprint-only parts with no part number (Tag-Connect pads, SWD pads, solder jumpers).
 
 ### Known gaps
+
+Found by the blind second reading of every file (November 2026):
+
+- **Resistors' rated voltage** is the rated continuous working voltage √(P·R), capped by the size's maximum
+  working voltage (UNI-ROYAL p5), not the maximum working voltage alone. The 120 Ω 0402 is rated 2.74 V.
+- **CL05B104KB54PNC** isn't in the Samsung catalogue LCSC serves for it: its "4" and "P" codes aren't defined
+  there. Its 50 V comes from voltage code B (p4). Worth checking against Samsung's own page for the part.
+- The Samsung catalogue's text layer drops the minus signs in its temperature table (p5), so `datasheet verify`
+  reports their −55 °C as NOT FOUND; the rendered page shows them.
+- **MT6701CT**: its electrical parameters (p7) give VDD 3.0 to 5.5 V, but its pin table and front page say 3.3 to
+  5.0 V. The file uses the table.
+- **KT-0603R**: Pd 40 mW is lower than 25 mA × its 2.4 V maximum VF, so power may limit it before IF does.
+- **B5819W**: IFRM 1.5 A applies to repetitive peaks only, so the DC current limit stays at IO, 1 A.
 
 - **SWPA252012S100MT** (rev 2 L1): no datasheet reachable. LCSC has none for C37428 and sunlordinc.com is blocked
   from the cloud environment, so every value is unknown.

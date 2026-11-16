@@ -196,6 +196,10 @@ pub enum Range {
         /// 1-based page of the datasheet PDF the values are on.
         page: Option<u32>,
         note: Option<String>,
+        /// How a value the page doesn't print was worked out from what it does print, such as
+        /// `"3.3 V ± 2 % accuracy"` for an LDO's output range. `gerberus datasheet verify` checks the numbers
+        /// in it instead of the value itself.
+        derived: Option<String>,
     },
 }
 
@@ -221,6 +225,7 @@ struct RawRange {
     max: Option<Bound>,
     page: Option<u32>,
     note: Option<String>,
+    derived: Option<String>,
 }
 
 impl TryFrom<RawRange> for Range {
@@ -234,6 +239,7 @@ impl TryFrom<RawRange> for Range {
                 max: None,
                 page: None,
                 note: None,
+                derived: None,
             } => {
                 if reason.trim().is_empty() {
                     Err("`unknown` needs a reason".into())
@@ -248,7 +254,14 @@ impl TryFrom<RawRange> for Range {
                 max: Some(max),
                 page,
                 note,
-            } => Ok(Range::Known { min, max, page, note }),
+                derived,
+            } => Ok(Range::Known {
+                min,
+                max,
+                page,
+                note,
+                derived,
+            }),
             _ => Err("a range needs both `min` and `max` (use `{ unknown = \"reason\" }` for a missing one)".into()),
         }
     }
@@ -742,6 +755,7 @@ pub fn class_default(c: &Component) -> Option<Part> {
                 note: Some(format!(
                     "rated voltage from the schematic's {from}, not checked against a datasheet"
                 )),
+                derived: None,
             },
             breakdown: None,
         }],

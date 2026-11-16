@@ -357,6 +357,7 @@ fn switch_range_needs_its_supply() {
         },
         page: Some(3),
         note: None,
+        derived: None,
     };
     let v = compute(&d, &lib, &inputs);
     assert_eq!(
@@ -415,6 +416,7 @@ fn stays_below_needs_bounded_steps() {
             },
             page: Some(3),
             note: None,
+            derived: None,
         };
         compute(&d, &lib, &inputs)
     };
