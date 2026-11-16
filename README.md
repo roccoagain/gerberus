@@ -217,6 +217,51 @@ On the test boards (normal operation, at each part's rated ambient, as no board 
   with their dissipation. The switchers (TPS560430, AP63200) give no efficiency.
 - The LEDs pass `forward-current` at 3.4 to 3.5 mA against 25 to 30 mA ratings.
 
+## Hot-plug stress (SPICE)
+
+```sh
+cargo run -- stress path/to/board.kicad_sch --runs 16
+```
+
+`stress` simulates plugging the board in, in [ngspice](https://ngspice.sourceforge.io/), which must be installed
+(`apt install ngspice` or `brew install ngspice`). Each supply input in `inputs.toml` (one with a positive minimum)
+is switched on at its maximum, in 1 µs, through a cable: 0.1 Ω and up to 1 µH, about a metre. These numbers come
+from `policy.toml`'s `[spice]` table. The cable's inductance rings with the board's input capacitors, so a rail
+can overshoot its settled value, by up to about twice in the worst case.
+
+The first run uses nominal values and the largest cable inductance. Each further run draws every value again:
+- resistors over their tolerance and drift;
+- capacitors and inductors over their tolerance;
+- regulator outputs over their datasheet range;
+- the cable inductance over its range.
+
+`--seed` changes the draw. The peak, settled and lowest voltage across every pin limit, over all runs, is checked.
+Past an absolute maximum is an error; past a passive's rating is a warning. A failure names the run and what it
+drew. `--netlist FILE` writes the nominal run's netlist, so it can be opened in any SPICE tool.
+
+What is modelled:
+- resistors, capacitors and inductors from their values;
+- ferrite beads, fuses and jumpers as closed;
+- diodes and LEDs from their forward drop at their test current;
+- TVS diodes from their breakdown voltage;
+- regulators as ideal sources that drop out when their supply is too low (a switcher at 100 % efficiency, the
+  least it can draw);
+- every IC's `[[supply]]` current.
+
+What isn't:
+- Capacitor ESR and IC pins' internal clamps aren't modelled, both of which would damp a peak, so the result
+  errs high.
+- A switching regulator's switch node is reported UNKNOWN.
+- Signal inputs are left open.
+- Pin limits on nets nothing in the simulation drives (IC signal pins) aren't reported.
+- Parts with no model are listed, and the pins on their nets come out UNKNOWN.
+
+On the test boards:
+- The sniffer fails. Its 10 µF input capacitor and the cable take VIN from 5.5 V to 7.5 V, past the ME6211's 6.5 V
+  absolute maximum. A TVS, a bulk capacitor with some ESR, or a series resistor would fix it.
+- The CAN encoders pass. Rev 2's +VDC rings to about 31 V from 26 V, inside the TPS560430's and the capacitors'
+  ratings. Rev 1's TVS clamps its +12V at about 22.6 V.
+
 ## Pinout check
 
 ```sh

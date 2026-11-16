@@ -139,7 +139,7 @@ pub struct Regulation {
     pub pin: String,
     /// False for a feedback pin's own net, which a report needn't list separately from the output.
     pub sets_output: bool,
-    /// The output's range while it is held, and the lowest supply that holds it, when both are known.
+    /// The output's range while it is held, and the lowest supply that holds it when that is known.
     pub held_at: Option<HeldAt>,
 }
 
@@ -148,7 +148,8 @@ pub struct Regulation {
 pub struct HeldAt {
     pub min: f64,
     pub max: f64,
-    pub needs: f64,
+    /// The lowest supply the output range is specified at, when the part file gives a headroom.
+    pub needs: Option<f64>,
 }
 
 /// The range of every net in a design, indexed like [`Design::nets`].
@@ -1177,7 +1178,7 @@ impl Plan<'_> {
                 };
                 let held = matches!(hold, Hold::Held(_));
                 let mut regulation = self.regulation(hold, *supply, sets_output);
-                regulation.held_at = needs.map(|needs| HeldAt {
+                regulation.held_at = Some(HeldAt {
                     min: lo,
                     max: hi,
                     needs,

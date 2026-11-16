@@ -11,6 +11,7 @@ const USAGE: &str = "usage:
   gerberus pinout <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--parts DIR]...
   gerberus voltages <design> [--inputs FILE] [--parts DIR]... [--fault CASE] [--explain NET]...
   gerberus loads <design> [--inputs FILE] [--parts DIR]...
+  gerberus stress <design> [--inputs FILE] [--parts DIR]... [--runs N] [--seed N] [--netlist FILE] [--all] [--json]
   gerberus check <design> [--inputs FILE] [--parts DIR]... [--all] [--json]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
   gerberus si <board.kicad_pcb> [--parts DIR]... [--all] [--json] [--plots DIR]
@@ -37,6 +38,11 @@ them out for one of the fault cases in the inputs instead of normal operation.
 
 `loads` lists the worst-case current each net supplies and what draws it, from the parts' `[[supply]]`
 currents, LED chains and resistors to ground. These are the currents the junction-temperature rule uses.
+
+`stress` switches each supply input in `inputs.toml` on through a cable (policy.toml's `[spice]`) in ngspice,
+once at nominal values and then --runs times (default from policy.toml) with every part value drawn from its
+tolerance, and checks the peak voltage on every pin against its limits. --netlist writes the nominal run's
+netlist. It needs ngspice installed, and exits with status 1 when an absolute maximum is passed.
 
 `check` runs the voltage rules: every pin against its datasheet limits at its net's worst-case voltage, TVS
 breakdown and stand-off, capacitor voltage and resistor power, undriven inputs and power pins, regulator
@@ -96,6 +102,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "pinout" => pinout(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "voltages" => voltages(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "loads" => loads(Path::new(path), rest),
+        [cmd, path, rest @ ..] if cmd == "stress" => stress(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "si" => si(Path::new(path), rest),
@@ -337,6 +344,62 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
     if json {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
+        print!("{}", gerberus::rules::render(&design, &v, &report, all));
+    }
+    Ok(report.errors() == 0)
+}
+
+fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let mut all = false;
+    let mut json = false;
+    let mut runs = None;
+    let mut seed = 1;
+    let mut netlist = None;
+    let mut others = vec![];
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--all" => all = true,
+            "--json" => json = true,
+            "--runs" => {
+                runs = Some(
+                    it.next()
+                        .and_then(|n| n.parse::<usize>().ok())
+                        .ok_or("--runs takes a number")?,
+                );
+            }
+            "--seed" => {
+                seed = it
+                    .next()
+                    .and_then(|n| n.parse::<u64>().ok())
+                    .ok_or("--seed takes a number")?;
+            }
+            "--netlist" => netlist = Some(PathBuf::from(it.next().ok_or("--netlist takes a file")?)),
+            _ => others.push(a.clone()),
+        }
+    }
+    let o = options(path, &others, &["--inputs"])?;
+    let (design, lib, inputs, v) = analyse(path, &o)?;
+    let policy = gerberus::policy::Policy::builtin()?;
+    let mut sp = policy.spice.clone().unwrap_or_default();
+    if let Some(n) = runs {
+        sp.runs = n;
+    }
+    if let Some(file) = netlist {
+        let circuit = gerberus::spice::build(&design, &lib, &inputs, &v)?;
+        let pairs = circuit.pairs(&design, &lib);
+        let (text, _) = circuit.netlist(&sp, &pairs, None);
+        std::fs::write(&file, text).map_err(|e| format!("{}: {e}", file.display()))?;
+    }
+    let sweep = gerberus::spice::sweep(&design, &lib, &inputs, &v, &sp, seed)?;
+    let report = gerberus::rules::Report {
+        findings: gerberus::spice::check(&design, &lib, &sweep, &sp),
+        cases: vec![],
+    };
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
+    } else {
+        print!("{}", gerberus::spice::describe(&design, &sweep));
         print!("{}", gerberus::rules::render(&design, &v, &report, all));
     }
     Ok(report.errors() == 0)

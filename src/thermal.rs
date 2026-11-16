@@ -682,7 +682,9 @@ impl Ctx<'_> {
                 // range but is at its top, use the held output there: below the supply it needs, a linear
                 // regulator is in dropout and drops less than it does while regulating.
                 let vo_low = match (reg.held_at, vin.max) {
-                    (Some(h), Some(vi)) if vi >= h.needs && vout.min.is_none_or(|m| m < h.min) => Some(h.min),
+                    (Some(h), Some(vi)) if h.needs.is_some_and(|n| vi >= n) && vout.min.is_none_or(|m| m < h.min) => {
+                        Some(h.min)
+                    }
                     _ => vout.min,
                 };
                 let watts = match (vin.max, vo_low) {
@@ -711,7 +713,7 @@ impl Ctx<'_> {
                                     " (the output is held at the top of {}; below the {} it needs, the regulator is \
                                      in dropout and drops less)",
                                     design.nets[net].name,
-                                    v(reg.held_at.map_or(0.0, |h| h.needs))
+                                    v(reg.held_at.and_then(|h| h.needs).unwrap_or(0.0))
                                 )
                             }
                         ),
