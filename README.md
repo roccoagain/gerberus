@@ -136,8 +136,9 @@ independent ways, and decides nothing itself:
 - `verify` downloads the datasheet (cached in `~/.cache/gerberus/datasheets`; `--pdf` reads a local copy) and
   looks for every cited value on its page with poppler's `pdftotext`. It finds the table's MIN, TYP and MAX
   columns and its UNIT column, so a typical value filed as a limit, a value in the wrong unit or one from the
-  wrong page shows up. Each value comes out CONFIRMED (right column, unit and a row naming the pin or part
-  number), DERIVED (worked out from printed numbers, as the range's `derived` text says, or a non-polar rating's
+  wrong page shows up. A temperature on a storage row and a value in the other end's column are mismatches;
+  a `derived` range's arithmetic is evaluated against the bound. Each value comes out CONFIRMED (right column, unit and a row naming the pin or part
+  number), DERIVED (worked out from printed numbers by the range's `derived` arithmetic, or a non-polar rating's
   negative end), PLAUSIBLE (on the page, with the doubts listed), NO TEXT (a scanned page to read by eye),
   NOT FOUND or MISMATCH. It exits with status 1 on the last two.
 - `blank` writes the part file with every datasheet value replaced by `"?"`, and `compare` lists every value

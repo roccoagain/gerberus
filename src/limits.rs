@@ -43,6 +43,48 @@ pub struct Part {
     /// diode's forward drop. A checker uses these to work out the voltage on the nets the part drives.
     #[serde(default, rename = "drive")]
     pub drives: Vec<Drive>,
+    /// Electrostatic discharge ratings, per group of pins.
+    #[serde(default)]
+    pub esd: Vec<Esd>,
+}
+
+/// How an ESD rating was tested. A component-level rating (HBM, CDM) only covers handling in a controlled
+/// factory; a pin someone plugs a cable into needs a system-level rating (IEC 61000-4-2) or a clamp.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EsdModel {
+    /// Human-body model (JEDEC JS-001).
+    Hbm,
+    /// Charged-device model (JEDEC JS-002).
+    Cdm,
+    /// IEC 61000-4-2 contact discharge.
+    IecContact,
+    /// IEC 61000-4-2 air-gap discharge.
+    IecAir,
+}
+
+impl EsdModel {
+    pub fn name(self) -> &'static str {
+        match self {
+            EsdModel::Hbm => "HBM",
+            EsdModel::Cdm => "CDM",
+            EsdModel::IecContact => "IEC 61000-4-2 contact",
+            EsdModel::IecAir => "IEC 61000-4-2 air",
+        }
+    }
+}
+
+/// An ESD rating: the pins survive discharges of ± `volts` in this model.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Esd {
+    /// Datasheet pin names. Empty means every pin.
+    #[serde(default)]
+    pub pins: Vec<String>,
+    pub model: EsdModel,
+    pub volts: f64,
+    pub page: u32,
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -384,6 +426,14 @@ impl Part {
             .filter(move |l| l.quantity == quantity && (l.pins.contains(&name) || l.to.as_ref() == Some(&name)))
     }
 
+    /// The ESD ratings that cover a datasheet pin name.
+    pub fn esd_for(&self, name: &str) -> impl Iterator<Item = &Esd> {
+        let name = name.to_string();
+        self.esd
+            .iter()
+            .filter(move |e| e.pins.is_empty() || e.pins.contains(&name))
+    }
+
     /// Pin names no voltage limit mentions, apart from `NC` and `DNC`. A checker must report these as
     /// UNKNOWN; the coverage report lists them.
     pub fn uncovered_pins(&self) -> Vec<&str> {
@@ -563,6 +613,17 @@ impl Part {
                     && r > a
                 {
                     out.push(at(&format!("recommended max {r} reaches outside abs_max max {a}")));
+                }
+            }
+        }
+        for (i, e) in self.esd.iter().enumerate() {
+            let at = |what: &str| format!("esd {} ({}): {what}", i + 1, e.model.name());
+            if !(e.volts > 0.0 && e.volts.is_finite()) || e.page == 0 || self.datasheet.is_none() {
+                out.push(at("needs volts above 0 and a datasheet page"));
+            }
+            for p in &e.pins {
+                if !names.contains(&p.as_str()) {
+                    out.push(at(&format!("pin {p:?} is not in [pins]")));
                 }
             }
         }
@@ -760,6 +821,7 @@ pub fn class_default(c: &Component) -> Option<Part> {
             breakdown: None,
         }],
         drives: Vec::new(),
+        esd: Vec::new(),
     })
 }
 

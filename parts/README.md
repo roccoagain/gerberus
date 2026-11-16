@@ -48,9 +48,13 @@ A range is either `{ min = ..., max = ..., page = N, note = "..." }` or `{ unkno
 
 - `page` is the 1-based page of the PDF at `url` (not the printed page number). It is required whenever a bound
   is known.
-- `derived = "..."` says how a value the page doesn't print was worked out from what it does print, such as
-  `"3.3 V ± 2 %"` for an LDO's output range, or `"VDDIOx + 4.0, and VDDIOx is VDD for these pins"`.
-  `gerberus datasheet verify` then checks that the numbers in it are on the page.
+- `derived = "<min> .. <max>; explanation"` works out a value the page doesn't print from what it does print.
+  Each end is arithmetic on numbers (`+ - * /`, brackets, `sqrt(...)`), such as
+  `"3.3 * 0.98 .. 3.3 * 1.02; VOUT(T) x 0.98 to x 1.02"` for an LDO's output range, or a name plus a number as
+  the page prints it, such as `"-0.3 .. VDDIOx + 4.0; VDDIOx is VDD for these pins"`. Write `-0.3`-style ends
+  even where the bound is printed. `gerberus datasheet verify` evaluates each end and calls a bound that doesn't
+  match a MISMATCH; it looks for the arithmetic's numbers (or the printed name and offset) on the page and
+  lists any it can't find. A derivation never hides a value printed in the wrong column.
 - Each bound is one of:
   - a number: `38`
   - another pin of the same part: `{ pin = "VIN", plus = 0.3 }`, optionally capped:

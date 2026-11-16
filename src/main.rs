@@ -41,7 +41,7 @@ any error FAILs.
 status, and similar parts from other makers. Answers are cached in --cache (default ~/.cache/gerberus/lcsc) for
 --max-age hours (default 24); --offline uses only the cache. It exits with status 1 when any line has an error.
 
-`datasheet` checks part files against their datasheets (see parts/EXTRACTING.md). `verify` downloads each
+`datasheet` checks part files against their datasheets (see .claude/skills/datasheet-to-part). `verify` downloads each
 file's datasheet (cached in --cache, default ~/.cache/gerberus/datasheets), or reads --pdf, and looks for every
 cited value on its page: in the right MIN/TYP/MAX column, in the right unit, on a row that names the pin. It
 needs poppler's `pdftotext`. --all also lists confirmed values. It exits with status 1 when a value is missing

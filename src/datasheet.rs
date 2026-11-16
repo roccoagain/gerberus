@@ -92,6 +92,8 @@ pub struct Claim {
     /// The other end of the same range, when it is a number: a non-polar rating's minimum is the negative of
     /// its maximum, which the page needn't print.
     pub other_end: Option<f64>,
+    /// Words that mark a row as some other quantity: a storage temperature is not an operating one.
+    pub avoid: Vec<String>,
 }
 
 impl fmt::Display for Claimed {
@@ -127,9 +129,14 @@ pub fn claims(part: &Part) -> Vec<Claim> {
             role: Role::Value,
             unit: Unit::Fraction,
             page: t.page,
-            context: vec![],
+            context: vec!["tolerance", "accuracy"]
+                .into_iter()
+                .map(String::from)
+                .chain([part.mpn.clone()])
+                .collect(),
             derived: None,
             other_end: None,
+            avoid: vec![],
         });
     }
     if let Some(t) = &part.tcr {
@@ -139,9 +146,14 @@ pub fn claims(part: &Part) -> Vec<Claim> {
             role: Role::Value,
             unit: Unit::Ppm,
             page: t.page,
-            context: vec![],
+            context: vec!["TCR", "coefficient", "T.C.R"]
+                .into_iter()
+                .map(String::from)
+                .chain([part.mpn.clone()])
+                .collect(),
             derived: None,
             other_end: None,
+            avoid: vec![],
         });
     }
     if let Some(t) = &part.temperature {
@@ -152,9 +164,14 @@ pub fn claims(part: &Part) -> Vec<Claim> {
                 role,
                 unit: Unit::Celsius,
                 page: t.page,
-                context: vec![],
+                context: vec!["operating", "TOPR", "TA", "TJ", "ambient", "junction"]
+                    .into_iter()
+                    .map(String::from)
+                    .chain([part.mpn.clone()])
+                    .collect(),
                 derived: None,
                 other_end: None,
+                avoid: vec!["storage".into(), "TSTG".into()],
             });
         }
     }
@@ -185,6 +202,31 @@ pub fn claims(part: &Part) -> Vec<Claim> {
             }
         }
     }
+    for (i, e) in part.esd.iter().enumerate() {
+        let pins: Vec<&str> = e.pins.iter().map(String::as_str).collect();
+        let mut context = named(&pins);
+        context.insert(0, e.model.name().split(' ').next().unwrap_or("").to_string());
+        out.push(Claim {
+            label: format!(
+                "esd {} ({}, {})",
+                i + 1,
+                e.model.name(),
+                if pins.is_empty() {
+                    "all pins".to_string()
+                } else {
+                    pins.join(", ")
+                }
+            ),
+            value: Claimed::Number(e.volts),
+            role: Role::Value,
+            unit: Unit::Volt,
+            page: e.page,
+            context,
+            derived: None,
+            other_end: None,
+            avoid: vec![],
+        });
+    }
     for (i, d) in part.drives.iter().enumerate() {
         let kind = match d.kind {
             DriveKind::Regulates => "regulates",
@@ -205,6 +247,7 @@ pub fn claims(part: &Part) -> Vec<Claim> {
                     context: vec![],
                     derived: None,
                     other_end: None,
+                    avoid: vec![],
                 });
             }
             if h.volts > 0.0 {
@@ -217,6 +260,7 @@ pub fn claims(part: &Part) -> Vec<Claim> {
                     context: vec![],
                     derived: None,
                     other_end: None,
+                    avoid: vec![],
                 });
             }
         }
@@ -253,6 +297,7 @@ fn range_claims(label: &str, r: &Range, unit: Unit, context: &[String], out: &mu
                         context: context.to_vec(),
                         derived: derived.clone(),
                         other_end: None,
+                        avoid: vec![],
                     });
                 }
                 Claimed::Pin {
@@ -271,6 +316,7 @@ fn range_claims(label: &str, r: &Range, unit: Unit, context: &[String], out: &mu
             context: context.to_vec(),
             derived: derived.clone(),
             other_end: other,
+            avoid: vec![],
         });
     }
 }
@@ -371,10 +417,22 @@ fn is_minus(c: char) -> bool {
 }
 
 /// Reads a unit right after a number (`mV`, ` V`, `%`, `°C`, `ppm`). `None` when there isn't one.
-fn unit_at(chars: &[char], mut i: usize) -> Option<(Unit, f64, usize)> {
-    if chars.get(i) == Some(&' ') {
-        i += 1;
+fn unit_at(chars: &[char], i: usize) -> Option<(Unit, f64, usize)> {
+    // Right after the number, or after one space; or, as a table's next cell, after a wider gap when the cell
+    // is nothing but a unit.
+    let gap = chars[i.min(chars.len())..].iter().take_while(|c| **c == ' ').count();
+    if gap <= 1 {
+        return unit_word(chars, i + gap);
     }
+    if gap > 16 {
+        return None;
+    }
+    let found = unit_word(chars, i + gap)?;
+    let alone = chars.get(found.2).is_none_or(|c| c.is_whitespace());
+    alone.then_some(found)
+}
+
+fn unit_word(chars: &[char], i: usize) -> Option<(Unit, f64, usize)> {
     let rest: String = chars[i.min(chars.len())..].iter().take(8).collect();
     let (scale, after) = match rest.chars().next()? {
         'm' if !rest.starts_with("mm") && !rest.starts_with("min") => (1e-3, &rest[1..]),
@@ -393,8 +451,10 @@ fn unit_at(chars: &[char], mut i: usize) -> Option<(Unit, f64, usize)> {
         (Unit::Amp, 1)
     } else if after.starts_with('W') && boundary(after, 1) {
         (Unit::Watt, 1)
-    } else if after.starts_with("°C") || after.starts_with('℃') || after.starts_with("ºC") {
+    } else if after.starts_with('℃') {
         (Unit::Celsius, 1)
+    } else if after.starts_with("°C") || after.starts_with("ºC") {
+        (Unit::Celsius, 2)
     } else if after.starts_with(['%', '％']) {
         (Unit::Fraction, 1)
     } else {
@@ -404,11 +464,28 @@ fn unit_at(chars: &[char], mut i: usize) -> Option<(Unit, f64, usize)> {
     if scale != 1.0 && !matches!(unit, Unit::Volt | Unit::Amp | Unit::Watt) {
         return None;
     }
+    let prefix = usize::from(scale != 1.0);
     let scale = if unit == Unit::Fraction { 0.01 } else { scale };
-    Some((unit, scale, i + len))
+    Some((unit, scale, i + prefix + len))
 }
 
 /// Whether the text ends with a ground pin's name, so `VSS - 0.3` reads as -0.3 V.
+/// Whether the text ends with a pin name, such as `VIN` or `VDDIOx` or `V(BAT)`: a sign after it makes an offset
+/// (`VIN + 0.3`). Words like `to` and units (`-0.3 V – 6.0 V`) make a range instead.
+fn names_a_pin(chars: &[char]) -> bool {
+    let text: String = chars.iter().collect();
+    let word = text.rsplit(char::is_whitespace).next().unwrap_or("");
+    let bare = word.trim_end_matches(')');
+    bare.chars().count() >= 2
+        && bare.chars().next().is_some_and(char::is_alphabetic)
+        && bare.chars().any(|c| c.is_ascii_uppercase())
+        && bare
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '(' | '_'))
+        && !matches!(bare, "TO" | "AND" | "OR")
+        && unit_word(&bare.chars().collect::<Vec<_>>(), 0).is_none_or(|(_, _, end)| end < bare.chars().count())
+}
+
 fn ends_with_ground(chars: &[char]) -> bool {
     let text: String = chars.iter().collect();
     let word = text
@@ -447,13 +524,23 @@ fn tokens(line: &str) -> Vec<Token> {
         while j < chars.len() && chars[j].is_ascii_digit() {
             j += 1;
         }
+        // Thousands separators: `2,000`, `15,000`.
+        let mut grouped = false;
+        while j - i <= 3 + 4 * usize::from(grouped)
+            && chars.get(j) == Some(&',')
+            && (1..=3).all(|d| chars.get(j + d).is_some_and(char::is_ascii_digit))
+            && !chars.get(j + 4).is_some_and(char::is_ascii_digit)
+        {
+            grouped = true;
+            j += 4;
+        }
         if chars.get(j) == Some(&'.') && chars.get(j + 1).is_some_and(char::is_ascii_digit) {
             j += 1;
             while j < chars.len() && chars[j].is_ascii_digit() {
                 j += 1;
             }
         }
-        let mut text: String = chars[i..j].iter().collect();
+        let mut text: String = chars[i..j].iter().filter(|c| **c != ',').collect();
         // 1/16 W
         if chars.get(j) == Some(&'/') && chars.get(j + 1).is_some_and(char::is_ascii_digit) {
             let mut k = j + 1;
@@ -481,6 +568,23 @@ fn tokens(line: &str) -> Vec<Token> {
             i = j;
             continue;
         };
+        // The offset in `VIN + 0.3` or `VDD - 0.4` belongs to a relative bound, not a number of its own. (A wide
+        // gap before the sign makes it a table cell instead: `voltage     - 0.3`.)
+        let mut q = i;
+        if q > 0 && chars[q - 1] == ' ' {
+            q -= 1;
+        }
+        if q > 0 && (matches!(chars[q - 1], '+' | '＋') || is_minus(chars[q - 1])) {
+            let sign = q - 1;
+            let mut r = sign;
+            if r > 0 && chars[r - 1] == ' ' {
+                r -= 1;
+            }
+            if names_a_pin(&chars[..r]) && !(is_minus(chars[sign]) && ends_with_ground(&chars[..sign])) {
+                i = j.max(i + 1);
+                continue;
+            }
+        }
         // Look back for a sign: `-0.3`, `– 0.3`, `±2000`, `± 15`.
         let mut start = i;
         let mut plus_minus = false;
@@ -525,7 +629,8 @@ fn tokens(line: &str) -> Vec<Token> {
         };
         out.push(Token {
             start,
-            end: end.max(j),
+            // The number's own extent: a unit in the next cell mustn't pull it towards the UNIT column.
+            end: j,
             value,
             plus_minus,
             unit: unit.map(|(u, s, _)| (u, s)),
@@ -693,10 +798,11 @@ pub fn check_claim(claim: &Claim, page: &str) -> Outcome {
             evidence: vec![],
         };
     };
-    // A worked-out value that happens to be printed elsewhere on the page in another unit is still worked out.
-    if best == Status::Mismatch
+    // A worked-out value is checked by its arithmetic, but never hides a value printed in the wrong place.
+    if best != Status::Mismatch
         && claim.derived.is_some()
         && let Some(o) = derivation(claim, page)
+        && (o.status == Status::Mismatch || o.status > best)
     {
         return o;
     }
@@ -709,52 +815,267 @@ pub fn check_claim(claim: &Claim, page: &str) -> Outcome {
     }
 }
 
+/// One end of a `derived` range: a number worked out from printed ones, or a pin plus an offset as the page
+/// names it (`VDDIOx + 4.0`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum DerivedEnd {
+    Number {
+        value: f64,
+        /// The numbers the arithmetic starts from.
+        inputs: Vec<f64>,
+    },
+    Pin {
+        pin: String,
+        plus: f64,
+    },
+}
+
+/// A range's `derived` text, `<min> .. <max>; explanation`, with each end worked out.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Derived {
+    pub min: DerivedEnd,
+    pub max: DerivedEnd,
+    pub explanation: String,
+}
+
+/// Reads a `derived` text: `<min> .. <max>; explanation`. Each end is arithmetic on numbers (`+ - * /`,
+/// brackets and `sqrt(...)`), or a pin name plus or minus a number as the page prints it.
+///
+/// # Errors
+///
+/// Says what is wrong when the text doesn't have that shape.
+pub fn parse_derived(text: &str) -> Result<Derived, String> {
+    let (ends, explanation) = text.split_once(';').ok_or("no `;` before the explanation")?;
+    let (min, max) = ends.split_once("..").ok_or("no `..` between the two ends")?;
+    let explanation = explanation.trim();
+    if explanation.is_empty() {
+        return Err("no explanation after the `;`".into());
+    }
+    Ok(Derived {
+        min: parse_end(min)?,
+        max: parse_end(max)?,
+        explanation: explanation.to_string(),
+    })
+}
+
+fn parse_end(text: &str) -> Result<DerivedEnd, String> {
+    let text = text.trim();
+    let first = text.chars().next().ok_or("an empty end")?;
+    if first.is_ascii_alphabetic() && !text.starts_with("sqrt") {
+        let split = text.find(['+', '-']).unwrap_or(text.len());
+        let pin = text[..split].trim();
+        if pin.is_empty() || !pin.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            return Err(format!("{text:?} isn't a pin plus a number"));
+        }
+        let rest = text[split..].replace(' ', "");
+        let plus = if rest.is_empty() {
+            0.0
+        } else {
+            rest.parse::<f64>()
+                .map_err(|_| format!("{text:?} isn't a pin plus a number"))?
+        };
+        return Ok(DerivedEnd::Pin {
+            pin: pin.to_string(),
+            plus,
+        });
+    }
+    let mut p = Arith {
+        chars: text.chars().filter(|c| !c.is_whitespace()).collect(),
+        at: 0,
+        inputs: vec![],
+    };
+    let value = p.sum()?;
+    if p.at != p.chars.len() {
+        return Err(format!(
+            "can't read {text:?} past {:?}",
+            p.chars[p.at..].iter().collect::<String>()
+        ));
+    }
+    Ok(DerivedEnd::Number {
+        value,
+        inputs: p.inputs,
+    })
+}
+
+struct Arith {
+    chars: Vec<char>,
+    at: usize,
+    inputs: Vec<f64>,
+}
+
+impl Arith {
+    fn eat(&mut self, c: char) -> bool {
+        if self.chars.get(self.at) == Some(&c) {
+            self.at += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn sum(&mut self) -> Result<f64, String> {
+        let mut v = self.product()?;
+        loop {
+            if self.eat('+') {
+                v += self.product()?;
+            } else if self.eat('-') {
+                v -= self.product()?;
+            } else {
+                return Ok(v);
+            }
+        }
+    }
+
+    fn product(&mut self) -> Result<f64, String> {
+        let mut v = self.unary()?;
+        loop {
+            if self.eat('*') {
+                v *= self.unary()?;
+            } else if self.eat('/') {
+                v /= self.unary()?;
+            } else {
+                return Ok(v);
+            }
+        }
+    }
+
+    fn unary(&mut self) -> Result<f64, String> {
+        if self.eat('-') {
+            return Ok(-self.unary()?);
+        }
+        if self.chars[self.at..].starts_with(&['s', 'q', 'r', 't', '(']) {
+            self.at += 4;
+            let v = self.unary()?;
+            return if v < 0.0 {
+                Err("sqrt of a negative number".into())
+            } else {
+                Ok(v.sqrt())
+            };
+        }
+        if self.eat('(') {
+            let v = self.sum()?;
+            return if self.eat(')') {
+                Ok(v)
+            } else {
+                Err("a `(` without its `)`".into())
+            };
+        }
+        let start = self.at;
+        while self.chars.get(self.at).is_some_and(|c| c.is_ascii_digit() || *c == '.') {
+            self.at += 1;
+        }
+        let text: String = self.chars[start..self.at].iter().collect();
+        let v = text.parse::<f64>().map_err(|_| {
+            format!(
+                "expected a number at {:?}",
+                self.chars[start..].iter().collect::<String>()
+            )
+        })?;
+        self.inputs.push(v);
+        Ok(v)
+    }
+}
+
 /// A value the page doesn't print but that follows from it.
 fn derivation(claim: &Claim, page: &str) -> Option<Outcome> {
-    let outcome = |reason: String| Outcome {
+    let outcome = |status: Status, reason: String| Outcome {
         claim: claim.clone(),
-        status: Status::Derived,
+        status,
         reason,
         evidence: vec![],
     };
     if let Some(text) = &claim.derived {
-        let printed: Vec<f64> = page.lines().flat_map(tokens).map(|t| t.value).collect();
-        let own = match claim.value {
-            Claimed::Number(v) => Some(v.abs()),
-            Claimed::Pin { .. } => None,
+        let d = match parse_derived(text) {
+            Ok(d) => d,
+            Err(e) => return Some(outcome(Status::Mismatch, format!("can't read the derived text: {e}"))),
         };
-        // 0, 1 and 100 are arithmetic (1 − 2 %, 100 %), and the value itself is the result, not an input.
-        let inputs: Vec<f64> = tokens(text)
-            .iter()
-            .map(|t| t.value.abs())
-            .filter(|v| ![0.0, 1.0, 100.0].contains(v) && own.is_none_or(|o| !close(o, *v)))
-            .collect();
-        let (here, elsewhere): (Vec<f64>, Vec<f64>) =
-            inputs.iter().partition(|v| printed.iter().any(|p| close(p.abs(), **v)));
-        // Some inputs come from another page or the part number (a resistor's value), so one printed input is
-        // enough to tie the derivation to this page; the rest are listed for whoever checks the arithmetic.
-        let list = |v: &[f64]| v.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
-        return Some(if here.is_empty() && !inputs.is_empty() {
-            Outcome {
-                claim: claim.clone(),
-                status: Status::NotFound,
-                reason: format!("derived from {text:?}, but none of {} is on the page", list(&inputs)),
-                evidence: vec![],
+        let end = if claim.role == Role::Min { &d.min } else { &d.max };
+        return Some(match (end, &claim.value) {
+            (DerivedEnd::Number { value, inputs }, Claimed::Number(want)) => {
+                // Part files round worked-out values to four significant figures.
+                if (value - want).abs() > 5e-4 * value.abs().max(want.abs()) + 1e-12 {
+                    return Some(outcome(
+                        Status::Mismatch,
+                        format!("the derived arithmetic gives {value:.4}, not {want}"),
+                    ));
+                }
+                // A percentage counts as itself and as a fraction: `2 %` backs an input of 0.02.
+                let printed: Vec<f64> = page
+                    .lines()
+                    .flat_map(tokens)
+                    .flat_map(|t| {
+                        let v = t.value.abs();
+                        [
+                            Some(v),
+                            matches!(t.unit, Some((Unit::Fraction, _))).then_some(v / 100.0),
+                        ]
+                    })
+                    .flatten()
+                    .collect();
+                // 0, 1 and 100 are arithmetic (1 − 2 %, 100 %), not readings.
+                let missing: Vec<String> = inputs
+                    .iter()
+                    .filter(|v| ![0.0, 1.0, 100.0].contains(*v) && !printed.iter().any(|p| close(*p, **v)))
+                    .map(ToString::to_string)
+                    .collect();
+                if missing.is_empty() {
+                    outcome(Status::Derived, format!("derived: {}", d.explanation))
+                } else {
+                    outcome(
+                        Status::Plausible,
+                        format!(
+                            "derived: {} ({} not on this page; check where they come from)",
+                            d.explanation,
+                            missing.join(", ")
+                        ),
+                    )
+                }
             }
-        } else if elsewhere.is_empty() {
-            outcome(format!("derived: {text}"))
-        } else {
-            outcome(format!("derived: {text} ({} not on this page)", list(&elsewhere)))
+            (DerivedEnd::Pin { pin, plus }, Claimed::Pin { plus: want, .. }) => {
+                if !close(*plus, *want) {
+                    return Some(outcome(
+                        Status::Mismatch,
+                        format!("the derived text gives {pin} + {plus}, but the part file adds {want}"),
+                    ));
+                }
+                let as_printed = Claim {
+                    value: Claimed::Pin {
+                        pin: pin.clone(),
+                        plus: *plus,
+                    },
+                    derived: None,
+                    ..claim.clone()
+                };
+                let found = check_claim(&as_printed, page);
+                if found.status >= Status::Plausible {
+                    outcome(
+                        found.status.min(Status::Derived),
+                        format!("printed as {pin} + {plus}: {}", d.explanation),
+                    )
+                } else {
+                    outcome(Status::NotFound, format!("{pin} + {plus} isn't on the page either"))
+                }
+            }
+            // A cap on a relative bound is an ordinary number; the derived text is about the bound.
+            (DerivedEnd::Pin { .. }, Claimed::Number(_)) => return None,
+            (DerivedEnd::Number { .. }, Claimed::Pin { .. }) => outcome(
+                Status::Mismatch,
+                "the derived text gives a number, but the part file has a pin bound".into(),
+            ),
         });
     }
     let Claimed::Number(want) = claim.value else {
         return None;
     };
     if want == 0.0 {
-        return Some(outcome("zero, the bottom of a rating that only gives a maximum".into()));
+        return Some(outcome(
+            Status::Derived,
+            "zero, the bottom of a rating that only gives a maximum".into(),
+        ));
     }
     if claim.role == Role::Min && claim.other_end.is_some_and(|o| close(o, -want)) {
         return Some(outcome(
+            Status::Derived,
             "the negative of the maximum: the rating applies in both polarities".into(),
         ));
     }
@@ -773,14 +1094,19 @@ fn row_mentions(claim: &Claim, lines: &[&str], n: usize) -> bool {
 
 fn role_fits(role: Role, col: Col, plus_minus: bool) -> bool {
     match (role, col) {
-        // A one-figure rating (a tolerance, a duty cycle) is often printed as the only number on its row.
-        (_, Col::Value)
-        | (Role::Min, Col::Min)
-        | (Role::Max, Col::Max)
-        | (Role::Value, Col::Min | Col::Max | Col::Typ) => true,
+        // A one-figure rating (a tolerance, a duty cycle) is often printed in a MIN or MAX column on its own.
+        (_, Col::Value) | (Role::Min, Col::Min) | (Role::Max, Col::Max) | (Role::Value, Col::Min | Col::Max) => true,
         // ±15 kV in a MAX column bounds both ends.
         (Role::Min, Col::Max) => plus_minus,
         _ => false,
+    }
+}
+
+fn as_role(role: Role) -> &'static str {
+    match role {
+        Role::Min => "a minimum",
+        Role::Max => "a maximum",
+        Role::Value => "a rating",
     }
 }
 
@@ -816,19 +1142,20 @@ fn judge_number(claim: &Claim, want: f64, t: &Token, lines: &[&str], n: usize) -
         Some(_) => Some((Col::Max, n)),
         None => col,
     };
+    // A number printed with another unit is another quantity, not this one.
+    if !unit_ok && unit_printed {
+        return None;
+    }
     match col {
-        // A typical value filed as a limit is the mistake that matters most.
-        Some((Col::Typ, _)) if claim.role != Role::Value => {
+        // A typical value filed as a limit, or one end filed as the other, is the mistake that matters most.
+        // (On a row about some other pin, the number is most likely some other quantity.)
+        Some((c @ (Col::Typ | Col::Min | Col::Max), _)) if row && !role_fits(claim.role, c, t.plus_minus) => {
             return Some((
                 Status::Mismatch,
                 0,
                 format!(
-                    "found only in the TYP column, but the part file uses it as {}",
-                    match claim.role {
-                        Role::Min => "a minimum",
-                        Role::Max => "a maximum",
-                        Role::Value => "a rating",
-                    }
+                    "found only as {c}, but the part file uses it as {}",
+                    as_role(claim.role)
                 ),
             ));
         }
@@ -839,8 +1166,16 @@ fn judge_number(claim: &Claim, want: f64, t: &Token, lines: &[&str], n: usize) -
         None => doubts.push("no MIN/TYP/MAX header above it".to_string()),
     }
     let other_unit = unit.map_or("?", |((u, _), _)| u.symbol());
-    if !unit_ok && unit_printed {
-        return Some((Status::Mismatch, 0, format!("the number is there, but in {other_unit}")));
+    if let Some(bad) = claim.avoid.iter().find(|w| mentions(lines[n], w))
+        && !claim.context[..claim.context.len().saturating_sub(1)]
+            .iter()
+            .any(|w| mentions(lines[n], w))
+    {
+        return Some((
+            Status::Mismatch,
+            0,
+            format!("found only on a row about {bad}, which isn't what the part file uses it as"),
+        ));
     }
     if !unit_ok {
         doubts.push(format!("the UNIT column near it says {other_unit}"));
@@ -1015,7 +1350,11 @@ pub fn render(mpn: &str, outcomes: &[Outcome], all: bool) -> String {
 }
 
 /// The keys of a part file whose values a second reader fills in.
-const VALUE_KEYS: [&str; 8] = [
+const VALUE_KEYS: [&str; 12] = [
+    "description",
+    "note",
+    "volts",
+    "page",
     "abs_max",
     "recommended",
     "breakdown",
@@ -1236,6 +1575,30 @@ pub fn compare(first: &Part, second: &Part) -> Vec<Difference> {
             at: "drives".into(),
             first: format!("{} drives", first.drives.len()),
             second: format!("{} drives", second.drives.len()),
+        });
+    }
+    let esd = |p: &Part| -> Vec<String> {
+        let mut v: Vec<String> = p
+            .esd
+            .iter()
+            .map(|e| format!("{} {:?} ±{} V (page {})", e.model.name(), e.pins, e.volts, e.page))
+            .collect();
+        v.sort();
+        v
+    };
+    let (ea, eb) = (esd(first), esd(second));
+    for x in ea.iter().filter(|x| !eb.contains(x)) {
+        out.push(Difference {
+            at: "esd".into(),
+            first: x.clone(),
+            second: "absent or different".into(),
+        });
+    }
+    for x in eb.iter().filter(|x| !ea.contains(x)) {
+        out.push(Difference {
+            at: "esd".into(),
+            first: "absent or different".into(),
+            second: x.clone(),
         });
     }
     for (i, (a, b)) in first.drives.iter().zip(&second.drives).enumerate() {

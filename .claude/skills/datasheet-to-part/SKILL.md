@@ -31,7 +31,8 @@ Write `parts/<MPN>.toml`. For each number:
    narrows it. Put them in `note`.
 5. Cite the 1-based page of the PDF file (not the printed page number).
 6. If the page doesn't print the number but it follows from what is printed (an LDO output from 3.3 V ± 2 %),
-   write the result and say how in `derived = "..."` inside the range.
+   write the result and the arithmetic in `derived = "<min> .. <max>; explanation"` inside the range, such as
+   `derived = "3.3 * 0.98 .. 3.3 * 1.02; VOUT(T) x 0.98 to x 1.02"` (see parts/README.md). `verify` evaluates it.
 7. Re-read the source row against what you wrote.
 
 Anything not given is `{ unknown = "reason" }`. Never fill a gap from another part or from experience.

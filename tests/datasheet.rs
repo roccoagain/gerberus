@@ -3,7 +3,9 @@
 
 use std::path::{Path, PathBuf};
 
-use gerberus::datasheet::{Claim, Claimed, Role, Status, Unit, blank, check_claim, claims, compare, verify_with};
+use gerberus::datasheet::{
+    Claim, Claimed, DerivedEnd, Role, Status, Unit, blank, check_claim, claims, compare, parse_derived, verify_with,
+};
 use gerberus::limits::{Library, Part};
 
 fn root(rel: &str) -> PathBuf {
@@ -20,6 +22,7 @@ fn claim(value: f64, role: Role, unit: Unit, context: &[&str]) -> Claim {
         context: context.iter().map(|s| (*s).to_string()).collect(),
         derived: None,
         other_end: None,
+        avoid: vec![],
     }
 }
 
@@ -72,9 +75,9 @@ fn units_come_from_the_unit_column_and_are_scaled() {
     // The same number taken as amps isn't there.
     let o = check_claim(&claim(120.0, Role::Max, Unit::Amp, &[]), ELECTRICAL);
     assert_eq!(o.status, Status::NotFound, "{o:?}");
-    // A number in a different unit than claimed is a mismatch.
+    // A number printed in another unit is another quantity, so the claim isn't found.
     let o = check_claim(&claim(36.0, Role::Max, Unit::Amp, &["VIN"]), ELECTRICAL);
-    assert_eq!(o.status, Status::Mismatch, "{o:?}");
+    assert_eq!(o.status, Status::NotFound, "{o:?}");
 }
 
 #[test]
@@ -175,13 +178,26 @@ Output voltage                         VOUT                3.3                  
 ";
     let mut c = claim(3.234, Role::Min, Unit::Volt, &["VOUT"]);
     assert_eq!(check_claim(&c, page).status, Status::NotFound);
-    c.derived = Some("3.3 V × (1 − 2 %)".into());
+    c.derived = Some("3.3 - 3.3 * 0.02 .. 3.3 + 3.3 * 0.02; VOUT ± 2 %".into());
     let o = check_claim(&c, page);
     assert_eq!(o.status, Status::Derived, "{o:?}");
-    c.derived = Some("4.1 V ± 3 %".into());
+    // Arithmetic that doesn't give the claimed value is a mismatch.
+    c.derived = Some("3.3 * 0.97 .. 3.3 * 1.03; VOUT ± 3 %".into());
     let o = check_claim(&c, page);
-    assert_eq!(o.status, Status::NotFound, "{o:?}");
-    assert!(o.reason.contains('3'), "{}", o.reason);
+    assert_eq!(o.status, Status::Mismatch, "{o:?}");
+    assert!(o.reason.contains("3.201"), "{}", o.reason);
+    // Inputs the page doesn't print are listed for whoever checks them.
+    let mut r = claim(7.906, Role::Max, Unit::Volt, &[]);
+    r.derived = Some("-sqrt(0.0625 * 1000) .. sqrt(0.0625 * 1000); RCWV = sqrt(P x R)".into());
+    let o = check_claim(
+        &r,
+        "Rated power (0402)         1/16      W\nsomething else entirely here ok\n",
+    );
+    assert_eq!(o.status, Status::Plausible, "{o:?}");
+    assert!(o.reason.contains("1000 not on this page"), "{}", o.reason);
+    // A text that isn't `<min> .. <max>; explanation` is reported.
+    c.derived = Some("3.3 V × (1 − 2 %)".into());
+    assert_eq!(check_claim(&c, page).status, Status::Mismatch);
     // A non-polar rating's minimum is the negative of its maximum; a zero is the bottom of a maximum.
     let mut sym = claim(-3.3, Role::Min, Unit::Volt, &[]);
     sym.other_end = Some(3.3);
@@ -190,6 +206,81 @@ Output voltage                         VOUT                3.3                  
         check_claim(&claim(0.0, Role::Min, Unit::Watt, &[]), page).status,
         Status::Derived
     );
+}
+
+#[test]
+fn derived_texts_parse() {
+    let d = parse_derived("-sqrt(1/16 * 100) .. VDDIOx + 4.0; why").unwrap();
+    assert_eq!(
+        d.min,
+        DerivedEnd::Number {
+            value: -2.5,
+            inputs: vec![1.0, 16.0, 100.0]
+        }
+    );
+    assert_eq!(
+        d.max,
+        DerivedEnd::Pin {
+            pin: "VDDIOx".into(),
+            plus: 4.0
+        }
+    );
+    assert_eq!(d.explanation, "why");
+    assert!(parse_derived("1 .. 2").is_err());
+    assert!(parse_derived("1 .. (2; why").is_err());
+    assert!(parse_derived("1 .. 2 x 3; why").is_err());
+}
+
+#[test]
+fn relative_bounds_can_be_derived_from_another_name() {
+    let page = "
+                                                   Min      Max
+VIN       I/O input voltage     TC and RST I/O     -0.3     VDDIOx+0.3      V
+";
+    let mut c = Claim {
+        value: Claimed::Pin {
+            pin: "VDD".into(),
+            plus: 0.3,
+        },
+        ..claim(0.0, Role::Max, Unit::Volt, &["NRST"])
+    };
+    assert!(check_claim(&c, page).is_problem());
+    c.derived = Some("-0.3 .. VDDIOx + 0.3; NRST is supplied by VDD".into());
+    let o = check_claim(&c, page);
+    assert!(!o.is_problem(), "{o:?}");
+    c.derived = Some("-0.3 .. VDDIOx + 0.4; wrong offset".into());
+    assert_eq!(check_claim(&c, page).status, Status::Mismatch);
+}
+
+#[test]
+fn offsets_storage_rows_and_thousands() {
+    let page = "
+                                              Min       Max      Unit
+VEN         EN voltage                        -0.3      VIN + 0.3   V
+TSTG        Storage temperature               -65       150      °C
+TJ          Operating junction temperature    -40       125      °C
+VESD        Human-body model                            2,000    V
+";
+    // `+ 0.3` after VIN is an offset, not a voltage of its own.
+    assert_eq!(
+        check_claim(&claim(0.3, Role::Max, Unit::Volt, &["EN"]), page).status,
+        Status::NotFound
+    );
+    let temp = |v: f64, role: Role| Claim {
+        avoid: vec!["storage".into(), "TSTG".into()],
+        ..claim(v, role, Unit::Celsius, &["operating", "X"])
+    };
+    assert_eq!(check_claim(&temp(-40.0, Role::Min), page).status, Status::Confirmed);
+    let o = check_claim(&temp(150.0, Role::Max), page);
+    assert_eq!(o.status, Status::Mismatch, "{o:?}");
+    assert!(o.reason.contains("storage"), "{}", o.reason);
+    assert_eq!(
+        check_claim(&claim(2000.0, Role::Max, Unit::Volt, &[]), page).status,
+        Status::Confirmed
+    );
+    // A maximum filed as a minimum, on the pin's own row, is a mismatch.
+    let o = check_claim(&claim(-0.3, Role::Max, Unit::Volt, &["VEN"]), page);
+    assert_eq!(o.status, Status::Mismatch, "{o:?}");
 }
 
 #[test]
@@ -272,6 +363,9 @@ fn every_library_file_blanks_and_compares_with_itself() {
         }
         for c in claims(part) {
             assert!(c.page > 0, "{mpn}: {}", c.label);
+            if let Some(d) = &c.derived {
+                assert!(parse_derived(d).is_ok(), "{mpn}: {}: {:?}", c.label, parse_derived(d));
+            }
         }
         assert!(compare(part, part).is_empty(), "{mpn}");
         let text = std::fs::read_to_string(path).unwrap();
@@ -283,7 +377,14 @@ fn every_library_file_blanks_and_compares_with_itself() {
                 "{mpn}: {key}"
             );
         }
-        assert!(!blanked.contains("page ="), "{mpn}: a page leaked into the blank copy");
+        assert!(
+            !blanked.lines().any(|l| l.starts_with("page = ") && !l.contains('?')),
+            "{mpn}: a page leaked into the blank copy"
+        );
+        assert!(
+            !blanked.contains("page = 1") && !blanked.contains(", page"),
+            "{mpn}: a page leaked"
+        );
     }
 }
 
