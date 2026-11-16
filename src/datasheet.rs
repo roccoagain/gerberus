@@ -32,6 +32,8 @@ pub enum Unit {
     Ppm,
     /// A fraction (0.01) that a datasheet prints as a percentage (1 %).
     Fraction,
+    /// Thermal resistance, °C/W (or K/W).
+    CelsiusPerWatt,
 }
 
 impl Unit {
@@ -51,6 +53,7 @@ impl Unit {
             Unit::Celsius => "°C",
             Unit::Ppm => "ppm",
             Unit::Fraction => "",
+            Unit::CelsiusPerWatt => "°C/W",
         }
     }
 }
@@ -227,6 +230,62 @@ pub fn claims(part: &Part) -> Vec<Claim> {
             avoid: vec![],
         });
     }
+    let thermal = [
+        (
+            "theta_ja",
+            &part.theta_ja,
+            Unit::CelsiusPerWatt,
+            ["thermal", "θJA", "RθJA"],
+        ),
+        ("tj_max", &part.tj_max, Unit::Celsius, ["junction", "TJ", "Tj"]),
+    ];
+    if let Some(e) = &part.efficiency {
+        out.push(Claim {
+            label: "efficiency".into(),
+            value: Claimed::Number(e.value),
+            role: Role::Min,
+            unit: Unit::Fraction,
+            page: e.page,
+            context: vec!["efficiency".into(), part.mpn.clone()],
+            derived: None,
+            other_end: None,
+            avoid: vec![],
+        });
+    }
+    for (label, r, unit, words) in thermal {
+        if let Some(r) = r {
+            out.push(Claim {
+                label: label.into(),
+                value: Claimed::Number(r.value),
+                role: if label == "tj_max" { Role::Max } else { Role::Value },
+                unit,
+                page: r.page,
+                context: words
+                    .iter()
+                    .map(|w| (*w).to_string())
+                    .chain([part.mpn.clone()])
+                    .collect(),
+                derived: None,
+                other_end: None,
+                avoid: if label == "tj_max" {
+                    vec!["storage".into(), "TSTG".into()]
+                } else {
+                    vec![]
+                },
+            });
+        }
+    }
+    for (i, s) in part.supply.iter().enumerate() {
+        let pins: Vec<&str> = s.pins.iter().map(String::as_str).collect();
+        let context = named(&pins);
+        range_claims(
+            &format!("supply {} ({})", i + 1, s.pins.join(", ")),
+            &s.current,
+            Unit::Amp,
+            &context,
+            &mut out,
+        );
+    }
     for (i, d) in part.drives.iter().enumerate() {
         let kind = match d.kind {
             DriveKind::Regulates => "regulates",
@@ -236,6 +295,19 @@ pub fn claims(part: &Part) -> Vec<Claim> {
         let context = named(&[d.pin.as_str(), d.to.as_str()]);
         let label = format!("drive {} ({kind} {} to {})", i + 1, d.pin, d.to);
         range_claims(&label, &d.range, Unit::Volt, &context, &mut out);
+        if let (Some(amps), Range::Known { page: Some(page), .. }) = (d.current, &d.range) {
+            out.push(Claim {
+                label: format!("{label} test current"),
+                value: Claimed::Number(amps),
+                role: Role::Value,
+                unit: Unit::Amp,
+                page: *page,
+                context: context.clone(),
+                derived: None,
+                other_end: None,
+                avoid: vec![],
+            });
+        }
         if let Some(h) = &d.headroom {
             if h.duty < 1.0 {
                 out.push(Claim {
@@ -434,6 +506,11 @@ fn unit_at(chars: &[char], i: usize) -> Option<(Unit, f64, usize)> {
 
 fn unit_word(chars: &[char], i: usize) -> Option<(Unit, f64, usize)> {
     let rest: String = chars[i.min(chars.len())..].iter().take(8).collect();
+    for (form, len) in [("°C/W", 4), ("ºC/W", 4), ("℃/W", 3), ("K/W", 3)] {
+        if rest.starts_with(form) {
+            return Some((Unit::CelsiusPerWatt, 1.0, i + len));
+        }
+    }
     let (scale, after) = match rest.chars().next()? {
         'm' if !rest.starts_with("mm") && !rest.starts_with("min") => (1e-3, &rest[1..]),
         'µ' | 'μ' => (1e-6, &rest['µ'.len_utf8()..]),
@@ -606,7 +683,7 @@ fn tokens(line: &str) -> Vec<Token> {
         }
         if k > 0 {
             let s = chars[k - 1];
-            let before_ok = k < 2 || !chars[k - 2].is_alphanumeric();
+            let before_ok = k < 2 || !chars[k - 2].is_ascii_alphanumeric();
             if s == '±' {
                 plus_minus = true;
                 start = k - 1;
@@ -1120,16 +1197,28 @@ fn judge_number(claim: &Claim, want: f64, t: &Token, lines: &[&str], n: usize) -
         .unit
         .map(|u| (u, true))
         .or_else(|| col.and_then(|(_, h)| unit_column(lines, n, h, own)));
-    let (value_matches, unit_known, unit_ok, unit_printed) = if let Some(((u, scale), printed)) = unit {
-        let v = t.value * scale;
-        let matches = close(v, want) || (t.plus_minus && close(-v, want));
-        (matches, true, u == claim.unit, printed)
-    } else {
-        let matches = close(t.value, want)
-            || (t.plus_minus && close(-t.value, want))
-            || (claim.unit == Unit::Fraction && close(t.value / 100.0, want));
-        (matches, false, true, false)
-    };
+    // A unit from a nearby line that isn't the claim's is likely another row's: read the number as unitless,
+    // with that as a doubt.
+    let nearby_other = unit.filter(|((u, _), printed)| !printed && *u != claim.unit);
+    let (value_matches, unit_known, unit_ok, unit_printed) =
+        if let Some(((u, scale), printed)) = unit.filter(|_| nearby_other.is_none()) {
+            let v = t.value * scale;
+            let matches = close(v, want) || (t.plus_minus && close(-v, want));
+            (matches, true, u == claim.unit, printed)
+        } else {
+            // With no unit in sight, a current or voltage may be printed in milli- or micro- units (a table whose
+            // UNIT column sits on another line). That stays a doubt: the unit isn't printed beside it.
+            let scales: &[f64] = if matches!(claim.unit, Unit::Volt | Unit::Amp | Unit::Watt) {
+                &[1.0, 1e-3, 1e-6]
+            } else {
+                &[1.0]
+            };
+            let matches = scales
+                .iter()
+                .any(|k| close(t.value * k, want) || (t.plus_minus && close(-t.value * k, want)))
+                || (claim.unit == Unit::Fraction && close(t.value / 100.0, want));
+            (matches, false, nearby_other.is_none(), false)
+        };
     if !value_matches {
         return None;
     }
@@ -1350,7 +1439,11 @@ pub fn render(mpn: &str, outcomes: &[Outcome], all: bool) -> String {
 }
 
 /// The keys of a part file whose values a second reader fills in.
-const VALUE_KEYS: [&str; 12] = [
+const VALUE_KEYS: [&str; 16] = [
+    "efficiency",
+    "theta_ja",
+    "tj_max",
+    "current",
     "description",
     "note",
     "volts",
@@ -1539,6 +1632,35 @@ pub fn compare(first: &Part, second: &Part) -> Vec<Difference> {
             .map(|t| format!("{} .. {} °C (page {})", t.min, t.max, t.page)),
         &mut out,
     );
+    let rated = |r: &Option<crate::limits::Rated>| r.as_ref().map(|r| format!("{} (page {})", r.value, r.page));
+    opt("theta_ja", rated(&first.theta_ja), rated(&second.theta_ja), &mut out);
+    opt("tj_max", rated(&first.tj_max), rated(&second.tj_max), &mut out);
+    opt(
+        "efficiency",
+        rated(&first.efficiency),
+        rated(&second.efficiency),
+        &mut out,
+    );
+    if first.supply.len() == second.supply.len() {
+        for (i, (a, b)) in first.supply.iter().zip(&second.supply).enumerate() {
+            let at = format!("supply {} ({})", i + 1, a.pins.join(", "));
+            if a.pins == b.pins {
+                compare_range(&format!("{at} current"), Some(&a.current), Some(&b.current), &mut out);
+            } else {
+                out.push(Difference {
+                    at,
+                    first: format!("{:?}", a.pins),
+                    second: format!("{:?}", b.pins),
+                });
+            }
+        }
+    } else {
+        out.push(Difference {
+            at: "supply".into(),
+            first: format!("{} entries", first.supply.len()),
+            second: format!("{} entries", second.supply.len()),
+        });
+    }
     if first.limits.len() != second.limits.len() {
         out.push(Difference {
             at: "limits".into(),
@@ -1610,6 +1732,12 @@ pub fn compare(first: &Part, second: &Part) -> Vec<Difference> {
                 .map(|h| format!("duty {} volts {} (page {})", h.duty, h.volts, h.page))
         };
         opt(&format!("{at} headroom"), h(a), h(b), &mut out);
+        opt(
+            &format!("{at} test current"),
+            a.current.map(|c| c.to_string()),
+            b.current.map(|c| c.to_string()),
+            &mut out,
+        );
     }
     out
 }

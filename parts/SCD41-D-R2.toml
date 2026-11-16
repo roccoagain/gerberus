@@ -2,6 +2,7 @@ mpn = "SCD41-D-R2"
 manufacturer = "Sensirion"
 description = "Photoacoustic CO2, temperature and humidity sensor, I2C, LGA-20"
 class = "ic"
+temperature = { min = -10, max = 60, page = 4, note = "temperature operating conditions" }
 
 [datasheet]
 title = "SCD4x CO2, temperature and humidity sensor"
@@ -60,3 +61,7 @@ note = "pads and metal cap"
 model = "cdm"
 volts = 500
 page = 4
+
+[[supply]]
+pins = ["VDD", "VDDH"]
+current = { min = 0, max = 0.018, page = 4, note = "average supply current for periodic measurement mode (1 measurement every 5 s) at VDD = 3.3 V; 13 mA at 5 V. Peaks of 205 mA (137 mA at 5 V) during a measurement are too brief to heat parts, but a supply must deliver them" }

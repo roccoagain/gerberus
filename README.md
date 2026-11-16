@@ -39,7 +39,7 @@ cargo run -- check path/to/board.kicad_sch
 regulators and feedback dividers (see [`parts/README.md`](parts/README.md#net-voltages)). `--explain` prints why.
 
 `check` compares those ranges with the part limits. Each check comes out PASS, FAIL or UNKNOWN, and a FAIL
-cites the numbers, their datasheet pages and how each net got its range. The ten rules:
+cites the numbers, their datasheet pages and how each net got its range. The rules:
 
 | Rule | FAILs when | Severity |
 | --- | --- | --- |
@@ -54,6 +54,8 @@ cites the numbers, their datasheet pages and how each net got its range. The ten
 | `regulator-headroom` | a regulator's supply can fall below what its datasheet output range needs | warning |
 | `esd` | an external connector pin's net has no TVS or ESD clamp, and a part on it (directly, or through one series resistor, inductor or diode with no clamp behind it) has no system-level ESD rating to `policy.toml`'s level | warning |
 | `reverse-polarity` | a supply input connected backwards (its fault case `<name> reversed`) takes a part past its absolute maximum ratings | error |
+| `junction-temperature` | a part's junction, at the board's ambient plus its dissipation × θJA, passes its maximum (error) or comes within `policy.toml`'s `[junction]` margin of it (warning) | error / warning |
+| `forward-current` | a diode or LED carries more than its forward current rating (error) or `policy.toml`'s share of it (warning) | error / warning |
 | `unchecked` | (UNKNOWN only) a fitted part or pin has no limits to check against | |
 
 A bound relative to another pin (`VDD + 0.3 V`) passes only if it holds however the two nets move, or if
@@ -101,6 +103,37 @@ On the test boards:
 - Every debug header (SWD) and the sniffer's UART reach STM32 pins rated only ±1 to ±2 kV HBM, so they fail `esd`
   as warnings. The CAN pins pass on the transceivers' own system-level ratings: rev 1's TCAN330 is rated ±12 kV contact
   (its NUP2105L breaks down only at up to 32 V, above the TCAN330's 14 V bus pins), and rev 2's TCAN1044AV ±8 kV.
+
+## Junction temperature and derating
+
+```sh
+cargo run -- loads path/to/board.kicad_sch
+```
+
+`loads` adds up what each rail supplies: every part's `[[supply]]` maximum, LED chains ((V − VF min) / R min, or V / R min
+below the current VF is rated at; charged to the supply of the IC that drives them), and resistors to ground. A linear regulator passes its output's
+load to its input and dissipates (VIN max − VOUT min) × I plus its own supply current; when its supply can sag out
+of regulation, the held output is used at the top of the supply, since in dropout it drops less. A switching
+regulator needs a guaranteed `efficiency` in its part file. Datasheets give efficiency only as typical curves, so
+the switcher, its input diode and the rail feeding it come out UNKNOWN. A series diode carries its downstream load.
+
+`junction-temperature` takes Tj = Ta + P × θJA for every part with a dissipation. Ta is the top of
+`inputs.toml`'s `temperature`; without it, the part's own rated ambient is used. A part that would pass its
+maximum there is UNKNOWN, with the ambient it is safe up to, rather than a FAIL. The θJA in datasheets is for a
+JEDEC test board; a real board's copper changes it. Supply currents are maximums at the datasheet's worst
+condition, so the result is an upper bound.
+
+Derating for reliability is `policy.toml`'s: capacitor voltage at 80 %, resistor power and diode and LED forward
+current at 50 %, and junctions 20 °C below their maximum. A FAIL against a derating is a warning.
+
+On the test boards (normal operation, at each part's rated ambient, as no board gives a temperature):
+
+- Rev 2's STM32F042 dissipates 84 mW at θJA 118 °C/W: 95 °C at 85 °C ambient, under its 105 °C, but inside the
+  20 °C margin above 75 °C. Rev 1's TCAN330 (60 mA dominant × 3.46 V at 154.4 °C/W) would reach 157 °C at its rated 125 °C,
+  so it is UNKNOWN, safe up to 118 °C.
+- The LDOs (XC6206 at 114 mW, ME6211 at 74 mW) and most sensors have no θJA in their datasheets, so they are
+  UNKNOWN with their dissipation. The switchers (TPS560430, AP63200) give no efficiency.
+- The LEDs pass `forward-current` at 3.4 to 3.5 mA against 25 to 30 mA ratings.
 
 ## Pinout check
 

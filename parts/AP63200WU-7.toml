@@ -2,6 +2,9 @@ mpn = "AP63200WU-7"
 manufacturer = "Diodes Incorporated"
 description = "3.8 V to 32 V, 2 A synchronous buck, 500 kHz, adjustable, TSOT-26"
 class = "ic"
+temperature = { min = -40, max = 85, page = 4, note = "TA operating ambient temperature range" }
+theta_ja = { value = 89, page = 4, note = "TSOT26, junction to ambient (Note 6)" }
+tj_max = { value = 125, page = 12, note = "thermal analysis: the junction should not exceed +125 C in the thermal design; the absolute maximum ratings table (p4) gives +160 C" }
 
 [datasheet]
 title = "AP63200/AP63201/AP63203/AP63205 3.8V to 32V Input, 2A Low IQ Synchronous Buck Converter"

@@ -10,6 +10,7 @@ const USAGE: &str = "usage:
   gerberus parts <design> [--parts DIR]...
   gerberus pinout <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--parts DIR]...
   gerberus voltages <design> [--inputs FILE] [--parts DIR]... [--fault CASE] [--explain NET]...
+  gerberus loads <design> [--inputs FILE] [--parts DIR]...
   gerberus check <design> [--inputs FILE] [--parts DIR]... [--all] [--json]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
@@ -29,6 +30,9 @@ next to the schematic (same name, .kicad_pcb) unless --pcb names another, and th
 `voltages` works out the worst-case voltage range of every net, starting from the board inputs (`inputs.toml`
 next to the schematic unless --inputs is given). --explain prints the reasoning behind one net. --fault works
 them out for one of the fault cases in the inputs instead of normal operation.
+
+`loads` lists the worst-case current each net supplies and what draws it, from the parts' `[[supply]]`
+currents, LED chains and resistors to ground. These are the currents the junction-temperature rule uses.
 
 `check` runs the voltage rules: every pin against its datasheet limits at its net's worst-case voltage, TVS
 breakdown and stand-off, capacitor voltage and resistor power, undriven inputs and power pins, regulator
@@ -57,6 +61,7 @@ fn main() -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "parts" => parts(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "pinout" => pinout(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "voltages" => voltages(Path::new(path), rest),
+        [cmd, path, rest @ ..] if cmd == "loads" => loads(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
         [cmd, sub, rest @ ..] if cmd == "datasheet" => datasheet(sub, rest),
@@ -209,6 +214,14 @@ fn voltages(path: &Path, rest: &[String]) -> Result<bool, String> {
             .ok_or_else(|| format!("no net named {name:?}"))?;
         print!("{}", v.explain(&design, i));
     }
+    Ok(true)
+}
+
+fn loads(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let o = options(path, rest, &["--inputs"])?;
+    let (design, lib, inputs, v) = analyse(path, &o)?;
+    let th = gerberus::thermal::compute(&design, &lib, &inputs, &v);
+    print!("{}", gerberus::thermal::describe(&design, &th));
     Ok(true)
 }
 

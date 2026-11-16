@@ -2,6 +2,7 @@ mpn = "OT201616MJBA4SL"
 manufacturer = "YXC"
 description = "16 MHz CMOS crystal oscillator, 1.8 V to 3.3 V, 2.0 x 1.6 mm"
 class = "oscillator"
+temperature = { min = -40, max = 85, page = 1, note = "T_use operating temperature, standard grade" }
 
 [datasheet]
 title = "YSO110TR Wide Voltage Crystal Oscillator"
@@ -32,3 +33,8 @@ pins = ["OUTPUT"]
 to = "GND"
 abs_max = { unknown = "the datasheet has no absolute maximum ratings" }
 recommended = { unknown = "OUTPUT is a CMOS output; only VOH min 90 % of VDD and VOL max 10 % of VDD are given (page 1)" }
+
+# 16 MHz in the 2.0 x 1.6 mm package: the 1-40 MHz, 2520/2016/1612 column.
+[[supply]]
+pins = ["VDD"]
+current = { min = 0, max = 0.004, page = 1, note = "current consumption, 1.000-40.000 MHz, 2016 package, 15 pF load, max" }

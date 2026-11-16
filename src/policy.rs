@@ -14,6 +14,16 @@ pub struct Policy {
     pub derates: Vec<Derate>,
     /// The ESD level a pin on an external connector must survive without a clamp.
     pub esd: Option<EsdLevel>,
+    /// How far below its maximum a junction is kept.
+    pub junction: Option<JunctionMargin>,
+}
+
+/// Keep every junction `margin` °C below its maximum temperature: reliability derating.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JunctionMargin {
+    pub margin: f64,
+    pub reason: String,
 }
 
 /// IEC 61000-4-2 levels, in volts. Level 4 is 8 kV contact and 15 kV air.
