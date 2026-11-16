@@ -440,7 +440,7 @@ fn can_bus_lines() {
         }
         let jp = net_index(&d, "Net-(JP1-B)");
         let mut around: Vec<&str> = v.nets[jp].between.iter().map(|&n| d.nets[n].name.as_str()).collect();
-        around.sort();
+        around.sort_unstable();
         assert_eq!(around, ["/CANH", "/CANL"], "{dir}");
         // A net with an input isn't a passive node.
         assert!(v.nets[net_index(&d, "/CANH")].between.is_empty());

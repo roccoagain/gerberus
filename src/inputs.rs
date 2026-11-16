@@ -257,7 +257,7 @@ impl BoardInputs {
                 .into_iter()
                 .map(|p| design.pin_net(&p.reference, &p.pin).map(|n| n.name.as_str()))
                 .collect();
-            if nets.iter().any(|n| n.is_none()) {
+            if nets.iter().any(Option::is_none) {
                 out.push(format!(
                     "differential {} to {}: a pin is not in the design",
                     d.pin, d.to
