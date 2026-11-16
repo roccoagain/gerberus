@@ -4,8 +4,10 @@ use std::process::ExitCode;
 use gerberus::limits::{Coverage, Library, coverage};
 
 const USAGE: &str = "usage:
-  gerberus netlist <design.kicad_sch>
-  gerberus parts <design.kicad_sch> [--parts DIR]...
+  gerberus netlist <design>
+  gerberus parts <design> [--parts DIR]...
+
+<design> is a KiCad root .kicad_sch, an Altium .PrjPcb project, or a single Altium .SchDoc.
 
 `parts` reports where each part's limits come from. It reads the shared library, then a `parts/` folder next
 to the schematic if there is one (its files override the shared ones), then any --parts folders in order.";
@@ -30,7 +32,7 @@ fn main() -> ExitCode {
 }
 
 fn netlist(path: &Path) -> Result<(), String> {
-    let design = gerberus::kicad::load(path)?;
+    let design = gerberus::load(path)?;
     for net in &design.nets {
         let pins: Vec<String> = net.pins.iter().map(|(r, p)| format!("{r}.{p}")).collect();
         println!("{}: {}", net.name, pins.join(" "));
@@ -55,7 +57,7 @@ fn parts(path: &Path, rest: &[String]) -> Result<(), String> {
         }
     }
     let lib = Library::load_dirs(&dirs.iter().map(PathBuf::as_path).collect::<Vec<_>>())?;
-    let design = gerberus::kicad::load(path)?;
+    let design = gerberus::load(path)?;
     let cov = coverage(&design, &lib);
     let (mut sheet, mut default, mut unchecked) = (0, 0, 0);
     for (r, c) in &cov {
