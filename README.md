@@ -20,6 +20,40 @@ Part limits live in [`parts/`](parts/README.md): one TOML file per part number, 
 recommended ranges per pin, each citing its datasheet page, and `UNKNOWN` with a reason where the datasheet is
 silent. Each test board has an `inputs.toml` giving the voltages on its connector pins.
 
+## Voltage checks
+
+```sh
+cargo run -- voltages path/to/board.kicad_sch --explain +3V3
+cargo run -- check path/to/board.kicad_sch
+```
+
+`voltages` works out the worst-case voltage range of every net from the board's `inputs.toml`, through diodes,
+regulators and feedback dividers (see [`parts/README.md`](parts/README.md#net-voltages)). `--explain` prints why.
+
+`check` compares those ranges with the part limits. Each check comes out PASS, FAIL or UNKNOWN, and a FAIL
+cites the numbers, their datasheet pages and how each net got its range. The ten rules:
+
+| Rule | FAILs when | Severity |
+| --- | --- | --- |
+| `abs-max` | a pin can go past its absolute maximum ratings | error |
+| `recommended` | a pin can leave its recommended operating range (for passives and connectors: their rating) | warning (error for ratings) |
+| `tvs-breakdown` | a rail reaches a TVS or ESD diode's lowest breakdown voltage, so it conducts continuously | error |
+| `tvs-standoff` | a rail rises above a TVS diode's stand-off voltage | warning |
+| `cap-voltage` | a capacitor sees more than its rated voltage (error), or more than `policy.toml` allows (warning) | error / warning |
+| `resistor-power` | a resistor's worst-case V²/R is over its rating (error) or the policy's share of it (warning) | error / warning |
+| `floating-input` | an input pin is on a net nothing drives | error |
+| `unpowered` | a power pin is on a net nothing supplies | error |
+| `regulator-headroom` | a regulator's supply can fall below what its datasheet output range needs | warning |
+| `unchecked` | (UNKNOWN only) a fitted part or pin has no limits to check against | |
+
+A bound relative to another pin (`VDD + 0.3 V`) passes only if it holds however the two nets move, or if
+everything that drives the pin is itself bounded by that pin's net. A regulator that isn't held leaves its
+rail's low end as a floor, so a check can pass on it but never fail on it. `--all` lists passes, `--json` prints
+the findings, and the command exits with status 1 when any error FAILs.
+
+On the test boards, rev 1 of the CAN encoder fails `tvs-breakdown`: its SMAJ18A (breakdown from 20 V) sits on a
+bus that reaches 25.2 V. Rev 2 and the sniffer have no errors.
+
 ## Pinout check
 
 ```sh

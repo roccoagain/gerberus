@@ -1,0 +1,929 @@
+//! The first ten schematic rules. Each compares a net's worst-case voltage (from [`crate::voltage`]) with a part's
+//! datasheet limits (from [`crate::limits`]), or checks that something drives a pin at all.
+//!
+//! Every check comes out PASS, FAIL or UNKNOWN. A FAIL cites the numbers it compared and their datasheet pages;
+//! an UNKNOWN says what was missing. Nothing unknown is ever counted as a pass.
+
+use std::collections::BTreeSet;
+use std::fmt;
+
+use serde::Serialize;
+
+use crate::design::{Component, Design, PinKind};
+use crate::limits::{Bound, Class, Coverage, Library, Limit, Lookup, Part, Quantity, Range, coverage};
+use crate::policy::Policy;
+use crate::voltage::{Hold, Span, Voltages, parse_ohms};
+
+/// The rules, in report order: name and what it checks.
+pub const RULES: [(&str, &str); 10] = [
+    ("abs-max", "every pin stays inside its absolute maximum ratings"),
+    (
+        "recommended",
+        "every pin stays inside its recommended operating range or rating",
+    ),
+    (
+        "tvs-breakdown",
+        "no rail reaches a TVS or ESD diode's breakdown voltage, where it conducts",
+    ),
+    ("tvs-standoff", "no rail rises above a TVS diode's stand-off voltage"),
+    (
+        "cap-voltage",
+        "no capacitor sees more than its rated voltage, or more than the derating policy allows",
+    ),
+    (
+        "resistor-power",
+        "no resistor dissipates more than its rated power at the worst-case voltage across it",
+    ),
+    ("floating-input", "every input pin has something driving it"),
+    ("unpowered", "every power pin is on a net something supplies"),
+    (
+        "regulator-headroom",
+        "every regulator's supply stays high enough for it to hold its output",
+    ),
+    ("unchecked", "every fitted part and pin has limits to check against"),
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Verdict {
+    Fail,
+    Unknown,
+    Pass,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    Error,
+    Warning,
+}
+
+impl fmt::Display for Verdict {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Verdict::Fail => "FAIL",
+            Verdict::Unknown => "UNKNOWN",
+            Verdict::Pass => "PASS",
+        })
+    }
+}
+
+impl fmt::Display for Severity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Finding {
+    pub rule: &'static str,
+    pub verdict: Verdict,
+    /// How bad a FAIL is. An UNKNOWN or PASS carries the severity its FAIL would have had.
+    pub severity: Severity,
+    /// Reference designator, such as `D2`.
+    pub reference: String,
+    /// What was compared: the pin, its net, the numbers and their datasheet pages.
+    pub message: String,
+    /// Nets whose ranges the finding read, so a report can explain them.
+    #[serde(skip)]
+    pub nets: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct Report {
+    pub findings: Vec<Finding>,
+}
+
+impl Report {
+    fn count(&self, verdict: Verdict, severity: Option<Severity>) -> usize {
+        self.findings
+            .iter()
+            .filter(|f| f.verdict == verdict && severity.is_none_or(|s| f.severity == s))
+            .count()
+    }
+
+    /// FAILs that are errors: what makes a board not ready to order.
+    pub fn errors(&self) -> usize {
+        self.count(Verdict::Fail, Some(Severity::Error))
+    }
+
+    pub fn warnings(&self) -> usize {
+        self.count(Verdict::Fail, Some(Severity::Warning))
+    }
+
+    pub fn unknowns(&self) -> usize {
+        self.count(Verdict::Unknown, None)
+    }
+
+    pub fn passes(&self) -> usize {
+        self.count(Verdict::Pass, None)
+    }
+
+    pub fn by_rule<'a>(&'a self, rule: &'a str) -> impl Iterator<Item = &'a Finding> + 'a {
+        self.findings.iter().filter(move |f| f.rule == rule)
+    }
+}
+
+/// Runs every rule on a design.
+pub fn check(design: &Design, lib: &Library, policy: &Policy, volts: &Voltages) -> Report {
+    let mut r = Report::default();
+    let cov = coverage(design, lib);
+    for (reference, c) in &design.components {
+        if c.dnp {
+            continue;
+        }
+        let part = match lib.lookup(c) {
+            Lookup::Datasheet(p) => std::borrow::Cow::Borrowed(p),
+            Lookup::ClassDefault(p) => std::borrow::Cow::Owned(*p),
+            Lookup::Unchecked(_) => continue,
+        };
+        let ctx = Ctx {
+            design,
+            volts,
+            reference,
+            c,
+            part: &part,
+        };
+        for limit in &part.limits {
+            match limit.quantity {
+                Quantity::Voltage => voltage_rules(&ctx, policy, limit, &mut r),
+                Quantity::Power if part.class == Class::Resistor => resistor_power(&ctx, policy, limit, &mut r),
+                _ => {}
+            }
+        }
+        if matches!(cov.get(reference), Some(Coverage::Datasheet { .. })) {
+            for pin in part.uncovered_pins() {
+                r.findings.push(Finding {
+                    rule: "unchecked",
+                    verdict: Verdict::Unknown,
+                    severity: Severity::Error,
+                    reference: reference.clone(),
+                    message: format!("{reference}.{pin}: {} has no voltage limit for this pin", part.mpn),
+                    nets: vec![],
+                });
+            }
+        }
+    }
+    for (reference, cv) in &cov {
+        if let Coverage::Unchecked { reason } = cv {
+            r.findings.push(Finding {
+                rule: "unchecked",
+                verdict: Verdict::Unknown,
+                severity: Severity::Error,
+                reference: reference.clone(),
+                message: format!("{reference}: nothing to check its pins against ({reason})"),
+                nets: vec![],
+            });
+        }
+    }
+    // A FAIL across two nets that rests on a floor (a regulator that isn't held) isn't proven.
+    for f in &mut r.findings {
+        if f.verdict == Verdict::Fail
+            && matches!(
+                f.rule,
+                "cap-voltage" | "resistor-power" | "tvs-breakdown" | "tvs-standoff"
+            )
+            && f.nets.len() > 1
+            && f.nets.iter().any(|&n| volts.nets[n].floor)
+        {
+            f.verdict = Verdict::Unknown;
+            f.message += "; but one end rests on a regulator that isn't held, so this is only a bound";
+        }
+    }
+    undriven_pins(design, lib, volts, &mut r);
+    regulator_headroom(design, volts, &mut r);
+    r.findings.sort_by(|a, b| {
+        (a.verdict, a.severity, rule_index(a.rule), &a.reference, &a.message).cmp(&(
+            b.verdict,
+            b.severity,
+            rule_index(b.rule),
+            &b.reference,
+            &b.message,
+        ))
+    });
+    r
+}
+
+fn rule_index(rule: &str) -> usize {
+    RULES.iter().position(|(n, _)| *n == rule).unwrap_or(RULES.len())
+}
+
+struct Ctx<'a> {
+    design: &'a Design,
+    volts: &'a Voltages,
+    reference: &'a str,
+    c: &'a Component,
+    part: &'a Part,
+}
+
+impl Ctx<'_> {
+    /// The net a part-file pin name is on.
+    fn net(&self, name: &str) -> Option<usize> {
+        self.part
+            .pins_named(name)
+            .into_iter()
+            .find_map(|num| self.c.pins.get(num).map(|p| p.net))
+    }
+
+    fn span(&self, net: usize) -> Span {
+        self.volts.nets[net].span
+    }
+
+    fn net_name(&self, net: usize) -> &str {
+        &self.design.nets[net].name
+    }
+
+    /// `V(a) − V(b)` at its worst. Two pins on one net are always 0 V apart.
+    fn diff(&self, a: usize, b: usize) -> Span {
+        if a == b {
+            return Span::exact(0.0);
+        }
+        let (x, y) = (self.span(a), self.span(b));
+        Span {
+            min: x.min.zip(y.max).map(|(p, q)| p - q),
+            max: x.max.zip(y.min).map(|(p, q)| p - q),
+        }
+    }
+
+    /// Where a pin is and what it sees, for messages: `U1.VIN (+5V)`.
+    fn at(&self, name: &str, net: usize) -> String {
+        format!("{}.{name} ({})", self.reference, self.net_name(net))
+    }
+
+    fn cite(&self, range: &Range) -> String {
+        let doc = self.part.datasheet.as_ref().map_or("", |d| d.document.as_str());
+        match range {
+            Range::Known {
+                page: Some(p), note, ..
+            } => {
+                let note = note.as_deref().map(|n| format!(", {n}")).unwrap_or_default();
+                format!("{} {doc} p{p}{note}", self.part.mpn)
+            }
+            Range::Known { note, .. } => {
+                format!(
+                    "{}{}",
+                    self.part.mpn,
+                    note.as_deref().map(|n| format!(", {n}")).unwrap_or_default()
+                )
+            }
+            Range::Unknown(_) => self.part.mpn.clone(),
+        }
+    }
+
+    fn finding(
+        &self,
+        rule: &'static str,
+        verdict: Verdict,
+        severity: Severity,
+        message: String,
+        nets: Vec<usize>,
+    ) -> Finding {
+        Finding {
+            rule,
+            verdict,
+            severity,
+            reference: self.reference.to_string(),
+            message,
+            nets,
+        }
+    }
+}
+
+/// The result of comparing a voltage with one end of a range.
+enum End {
+    Ok,
+    Fail(String),
+    Unknown(String),
+}
+
+fn v(x: f64) -> String {
+    format!("{} V", (x * 1000.0).round() / 1000.0)
+}
+
+/// Compares the voltage `seen` (the pin from the limit's `to`) with a range. `other` gives the voltage of
+/// another pin of the part, from the same `to`, for a bound like `{ pin = "VDD", plus = 0.3 }`; `same` says
+/// whether that pin is on the checked pin's net, so the two move together.
+/// `floor` says which ends of `seen` are only floors (low, high): a FAIL there becomes UNKNOWN.
+fn compare(seen: Span, floor: (bool, bool), range: &Range, other: &dyn Fn(&str) -> Option<Other>) -> Vec<End> {
+    let Range::Known { min, max, .. } = range else {
+        let Range::Unknown(reason) = range else { unreachable!() };
+        return vec![End::Unknown(format!("the datasheet gives no range: {reason}"))];
+    };
+    let soften = |e: End, f: bool| match e {
+        End::Fail(why) if f => End::Unknown(format!(
+            "{why}, but that end is only a bound: a regulator isn't held and nothing says how far it sags"
+        )),
+        e => e,
+    };
+    vec![
+        soften(bound(seen.min, min, other, false), floor.0),
+        soften(bound(seen.max, max, other, true), floor.1),
+    ]
+}
+
+/// Another pin a bound is relative to: its voltage, and how the checked pin relates to it.
+struct Other {
+    span: Span,
+    /// On the checked pin's net.
+    same: bool,
+    /// The checked pin's net can never rise above it.
+    below: bool,
+}
+
+fn bound(seen: Option<f64>, b: &Bound, other: &dyn Fn(&str) -> Option<Other>, is_max: bool) -> End {
+    let word = if is_max { "maximum" } else { "minimum" };
+    let Some(x) = seen else {
+        return match b {
+            Bound::Unknown(_) => End::Ok, // Neither end is known, and the limit has none either: nothing to say.
+            _ => End::Unknown(format!("the net's {word} is UNKNOWN")),
+        };
+    };
+    let beyond = |limit: f64| if is_max { x > limit + 1e-9 } else { x < limit - 1e-9 };
+    match b {
+        Bound::Unknown(reason) => End::Unknown(format!("the datasheet gives no {word}: {reason}")),
+        Bound::Value(limit) => {
+            if beyond(*limit) {
+                End::Fail(format!("reaches {}, past the {word} of {}", v(x), v(*limit)))
+            } else {
+                End::Ok
+            }
+        }
+        Bound::Pin { pin, plus, at_most } => {
+            let cap = |y: f64| at_most.map_or(y, |c| y.min(c));
+            let what = format!(
+                "{pin}{}{}",
+                if *plus == 0.0 {
+                    String::new()
+                } else if *plus > 0.0 {
+                    format!(" + {plus} V")
+                } else {
+                    format!(" − {} V", -plus)
+                },
+                at_most.map(|c| format!(" (at most {})", v(c))).unwrap_or_default()
+            );
+            let Some(Other { span: r, same, below }) = other(pin) else {
+                return End::Unknown(format!("the {word} is {what}, and {pin} isn't connected"));
+            };
+            if is_max && below && !same && *plus >= 0.0 {
+                // Everything that sets this net is bounded by the other pin's net, so it can't rise above it.
+                return match at_most {
+                    Some(c) if beyond(*c) => End::Fail(format!("reaches {}, past the {word} of {}", v(x), v(*c))),
+                    _ => End::Ok,
+                };
+            }
+            if same {
+                // The pins share a net, so V(pin) − V(other) is 0 and only `plus` and the cap matter.
+                let off = if is_max { *plus >= 0.0 } else { *plus <= 0.0 };
+                return match (off, at_most) {
+                    (false, _) => End::Fail(format!("the {word} is {what}, and {pin} is on the same net")),
+                    (true, Some(c)) if is_max && beyond(*c) => {
+                        End::Fail(format!("reaches {}, past the {word} of {}", v(x), v(*c)))
+                    }
+                    _ => End::Ok,
+                };
+            }
+            // On different nets, the two may not move together: pass only if the worst pairing passes.
+            let (Some(lo), Some(hi)) = (r.min, r.max) else {
+                return End::Unknown(format!("the {word} is {what}, and {pin}'s range is UNKNOWN"));
+            };
+            let (strict, loose) = if is_max {
+                (cap(lo + plus), cap(hi + plus))
+            } else {
+                (hi + plus, lo + plus)
+            };
+            if !beyond(strict) {
+                End::Ok
+            } else if beyond(loose) {
+                End::Fail(format!(
+                    "reaches {}, past the {word} of {what}, which is at most {}",
+                    v(x),
+                    v(loose)
+                ))
+            } else {
+                End::Unknown(format!(
+                    "reaches {}; the {word} is {what}, between {} and {}, and nothing says how the two move together",
+                    v(x),
+                    v(strict.min(loose)),
+                    v(strict.max(loose))
+                ))
+            }
+        }
+    }
+}
+
+/// One verdict from several ends: any FAIL fails, else any UNKNOWN is unknown.
+fn verdict(ends: &[End]) -> (Verdict, String) {
+    let fails: Vec<&str> = ends
+        .iter()
+        .filter_map(|e| if let End::Fail(s) = e { Some(s.as_str()) } else { None })
+        .collect();
+    if !fails.is_empty() {
+        return (Verdict::Fail, fails.join("; "));
+    }
+    let unknowns: Vec<&str> = ends
+        .iter()
+        .filter_map(|e| {
+            if let End::Unknown(s) = e {
+                Some(s.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    if !unknowns.is_empty() {
+        return (Verdict::Unknown, unknowns.join("; "));
+    }
+    (Verdict::Pass, String::new())
+}
+
+/// What one limited pin (or set of pins) sees.
+struct Seen {
+    what: String,
+    span: Option<Span>,
+    /// Which ends are only floors (low, high).
+    floor: (bool, bool),
+    nets: Vec<usize>,
+    /// The limit's `to` net, for bounds relative to another pin.
+    to: Option<usize>,
+}
+
+/// The voltage each limited pin sees, from the limit's `to` pin or, with no `to`, between each pair of its
+/// pins. Each entry: what it describes, the span, the nets it reads, and the `to` net for relative bounds.
+fn seen(ctx: &Ctx, limit: &Limit) -> Vec<Seen> {
+    let mut out = vec![];
+    match &limit.to {
+        Some(to) => {
+            let tn = ctx.net(to);
+            for p in &limit.pins {
+                match (ctx.net(p), tn) {
+                    (Some(pn), Some(tn)) => {
+                        let mut s = ctx.diff(pn, tn);
+                        let (pf, tf) = (ctx.volts.nets[pn].floor, ctx.volts.nets[tn].floor);
+                        let mut floor = (pf, tf);
+                        if limit.bidirectional {
+                            s = magnitude(s);
+                            floor = (pf || tf, pf || tf);
+                        }
+                        let what = if ctx.span(tn) == Span::exact(0.0) {
+                            ctx.at(p, pn)
+                        } else {
+                            format!("{} from {}", ctx.at(p, pn), ctx.at(to, tn))
+                        };
+                        out.push(Seen {
+                            what,
+                            span: Some(s),
+                            floor,
+                            nets: vec![pn, tn],
+                            to: Some(tn),
+                        });
+                    }
+                    _ => out.push(Seen {
+                        what: format!("{}.{p}", ctx.reference),
+                        span: None,
+                        floor: (false, false),
+                        nets: vec![],
+                        to: None,
+                    }),
+                }
+            }
+        }
+        None => {
+            let nets: Vec<(String, usize)> = limit
+                .pins
+                .iter()
+                .filter_map(|p| ctx.net(p).map(|n| (p.clone(), n)))
+                .collect();
+            let mut worst: Option<f64> = Some(0.0);
+            let mut read = BTreeSet::new();
+            for (i, (_, a)) in nets.iter().enumerate() {
+                for (_, b) in &nets[i + 1..] {
+                    let d = magnitude(ctx.diff(*a, *b));
+                    read.insert(*a);
+                    read.insert(*b);
+                    worst = worst.zip(d.max).map(|(w, m)| w.max(m));
+                }
+            }
+            let worst = Some(Span {
+                min: Some(0.0),
+                max: worst,
+            });
+            let names: Vec<&str> = nets.iter().map(|(p, _)| p.as_str()).collect();
+            let any_floor = read.iter().any(|&n| ctx.volts.nets[n].floor);
+            out.push(Seen {
+                what: format!("{} between pins {}", ctx.reference, names.join(", ")),
+                span: worst,
+                floor: (any_floor, any_floor),
+                nets: read.into_iter().collect(),
+                to: None,
+            });
+        }
+    }
+    out
+}
+
+/// The size of a voltage of either sign.
+fn magnitude(s: Span) -> Span {
+    match (s.min, s.max) {
+        (Some(a), Some(b)) => {
+            let hi = a.abs().max(b.abs());
+            let lo = if a <= 0.0 && b >= 0.0 {
+                0.0
+            } else {
+                a.abs().min(b.abs())
+            };
+            Span::new(lo, hi)
+        }
+        _ => Span::unknown(),
+    }
+}
+
+fn voltage_rules(ctx: &Ctx, policy: &Policy, limit: &Limit, r: &mut Report) {
+    let class = ctx.part.class;
+    let passive = matches!(
+        class,
+        Class::Capacitor | Class::Resistor | Class::Inductor | Class::Connector
+    );
+    for Seen {
+        what,
+        span,
+        floor,
+        nets,
+        to,
+    } in seen(ctx, limit)
+    {
+        let Some(span) = span else {
+            r.findings.push(ctx.finding(
+                "abs-max",
+                Verdict::Unknown,
+                Severity::Error,
+                format!("{what}: the pin isn't in the schematic, or its reference pin isn't"),
+                nets,
+            ));
+            continue;
+        };
+        let other = |pin: &str| -> Option<Other> {
+            let n = ctx.net(pin)?;
+            let me = *nets.first()?;
+            // Tracking only holds when both are measured from a 0 V ground.
+            let grounded = to.is_none_or(|t| ctx.span(t) == Span::exact(0.0));
+            Some(Other {
+                span: to.map_or(ctx.span(n), |t| ctx.diff(n, t)),
+                same: me == n,
+                below: grounded && ctx.volts.stays_below(me, n),
+            })
+        };
+        let head = format!("{what}: {span}");
+
+        // abs-max. Passives and TVS diodes put their ratings in `recommended` and `breakdown`, so an unknown
+        // abs_max there is expected, not a gap.
+        let skip_abs = matches!(limit.abs_max, Range::Unknown(_)) && (passive || class == Class::Tvs);
+        if !skip_abs {
+            let (vd, why) = verdict(&compare(span, floor, &limit.abs_max, &other));
+            let msg = match vd {
+                Verdict::Pass => format!("{head}, inside abs max ({})", ctx.cite(&limit.abs_max)),
+                _ => format!("{head}: {why} ({})", ctx.cite(&limit.abs_max)),
+            };
+            r.findings
+                .push(ctx.finding("abs-max", vd, Severity::Error, msg, nets.clone()));
+        }
+
+        match class {
+            Class::Capacitor => cap_voltage(ctx, policy, limit, span, &head, &nets, r),
+            Class::Tvs => {
+                tvs(ctx, limit, span, &head, &nets, r);
+            }
+            _ => {
+                let (vd, why) = verdict(&compare(span, floor, &limit.recommended, &other));
+                let severity = if passive { Severity::Error } else { Severity::Warning };
+                let msg = match vd {
+                    Verdict::Pass => format!(
+                        "{head}, inside the recommended range ({})",
+                        ctx.cite(&limit.recommended)
+                    ),
+                    _ => format!("{head}: {why} ({})", ctx.cite(&limit.recommended)),
+                };
+                r.findings
+                    .push(ctx.finding("recommended", vd, severity, msg, nets.clone()));
+            }
+        }
+    }
+}
+
+fn tvs(ctx: &Ctx, limit: &Limit, span: Span, head: &str, nets: &[usize], r: &mut Report) {
+    // Breakdown: a rail that can sit at or above the lowest breakdown voltage drives current through the part
+    // continuously, and it burns.
+    if let Some(bd) = &limit.breakdown {
+        let lowest = match bd {
+            Range::Known {
+                min: Bound::Value(x), ..
+            } => Some(*x),
+            _ => None,
+        };
+        let (vd, msg) = match (span.max, lowest) {
+            (Some(x), Some(b)) if x >= b => (
+                Verdict::Fail,
+                format!(
+                    "{head}: reaches {}, at or above the lowest breakdown voltage of {} ({}), so it conducts \
+                     continuously and overheats",
+                    v(x),
+                    v(b),
+                    ctx.cite(bd)
+                ),
+            ),
+            (Some(x), Some(b)) => (
+                Verdict::Pass,
+                format!(
+                    "{head}: at most {}, below the lowest breakdown of {} ({})",
+                    v(x),
+                    v(b),
+                    ctx.cite(bd)
+                ),
+            ),
+            (None, _) => (Verdict::Unknown, format!("{head}: the net's maximum is UNKNOWN")),
+            (_, None) => (
+                Verdict::Unknown,
+                format!("{head}: the datasheet gives no lowest breakdown voltage"),
+            ),
+        };
+        r.findings
+            .push(ctx.finding("tvs-breakdown", vd, Severity::Error, msg, nets.to_vec()));
+    }
+    // Stand-off: above VRWM the leakage is no longer specified, and it is a sign the TVS is too small.
+    let standoff = match &limit.recommended {
+        Range::Known {
+            max: Bound::Value(x), ..
+        } => Some(*x),
+        _ => None,
+    };
+    let (vd, msg) = match (span.max, standoff) {
+        (Some(x), Some(s)) if x > s + 1e-9 => (
+            Verdict::Fail,
+            format!(
+                "{head}: reaches {}, above the stand-off voltage of {} ({})",
+                v(x),
+                v(s),
+                ctx.cite(&limit.recommended)
+            ),
+        ),
+        (Some(x), Some(s)) => (
+            Verdict::Pass,
+            format!(
+                "{head}: at most {}, within the stand-off voltage of {} ({})",
+                v(x),
+                v(s),
+                ctx.cite(&limit.recommended)
+            ),
+        ),
+        (None, _) => (Verdict::Unknown, format!("{head}: the net's maximum is UNKNOWN")),
+        (_, None) => (
+            Verdict::Unknown,
+            format!("{head}: the datasheet gives no stand-off voltage"),
+        ),
+    };
+    r.findings
+        .push(ctx.finding("tvs-standoff", vd, Severity::Warning, msg, nets.to_vec()));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cap_voltage(ctx: &Ctx, policy: &Policy, limit: &Limit, span: Span, head: &str, nets: &[usize], r: &mut Report) {
+    let across = magnitude(span);
+    let rated = match &limit.recommended {
+        Range::Known {
+            max: Bound::Value(x), ..
+        } => Some(*x),
+        _ => None,
+    };
+    let source = if ctx.part.datasheet.is_some() {
+        ctx.cite(&limit.recommended)
+    } else {
+        format!("{}, not checked against a datasheet", ctx.part.description)
+    };
+    let derate = policy.derate_for(ctx.part, limit);
+    let (vd, severity, msg) = match (across.max, rated) {
+        (None, _) => (
+            Verdict::Unknown,
+            Severity::Error,
+            format!("{head}: the voltage across it is UNKNOWN"),
+        ),
+        (_, None) => (
+            Verdict::Unknown,
+            Severity::Error,
+            format!("{head}: no rated voltage ({source})"),
+        ),
+        (Some(x), Some(rv)) if x > rv + 1e-9 => (
+            Verdict::Fail,
+            Severity::Error,
+            format!(
+                "{head}: up to {} across it, above its {} rating ({source})",
+                v(x),
+                v(rv)
+            ),
+        ),
+        (Some(x), Some(rv)) => match derate {
+            Some(d) if x > rv * d.factor + 1e-9 => (
+                Verdict::Fail,
+                Severity::Warning,
+                format!(
+                    "{head}: up to {} across it, above {} % of its {} rating ({}) that policy.toml allows: {}",
+                    v(x),
+                    d.factor * 100.0,
+                    v(rv),
+                    source,
+                    d.reason
+                ),
+            ),
+            _ => (
+                Verdict::Pass,
+                Severity::Error,
+                format!(
+                    "{head}: up to {} across it, within its {} rating ({source})",
+                    v(x),
+                    v(rv)
+                ),
+            ),
+        },
+    };
+    r.findings
+        .push(ctx.finding("cap-voltage", vd, severity, msg, nets.to_vec()));
+}
+
+fn resistor_power(ctx: &Ctx, policy: &Policy, limit: &Limit, r: &mut Report) {
+    let Some(to) = &limit.to else { return };
+    let (Some(a), Some(b)) = (limit.pins.first().and_then(|p| ctx.net(p)), ctx.net(to)) else {
+        return;
+    };
+    let across = magnitude(ctx.diff(a, b));
+    let head = format!(
+        "{} ({} to {}): {} across it",
+        ctx.reference,
+        ctx.net_name(a),
+        ctx.net_name(b),
+        across
+    );
+    let rated = match &limit.recommended {
+        Range::Known {
+            max: Bound::Value(x), ..
+        } => Some(*x),
+        _ => None,
+    };
+    let ohms = parse_ohms(&ctx.c.value).filter(|&o| o > 0.0);
+    let tol = ctx.part.tolerance.as_ref().map_or(0.0, |t| t.value);
+    let (vd, severity, msg) = match (across.max, ohms, rated) {
+        (None, ..) => (
+            Verdict::Unknown,
+            Severity::Error,
+            format!("{head}: the voltage across it is UNKNOWN"),
+        ),
+        (_, None, _) => (
+            Verdict::Unknown,
+            Severity::Error,
+            format!("{head}: can't read a resistance from {:?}", ctx.c.value),
+        ),
+        (_, _, None) => (Verdict::Unknown, Severity::Error, format!("{head}: no power rating")),
+        (Some(x), Some(o), Some(p)) => {
+            let rmin = o * (1.0 - tol);
+            let watts = x * x / rmin;
+            let derate = policy.derate_for(ctx.part, limit);
+            let w = |p: f64| format!("{} mW", (p * 1e4).round() / 10.0);
+            let detail = format!("{} at {} over {} Ω", w(watts), v(x), (rmin * 10.0).round() / 10.0);
+            if watts > p {
+                (
+                    Verdict::Fail,
+                    Severity::Error,
+                    format!(
+                        "{head}: up to {detail}, above its {} rating ({})",
+                        w(p),
+                        ctx.cite(&limit.recommended)
+                    ),
+                )
+            } else if let Some(d) = derate.filter(|d| watts > p * d.factor) {
+                (
+                    Verdict::Fail,
+                    Severity::Warning,
+                    format!(
+                        "{head}: up to {detail}, above {} % of its {} rating that policy.toml allows: {}",
+                        d.factor * 100.0,
+                        w(p),
+                        d.reason
+                    ),
+                )
+            } else {
+                (
+                    Verdict::Pass,
+                    Severity::Error,
+                    format!(
+                        "{head}: up to {detail}, within its {} rating ({})",
+                        w(p),
+                        ctx.cite(&limit.recommended)
+                    ),
+                )
+            }
+        }
+    };
+    r.findings
+        .push(ctx.finding("resistor-power", vd, severity, msg, vec![a, b]));
+}
+
+/// Input and power pins on nets nothing drives.
+fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Report) {
+    for (reference, c) in &design.components {
+        if c.dnp || c.lib_id.starts_with("Connector") || lib.part_for(c).is_some_and(|p| p.class == Class::Connector) {
+            continue;
+        }
+        for pin in c.pins.values() {
+            if pin.no_connect {
+                continue;
+            }
+            let rule = match pin.kind {
+                PinKind::Input => "floating-input",
+                PinKind::PowerIn => "unpowered",
+                _ => continue,
+            };
+            let nv = &volts.nets[pin.net];
+            let net = &design.nets[pin.net].name;
+            let name = if pin.name.is_empty() {
+                pin.number.clone()
+            } else {
+                format!("{} ({})", pin.number, pin.name)
+            };
+            let (vd, msg) = if nv.floating {
+                (
+                    Verdict::Fail,
+                    format!(
+                        "{reference}.{name} is on {net}, and nothing drives that net: {}",
+                        nv.why[0].text
+                    ),
+                )
+            } else {
+                (
+                    Verdict::Pass,
+                    format!("{reference}.{name} is on {net}, which something drives"),
+                )
+            };
+            r.findings.push(Finding {
+                rule,
+                verdict: vd,
+                severity: Severity::Error,
+                reference: reference.clone(),
+                message: msg,
+                nets: vec![pin.net],
+            });
+        }
+    }
+}
+
+fn regulator_headroom(design: &Design, volts: &Voltages, r: &mut Report) {
+    for reg in volts.regulators.iter().filter(|r| r.sets_output) {
+        let out = &design.nets[reg.output].name;
+        let (vd, text) = match &reg.hold {
+            Hold::Held(t) => (Verdict::Pass, t),
+            Hold::NotHeld(t) => (Verdict::Fail, t),
+            Hold::Unknown(t) => (Verdict::Unknown, t),
+        };
+        r.findings.push(Finding {
+            rule: "regulator-headroom",
+            verdict: vd,
+            severity: Severity::Warning,
+            reference: reg.reference.clone(),
+            message: format!("{} ({}) sets {out}: {text}", reg.reference, reg.mpn),
+            nets: vec![reg.supply],
+        });
+    }
+}
+
+/// The report as text: failures first with how their nets got their ranges, then unknowns, then a summary.
+/// `all` also lists passes.
+pub fn render(design: &Design, volts: &Voltages, report: &Report, all: bool) -> String {
+    let mut out = String::new();
+    for f in &report.findings {
+        if f.verdict == Verdict::Pass && !all {
+            continue;
+        }
+        let label = match f.verdict {
+            Verdict::Fail => format!("FAIL {}", f.severity),
+            other => other.to_string(),
+        };
+        out += &format!("{label:<13} {:<18} {}\n", f.rule, f.message);
+        if f.verdict == Verdict::Fail {
+            let mut seen = BTreeSet::new();
+            for &n in &f.nets {
+                if seen.insert(n) && volts.nets[n].span != Span::exact(0.0) {
+                    for line in volts.explain(design, n).lines() {
+                        out += &format!("{:<32} {line}\n", "");
+                    }
+                }
+            }
+        }
+    }
+    out += &format!(
+        "\n{} errors, {} warnings, {} unknown, {} passed\n",
+        report.errors(),
+        report.warnings(),
+        report.unknowns(),
+        report.passes()
+    );
+    out
+}
