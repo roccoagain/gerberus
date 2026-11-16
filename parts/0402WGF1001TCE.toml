@@ -3,6 +3,8 @@ manufacturer = "UNI-ROYAL (Uniroyal Electronics)"
 description = "1 kohm 1 % 0.0625 W thick-film resistor, 0402"
 class = "resistor"
 
+tolerance = { value = 0.01, page = 2, note = "7th code F = ±1 %" }
+
 [datasheet]
 title = "Thick Film Chip Resistors, 01005/0201/0402/0603/0805/1206/1210/1812/2010/2512 Series"
 document = "V.3, February 12, 2019"

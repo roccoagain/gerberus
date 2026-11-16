@@ -22,6 +22,9 @@ pub struct Part {
     pub class: Class,
     /// Missing only when no datasheet could be found; every limit must then be unknown.
     pub datasheet: Option<Datasheet>,
+    /// For resistors, capacitors and inductors: how far the real value may be from the marked one, as a
+    /// fraction (0.01 for 1 %).
+    pub tolerance: Option<Tolerance>,
     /// Pin number (as printed in the datasheet and used by the footprint) to datasheet pin name. Several
     /// numbers may share a name, such as two `GND` pads. Limits name pins, never numbers, so other packages
     /// of the same die only need their own pin map (see `variants`).
@@ -38,6 +41,14 @@ pub struct Part {
     pub drives: Vec<Drive>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Tolerance {
+    pub value: f64,
+    pub page: u32,
+    pub note: Option<String>,
+}
+
 /// A voltage the part itself sets between two of its pins while operating.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -45,6 +56,9 @@ pub struct Drive {
     pub kind: DriveKind,
     pub pin: String,
     pub to: String,
+    /// The pin that powers it (`VIN` of a regulator). The drive only holds while this pin is inside its
+    /// recommended range.
+    pub supply: Option<String>,
     /// `V(pin) - V(to)` in volts, with its page. Conditions (load current, temperature) go in the note.
     pub range: Range,
 }
@@ -57,6 +71,8 @@ pub enum DriveKind {
     Regulates,
     /// A diode conducting from `pin` (anode) to `to` (cathode) drops this much.
     Forward,
+    /// A switch node: `pin` swings across `range`, which may be relative to the supply (`{ pin = "VIN" }`).
+    Switches,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -345,6 +361,7 @@ impl Part {
         }
         for d in &self.drives {
             out.extend([d.pin.as_str(), d.to.as_str()]);
+            out.extend(d.supply.as_deref());
         }
         out
     }
@@ -355,6 +372,14 @@ impl Part {
         let names: Vec<&str> = self.pins.values().map(String::as_str).collect();
         if self.pins.is_empty() {
             out.push("no pins".into());
+        }
+        if let Some(tol) = &self.tolerance
+            && (!(tol.value > 0.0 && tol.value < 1.0) || self.datasheet.is_none() || tol.page == 0)
+        {
+            out.push(format!(
+                "tolerance {} needs a datasheet page and must be between 0 and 1",
+                tol.value
+            ));
         }
         for v in &self.variants {
             if v.mpn == self.mpn || self.variants.iter().filter(|w| w.mpn == v.mpn).count() > 1 {
@@ -475,7 +500,10 @@ impl Part {
         }
         for (i, d) in self.drives.iter().enumerate() {
             let at = |what: &str| format!("drive {} ({}): {what}", i + 1, d.pin);
-            for p in [&d.pin, &d.to] {
+            if d.kind != DriveKind::Forward && d.supply.is_none() {
+                out.push(at("a regulator or switch node needs `supply`"));
+            }
+            for p in [&d.pin, &d.to].into_iter().chain(&d.supply) {
                 if !names.contains(&p.as_str()) {
                     out.push(at(&format!("pin {p:?} is not in [pins]")));
                 }
@@ -484,8 +512,8 @@ impl Part {
                 if d.range.has_values() && (page.is_none() || self.datasheet.is_none()) {
                     out.push(at("has values but no datasheet page"));
                 }
-                if [min, max].iter().any(|b| matches!(b, Bound::Pin { .. })) {
-                    out.push(at("a drive range must be numbers or unknown"));
+                if d.kind != DriveKind::Switches && [min, max].iter().any(|b| matches!(b, Bound::Pin { .. })) {
+                    out.push(at("only a switch node's range can be relative to a pin"));
                 }
                 if let Some((lo, hi)) = d.range.values()
                     && lo > hi
@@ -631,6 +659,7 @@ pub fn class_default(c: &Component) -> Option<Part> {
         description: format!("class default for {}", c.reference),
         class: Class::Capacitor,
         datasheet: None,
+        tolerance: None,
         pins: numbers.iter().map(|n| (n.clone(), n.clone())).collect(),
         variants: Vec::new(),
         limits: vec![Limit {

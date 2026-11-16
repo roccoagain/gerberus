@@ -50,4 +50,12 @@ recommended = { unknown = "the recommended operating conditions table lists only
 kind = "regulates"
 pin = "FB"
 to = "GND"
+supply = "VIN"
 range = { min = 0.792, max = 0.808, page = 5, note = "feedback voltage VFB in CCM, AP63200/AP63201" }
+
+[[drive]]
+kind = "switches"
+pin = "SW"
+to = "GND"
+supply = "VIN"
+range = { min = { unknown = "the undershoot below GND during dead time is not given" }, max = { pin = "VIN" }, page = 2, note = "pin descriptions: SW is the power switching output, so it swings up to VIN" }

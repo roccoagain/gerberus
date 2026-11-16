@@ -70,13 +70,27 @@ can work out the rails:
 kind = "regulates"     # a regulator holds `pin` at `range` from `to` (a fixed output, or a feedback pin)
 pin = "FB"
 to = "GND"
+supply = "VIN"         # the pin that powers it; the drive holds only while this pin is in its recommended range
 range = { min = 0.985, max = 1.015, page = 5 }
+
+[[drive]]
+kind = "switches"      # a switch node; its range may follow the supply pin
+pin = "SW"
+to = "GND"
+supply = "VIN"
+range = { min = { unknown = "undershoot below GND isn't given" }, max = { pin = "VIN" }, page = 3 }
 
 [[drive]]
 kind = "forward"       # a diode conducting from `pin` (anode) to `to` (cathode) drops `range`
 pin = "A"
 to = "K"
 range = { min = { unknown = "only a maximum is given" }, max = 0.6, page = 1, note = "at IF = 1 A" }
+```
+
+A resistor, capacitor or inductor can give its tolerance as a top-level key, before the first table:
+
+```toml
+tolerance = { value = 0.01, page = 2, note = "7th code F = ±1 %" }
 ```
 
 A pin no voltage limit mentions (other than `NC`/`DNC`) is reported by `gerberus parts` and must be treated
@@ -134,6 +148,24 @@ min = 7
 max = 26
 source = "hardware/can-encoder/DESIGN.md: input range 7–26 V"
 ```
+
+## Net voltages
+
+`gerberus voltages board.kicad_sch` prints the worst-case range of every net; `--explain NET` prints why,
+down to the inputs it comes from. It starts from `inputs.toml` (the `to` pins are 0 V) and follows:
+
+- **Diodes** (`forward`): the cathode is the anode minus the drop. A drop with no minimum is taken as 0 V.
+- **Regulators** (`regulates`): a feedback pin with two resistors on it, one to ground, sets the output net
+  through the divider, using each resistor's value and its part file's `tolerance`. Otherwise the drive sets
+  the pin's own net. The range holds only while the supply net stays inside the supply pin's recommended range
+  and above the output; below that the low end is 0 V, and above the recommended maximum the top end follows
+  the supply. Dropout and load steps aren't modelled.
+- **Switch nodes** (`switches`): up to the supply.
+- **Everything else**: the union of what can pull the net: nets reached through resistors, inductors, LEDs and
+  jumpers (capacitors count as open), and IC output pins, which reach at most their part's highest supply.
+
+A net that reaches a connector pin with no input is UNKNOWN, as is anything that needs a number nobody gave.
+Each unknown end says why.
 
 ## What's here
 
