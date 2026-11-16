@@ -334,6 +334,7 @@ pub fn claims(part: &Part) -> Vec<Claim> {
             DriveKind::Regulates => "regulates",
             DriveKind::Forward => "forward",
             DriveKind::Switches => "switches",
+            DriveKind::Biases => "biases",
         };
         let context = named(&[d.pin.as_str(), d.to.as_str()]);
         let label = format!("drive {} ({kind} {} to {})", i + 1, d.pin, d.to);

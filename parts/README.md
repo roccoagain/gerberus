@@ -98,6 +98,13 @@ supply = "VIN"
 range = { min = { unknown = "undershoot below GND isn't given" }, max = { unknown = "overshoot above VIN isn't given" }, page = 3 }
 
 [[drive]]
+kind = "biases"        # an input the part biases itself, such as an amplifier's AC-coupled input
+pin = "INP"
+to = "GND"
+supply = "VDD"
+range = { min = 1.2, max = 1.4, page = 7, note = "input bias voltage, VDD = 2.7 to 5.5 V" }
+
+[[drive]]
 kind = "forward"       # a diode conducting from `pin` (anode) to `to` (cathode) drops `range`
 pin = "A"
 to = "K"
@@ -110,6 +117,12 @@ to = "K"
 current = 0.020
 range = { min = 1.8, max = 2.4, page = 3, note = "VF at IF = 20 mA" }
 ```
+
+A `biases` drive counts as a pull on the input's net, so `floating-input` passes, and anything else on the
+net overrides it. Its range works like a switch node's: a number, or another pin plus an offset. Give
+`{ unknown = "..." }` when the datasheet says the input is biased internally but not to what. An input
+reached only through series capacitors, on a part with no part file, is `UNKNOWN` rather than a FAIL,
+since only the datasheet can say whether the part biases it.
 
 An LED's VF minimum holds only at and above `current`. Below it the LED drops less, so a series resistor's
 current is then bounded with VF taken as 0 V.
@@ -228,7 +241,9 @@ against the rating itself is an error.
 ### Board inputs
 
 Each board has an `inputs.toml` next to its schematic (see `tests/fixtures/*/inputs.toml`). It gives the
-voltages the outside world puts on its connector pins:
+voltages the outside world puts on its connector pins. Without one, `check`, `voltages`, `loads` and `stress`
+still run but say so: every net only a connector reaches is UNKNOWN, and nothing is checked for ESD, reverse
+polarity or faults.
 
 ```toml
 board = "can-encoder rev 2"

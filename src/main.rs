@@ -308,7 +308,19 @@ fn analyse(
         .inputs
         .clone()
         .unwrap_or_else(|| path.parent().unwrap_or(Path::new(".")).join("inputs.toml"));
-    let inputs = BoardInputs::load(&inputs_path)?;
+    // Without an inputs.toml next to the design, run anyway with no inputs, and say what that leaves out.
+    let inputs = if o.inputs.is_none() && !inputs_path.exists() {
+        eprintln!(
+            "note: no {} found, so nothing is known about what plugs into the connectors: every net only a \
+             connector reaches is UNKNOWN, and reverse-polarity, esd and fault cases are skipped.\n\
+             help: write an inputs.toml next to the schematic giving each connector pin's voltage range (see \
+             \"Board inputs\" in parts/README.md)",
+            inputs_path.display()
+        );
+        BoardInputs::none(&path.display().to_string())
+    } else {
+        BoardInputs::load(&inputs_path)?
+    };
     let problems = inputs.problems(&design);
     if !problems.is_empty() {
         return Err(format!("{}: {}", inputs_path.display(), problems.join("; ")));
@@ -457,6 +469,7 @@ fn parts(path: &Path, rest: &[String]) -> Result<bool, String> {
                 println!("{r}: UNCHECKED ({reason})");
             }
             Coverage::NotFitted => println!("{r}: not fitted"),
+            Coverage::NonElectrical(what) => println!("{r}: nothing to check ({what})"),
         }
     }
     println!("{sheet} with datasheet limits, {default} with class defaults, {unchecked} unchecked");

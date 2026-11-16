@@ -140,6 +140,18 @@ impl std::fmt::Display for PinRef {
 }
 
 impl BoardInputs {
+    /// No inputs at all: every connector pin is left as whatever might be plugged in, so nets that only a
+    /// connector reaches stay UNKNOWN.
+    pub fn none(board: &str) -> BoardInputs {
+        BoardInputs {
+            board: board.to_string(),
+            inputs: vec![],
+            undriven: vec![],
+            differential: vec![],
+            temperature: None,
+        }
+    }
+
     pub fn load(path: &Path) -> Result<BoardInputs, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))

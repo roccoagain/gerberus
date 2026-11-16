@@ -342,6 +342,12 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
                 let (span, why) = p.eval(design, &out, &mut regulators);
                 merge(&mut nv, span, why);
             }
+            // A part's own input bias is a high-resistance pull, which anything else on the net overrides.
+            if let Some(nv) = nv.as_mut()
+                && ps.iter().all(|p| p.drive.kind == DriveKind::Biases)
+            {
+                nv.driver = Driver::Pulled;
+            }
             // A connector pin on a driven net can bring in anything, unless inputs.toml says nothing outside
             // drives it. (An input sets its whole net, so pins on an input's net are covered by it.)
             if let Some(nv) = nv.as_mut() {
@@ -751,7 +757,7 @@ fn plan_drive<'a>(
             Some(k) if k != pin => vec![plan(k, vec![pin], How::Forward { anode: pin })],
             _ => vec![],
         },
-        DriveKind::Switches => match (supply, to) {
+        DriveKind::Switches | DriveKind::Biases => match (supply, to) {
             (Some(s), Some(g)) => vec![plan(pin, vec![s, g], How::Switches { supply: s, ground: g })],
             _ => vec![plan(pin, vec![], How::Fails(missing(drive)))],
         },
@@ -1036,7 +1042,12 @@ impl Plan<'_> {
                     Span { min, max },
                     Why {
                         text: format!(
-                            "{who} switches {} from {} ({src}){min_note}",
+                            "{who} {} {} from {} ({src}){min_note}",
+                            if self.drive.kind == DriveKind::Biases {
+                                "biases its input"
+                            } else {
+                                "switches"
+                            },
                             self.drive.pin,
                             name(*supply)
                         ),

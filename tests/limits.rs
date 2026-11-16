@@ -321,6 +321,26 @@ fn coverage_reports_unchecked_parts() {
     assert_eq!(unchecked, ["JP1"]);
 }
 
+/// Test points and net ties are bare copper: nothing to check, so they aren't counted as unchecked. A part file
+/// still wins.
+#[test]
+fn test_points_and_net_ties_have_nothing_to_check() {
+    use gerberus::limits::non_electrical;
+    let part = |lib_id: &str| Component {
+        lib_id: lib_id.into(),
+        ..Default::default()
+    };
+    assert_eq!(non_electrical("TP1", &part("Seed3:TP_HP_DET")), Some("test point"));
+    assert_eq!(
+        non_electrical("X3", &part("Connector:TestPoint_Probe")),
+        Some("test point")
+    );
+    assert_eq!(non_electrical("NT1", &part("Device:NetTie_2")), Some("net tie"));
+    assert_eq!(non_electrical("R1", &part("Device:NetTie_3")), Some("net tie"));
+    assert_eq!(non_electrical("T1", &part("Device:Transformer_1P_1S")), None);
+    assert_eq!(non_electrical("JP1", &part("Jumper:SolderJumper_2_Open")), None);
+}
+
 fn scratch_dir(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("gerberus-test-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
@@ -534,7 +554,10 @@ fn drives_name_their_supply() {
     let p = parse(
         "[[drive]]\nkind = \"regulates\"\npin = \"A\"\nto = \"B\"\nsupply = \"B\"\nrange = { min = 1, max = { pin = \"B\" }, page = 1 }",
     );
-    assert!(p.contains("only a switch node's range can be relative"), "{p}");
+    assert!(
+        p.contains("only a switch node's or biased input's range can be relative"),
+        "{p}"
+    );
     let p = parse(
         "[[drive]]\nkind = \"switches\"\npin = \"A\"\nto = \"B\"\nsupply = \"B\"\nrange = { min = { unknown = \"x\" }, max = { pin = \"B\" }, page = 1 }",
     );
