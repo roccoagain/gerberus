@@ -135,8 +135,9 @@ impl Report {
 }
 
 /// The rules a fault case runs: only damage. A fault is checked against absolute maximum ratings, TVS breakdown
-/// and capacitor ratings (without derating). Operating ranges don't apply while a fault lasts, and resistor
-/// power isn't checked: a fault drives both ends of a resistor from independent ranges, which overstates the
+/// and capacitor ratings (without derating). Operating ranges of ICs don't apply while a fault lasts.
+/// Resistor power and the voltage ratings of other passives are checked too, but a FAIL there becomes UNKNOWN:
+/// a fault drives the two ends of a part from ranges that needn't move together, which can overstate the
 /// voltage across it.
 pub const FAULT_RULES: [&str; 3] = ["abs-max", "tvs-breakdown", "cap-voltage"];
 
@@ -187,7 +188,15 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
         let mut fr = Report::default();
         part_rules(design, lib, &Policy::default(), &case_inputs, &cv, true, &mut fr);
         for mut f in fr.findings {
-            if f.nets.iter().all(|&n| cv.nets[n].span == volts.nets[n].span) {
+            // The same finding, word for word, in normal operation: the fault changes nothing it read.
+            let same = |n: &Finding| {
+                n.case.is_none()
+                    && n.rule == f.rule
+                    && n.verdict == f.verdict
+                    && n.reference == f.reference
+                    && n.message == f.message
+            };
+            if r.findings.iter().any(same) {
                 continue;
             }
             f.message = format!("fault \"{fault}\": {}", f.message);
@@ -245,6 +254,7 @@ fn part_rules(
             c,
             part: &part,
         };
+        let start = r.findings.len();
         for limit in &part.limits {
             match limit.quantity {
                 Quantity::Voltage => voltage_rules(&ctx, policy, limit, r),
@@ -252,9 +262,23 @@ fn part_rules(
                 _ => {}
             }
         }
-    }
-    if fault {
-        r.findings.retain(|f| FAULT_RULES.contains(&f.rule));
+        if fault {
+            let passive = matches!(part.class, Class::Resistor | Class::Inductor | Class::Connector);
+            let mut kept = vec![];
+            for mut f in r.findings.drain(start..) {
+                if FAULT_RULES.contains(&f.rule) {
+                    kept.push(f);
+                } else if passive && matches!(f.rule, "recommended" | "resistor-power") {
+                    if f.verdict == Verdict::Fail {
+                        f.verdict = Verdict::Unknown;
+                        f.message += "; but in a fault case the two ends' ranges needn't move together, so this \
+                                      may overstate it";
+                    }
+                    kept.push(f);
+                }
+            }
+            r.findings.extend(kept);
+        }
     }
 }
 

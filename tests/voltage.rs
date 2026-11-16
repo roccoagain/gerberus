@@ -435,12 +435,8 @@ fn stays_below_needs_bounded_steps() {
 fn can_bus_lines() {
     for dir in ["can-encoder", "can-encoder-rev1"] {
         let (d, v) = run(dir, "can-encoder.kicad_sch");
-        for net in ["/CANH", "/CANL", "Net-(JP1-B)"] {
-            assert!(
-                close(span(&d, &v, net), -2.0, 7.0),
-                "{dir} {net}: {}",
-                span(&d, &v, net)
-            );
+        for (net, lo, hi) in [("/CANH", -2.06, 9.5), ("/CANL", -4.5, 7.06), ("Net-(JP1-B)", -4.5, 9.5)] {
+            assert!(close(span(&d, &v, net), lo, hi), "{dir} {net}: {}", span(&d, &v, net));
         }
         let jp = net_index(&d, "Net-(JP1-B)");
         let mut around: Vec<&str> = v.nets[jp].between.iter().map(|&n| d.nets[n].name.as_str()).collect();
@@ -478,7 +474,10 @@ fn fault_cases_replace_normal_inputs() {
     assert_eq!(inputs.faults(), ["VBUS shorted onto CANH", "VBUS shorted onto CANL"]);
     let case = inputs.case(&d, "VBUS shorted onto CANH");
     let names: Vec<&str> = case.inputs.iter().map(|i| i.name.as_str()).collect();
-    assert!(names.contains(&"CANH shorted to VBUS") && names.contains(&"CANL"), "{names:?}");
+    assert!(
+        names.contains(&"CANH shorted to VBUS") && names.contains(&"CANL"),
+        "{names:?}"
+    );
     assert!(
         !names.contains(&"CANH") && !names.contains(&"CANL shorted to VBUS"),
         "{names:?}"
@@ -490,6 +489,6 @@ fn fault_cases_replace_normal_inputs() {
     let lib = Library::load_dir(&root("parts")).unwrap();
     let v = compute(&d, &lib, &case);
     assert!(close(span(&d, &v, "/CANH"), 7.0, 26.0));
-    assert!(close(span(&d, &v, "/CANL"), -2.0, 7.0));
-    assert!(close(span(&d, &v, "Net-(JP1-B)"), -2.0, 26.0));
+    assert!(close(span(&d, &v, "/CANL"), -4.5, 7.06));
+    assert!(close(span(&d, &v, "Net-(JP1-B)"), -4.5, 26.0));
 }

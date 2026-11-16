@@ -78,22 +78,25 @@ fn rev2_and_sniffer_errors() {
     assert_eq!(r.errors(), 0, "{:#?}", fails(&r));
 }
 
-/// The bus's differential voltage reaches 3 V (VOD(DOM) at 50 to 65 Ω) across R4, the 120 Ω termination, and
-/// 3 V over 117.2 Ω is 76.8 mW against the 0402's 62.5 mW. JP1's side of R4 only connects through R4 and JP1,
+/// The bus's differential voltage reaches 5 V (VOD(DOM) at the 2240 Ω arbitration load) across R4, the 120 Ω
+/// termination, and 5 V over 117.2 Ω is 213.2 mW against the 0402's 62.5 mW. JP1's side of R4 only connects through R4 and JP1,
 /// so it stays between CANH and CANL: whether JP1 is bridged or not, R4 sees at most CANH − CANL.
 #[test]
 fn termination_resistor_sees_the_bus_differential() {
     for dir in ["can-encoder", "can-encoder-rev1"] {
         let (_, _, r) = run(dir, "can-encoder.kicad_sch");
-        let f: Vec<_> = r.by_rule("resistor-power").filter(|f| f.reference == "R4").collect();
+        let f: Vec<_> = r
+            .by_rule("resistor-power")
+            .filter(|f| f.reference == "R4" && f.case.is_none())
+            .collect();
         assert_eq!(f.len(), 1, "{dir}: {f:?}");
         assert_eq!((f[0].verdict, f[0].severity), (Verdict::Fail, Severity::Error), "{dir}");
         for want in [
-            "0 to 3 V across it",
-            "76.8 mW",
+            "0 to 5 V across it",
+            "213.2 mW",
             "62.5 mW",
             "stays between them",
-            "kept to -0.12 to 3 V",
+            "kept to -0.12 to 5 V",
         ] {
             assert!(f[0].message.contains(want), "{dir}: missing {want:?}: {}", f[0].message);
         }
@@ -134,14 +137,49 @@ fn vbus_on_the_bus_faults() {
     let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
     let faults: Vec<_> = r.findings.iter().filter(|f| f.case.is_some()).collect();
     assert!(!faults.is_empty());
-    assert!(faults.iter().all(|f| f.verdict == Verdict::Pass), "{faults:#?}");
+    // Everything passes but R4's power: with VBUS on one end it can't be proven either way, as the two ends
+    // needn't move together in a fault.
+    let (r4, rest): (Vec<&&gerberus::rules::Finding>, Vec<_>) = faults
+        .iter()
+        .partition(|f| f.reference == "R4" && f.rule == "resistor-power");
+    assert!(rest.iter().all(|f| f.verdict == Verdict::Pass), "{rest:#?}");
+    assert_eq!(r4.len(), 2, "{r4:#?}");
+    assert!(
+        r4.iter()
+            .all(|f| f.verdict == Verdict::Unknown && f.message.contains("may overstate it"))
+    );
     assert!(
         faults
             .iter()
             .any(|f| f.reference == "U4" && f.message.contains("7 to 26 V"))
     );
-    // Only the damage rules run in a fault case.
-    assert!(faults.iter().all(|f| gerberus::rules::FAULT_RULES.contains(&f.rule)));
+    // Only the damage rules run in a fault case, and passives' ratings, which never FAIL there.
+    assert!(faults.iter().all(|f| {
+        gerberus::rules::FAULT_RULES.contains(&f.rule)
+            || (matches!(f.rule, "resistor-power" | "recommended")
+                && (f.reference.starts_with('R') || f.reference.starts_with('J')))
+    }));
+}
+
+/// A fault that only breaks the link between CANH and CANL still reports what reads both.
+#[test]
+fn a_fault_that_only_drops_a_differential_still_reports() {
+    let (d, mut inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let mut unlinked = inputs.inputs.iter().find(|i| i.name == "CANH").unwrap().clone();
+    unlinked.name = "CANH unlinked".into();
+    unlinked.fault = Some("unlinked".into());
+    inputs.inputs.push(unlinked);
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r
+        .findings
+        .iter()
+        .filter(|f| f.case.as_deref() == Some("unlinked"))
+        .collect();
+    assert!(
+        f.iter()
+            .any(|f| f.reference == "U4" && f.message.contains("U4.CANH (/CANH) from U4.CANL (/CANL)")),
+        "{f:#?}"
+    );
 }
 
 /// Rev 2's SMF26A replaced the SMAJ18A: 26 V stays below its 28.9 V breakdown and within its 26 V stand-off.
@@ -552,4 +590,39 @@ fn floors_carry_through_resistors() {
         "{:#?}",
         fails(&r)
     );
+}
+
+/// A capacitor on a resistor's far end holds that node's old voltage, so the resistor can see the whole step
+/// from its supply: the node isn't kept between the nets around it.
+#[test]
+fn a_capacitor_keeps_a_node_from_tracking_its_pull() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let (vdc, gnd) = (net(&d, "+VDC"), net(&d, "GND"));
+    let node = new_net(&mut d, "/RC");
+    add(
+        &mut d,
+        "R99",
+        "Device:R",
+        "120",
+        Some("0402WGF1200TCE"),
+        vec![pin("1", PinKind::Passive, vdc), pin("2", PinKind::Passive, node)],
+    );
+    let (v, _) = run_on(&d, &inputs);
+    assert_eq!(v.nets[node].between, [vdc], "only R99 pulls it");
+    let (_, r) = run_on(&d, &inputs);
+    let f = r.by_rule("resistor-power").find(|f| f.reference == "R99").unwrap();
+    assert_eq!(f.verdict, Verdict::Pass, "{}", f.message);
+
+    add(
+        &mut d,
+        "C99",
+        "Device:C",
+        "100nF 50V",
+        None,
+        vec![pin("1", PinKind::Passive, node), pin("2", PinKind::Passive, gnd)],
+    );
+    let (v, r) = run_on(&d, &inputs);
+    assert!(v.nets[node].between.is_empty());
+    let f = r.by_rule("resistor-power").find(|f| f.reference == "R99").unwrap();
+    assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
 }

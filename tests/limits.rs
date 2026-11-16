@@ -479,6 +479,13 @@ to = "J2.2"
 min = 1
 max = 0
 source = ""
+
+[[differential]]
+pin = "J1.2"
+to = "J3.2"
+min = 0
+max = 1
+source = "s"
 "#;
     let inputs: BoardInputs = toml::from_str(text).unwrap();
     let problems = inputs.problems(&design).join("\n");
@@ -489,9 +496,18 @@ source = ""
         "differential J1.2 to J2.2: both pins are on one net",
         "differential J1.2 to J2.2: min 1 and max 0 are not a range",
         "differential J1.2 to J2.2: no source",
+        "differential J1.2 to J3.2: both pins must be on nets a normal input drives",
     ] {
         assert!(problems.contains(want), "missing {want:?} in\n{problems}");
     }
+}
+
+/// A typo inside `max = { ... }` is an error, not a silently dropped `plus`.
+#[test]
+fn follow_rejects_unknown_keys() {
+    let text = "board = \"x\"\n[[input]]\nname = \"P\"\npin = \"J3.2\"\nto = \"J3.1\"\nmin = 0\n\
+                max = { pin = \"J3.5\", pls = 0.3 }\nsource = \"s\"\n";
+    assert!(toml::from_str::<BoardInputs>(text).is_err());
 }
 
 /// Regulators and switch nodes name the pin that powers them, and only a switch node's range may follow it.

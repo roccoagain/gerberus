@@ -82,18 +82,22 @@ pub struct Input {
 pub enum Max {
     Value(f64),
     /// The voltage of another pin's net, plus `plus` volts.
-    Pin {
-        pin: PinRef,
-        #[serde(default)]
-        plus: f64,
-    },
+    Pin(Follow),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Follow {
+    pub pin: PinRef,
+    #[serde(default)]
+    pub plus: f64,
 }
 
 impl Max {
     pub fn value(&self) -> Option<f64> {
         match self {
             Max::Value(v) => Some(*v),
-            Max::Pin { .. } => None,
+            Max::Pin(_) => None,
         }
     }
 }
@@ -211,7 +215,7 @@ impl BoardInputs {
                         out.push(format!("{}: min {} and max {max} are not a range", i.name, i.min));
                     }
                 }
-                Max::Pin { pin, plus } => {
+                Max::Pin(Follow { pin, plus }) => {
                     if !i.min.is_finite() || !plus.is_finite() {
                         out.push(format!("{}: min {} and plus {plus} must be numbers", i.name, i.min));
                     }
@@ -242,6 +246,12 @@ impl BoardInputs {
                 out.push(format!("undriven {}: no source", u.pin));
             }
         }
+        let driven: Vec<Option<&str>> = self
+            .inputs
+            .iter()
+            .filter(|i| i.fault.is_none())
+            .map(|i| design.pin_net(&i.pin.reference, &i.pin.pin).map(|n| n.name.as_str()))
+            .collect();
         for d in &self.differential {
             let nets: Vec<Option<&str>> = [&d.pin, &d.to]
                 .into_iter()
@@ -254,6 +264,12 @@ impl BoardInputs {
                 ));
             } else if nets[0] == nets[1] {
                 out.push(format!("differential {} to {}: both pins are on one net", d.pin, d.to));
+            } else if nets.iter().any(|n| !driven.contains(n)) {
+                // A fault case drops a differential only when it replaces an input on one of its nets.
+                out.push(format!(
+                    "differential {} to {}: both pins must be on nets a normal input drives",
+                    d.pin, d.to
+                ));
             }
             if !(d.min.is_finite() && d.max.is_finite()) || d.min > d.max {
                 out.push(format!(

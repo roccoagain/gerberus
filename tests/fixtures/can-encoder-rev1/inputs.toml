@@ -12,30 +12,30 @@ max = 25.2
 source = "hardware/can-encoder/DESIGN.md: the C610s run from the 24 V battery bus (6S, up to 25.2 V)"
 
 # The CAN bus: other nodes and this board's own transceiver drive it, and their grounds can sit apart from this
-# board's. J2 is wired in parallel with J1, so J1 covers both.
+# board's. CANH = VCM + VOD/2 and CANL = VCM - VOD/2. J2 is wired in parallel with J1, so J1 covers both.
 [[input]]
 name = "CANH"
 pin = "J1.2"
 to = "J1.4"
-min = -2
-max = 7
-source = "TI SLLA270 (January 2008) p6, 4.2 Cables: the ISO 11898 standard's -2 V to 7 V common-mode range of tolerable ground offset"
+min = -2.06
+max = 9.5
+source = "each wire is the common mode + half the differential: the ISO 11898 standard's -2 V to 7 V common-mode range of tolerable ground offset (TI SLLA270, January 2008, p6) + half of -0.12 to 5 V (the differential below)"
 
 [[input]]
 name = "CANL"
 pin = "J1.3"
 to = "J1.4"
-min = -2
-max = 7
-source = "TI SLLA270 (January 2008) p6, 4.2 Cables: the ISO 11898 standard's -2 V to 7 V common-mode range of tolerable ground offset"
+min = -4.5
+max = 7.06
+source = "each wire is the common mode - half the differential: the ISO 11898 standard's -2 V to 7 V common-mode range of tolerable ground offset (TI SLLA270, January 2008, p6) - half of -0.12 to 5 V (the differential below)"
 
 # CANH and CANL move together: whatever the common-mode voltage, the drivers set the difference between them.
 [[differential]]
 pin = "J1.2"
 to = "J1.3"
 min = -0.12
-max = 3
-source = "TCAN330 SLLSEQ7F p7: VOD(D) 1.6 to 3 V at 50 to 65 ohm (a bus terminated at both ends) and VOD(R) -120 to 12 mV at 60 ohm. Assumes every node's driver, the C610s' too, stays inside the same ISO 11898-2 limits"
+max = 5
+source = "TCAN1044A-Q1 SLLSFJ3D p6: VOD(DOM) 1.5 to 5 V at RL = 2240 ohm (the ISO 11898-2 arbitration load, the widest dominant row; 1.5 to 3 V at 50 to 65 ohm) and VOD(REC) -120 to 12 mV at 60 ohm. TCAN330 SLLSEQ7F p7 gives VOD(D) up to 3 V at 45 to 65 ohm and VOD(R) -120 to 12 mV at 60 ohm, but no row for the 2240 ohm arbitration load, so the TCAN1044A-Q1 row is used. Assumes every node's driver, the C610s' too, stays inside the same ISO 11898-2 limits"
 
 # Fault cases. Each is checked on its own, against absolute maximum ratings, TVS breakdown and capacitor ratings,
 # with its inputs in place of the normal ones on the same nets. A miswired or damaged cable puts VBUS (the VBUS

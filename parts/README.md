@@ -218,7 +218,8 @@ source = "..."
 A **fault case** is a set of inputs with the same `fault` name. They are left out of normal operation. Each case
 is worked out on its own: its inputs replace the normal inputs on the nets they touch (and any `[[differential]]`
 on those nets), and `gerberus check` runs the damage rules on it: abs max, TVS breakdown, and capacitor ratings
-without derating. Only one fault is assumed at a time.
+without derating. Resistor power and other passives' ratings run too, but a FAIL there becomes UNKNOWN. Only one
+fault is assumed at a time. A `[[differential]]`'s pins must both be on nets a normal input drives.
 
 ```toml
 [[input]]
@@ -257,8 +258,10 @@ Not covered: footprint-only parts with no part number (Tag-Connect pads, SWD pad
   transceiver datasheets give, and the debug probe inputs assume the probe's outputs follow the target voltage
   rather than a fixed 3.3 V (the sniffer's DESIGN.md names an ST-Link or J-Link). Neither was checked against the
   probe's or the C610's own documents.
-- Resistor power isn't checked in fault cases: a fault drives the two ends of a resistor from independent
-  ranges, which overstates the voltage across it.
+- Resistor power can't FAIL in fault cases: a fault drives the two ends of a resistor from independent ranges,
+  which can overstate the voltage across it, so a FAIL there is UNKNOWN.
+- Each CAN wire's range is the ISO common-mode range ± half the differential, which is wider than any one wire
+  is likely to reach.
 - **AP63200WU-7**: no headroom figure (the datasheet only says the duty cycle approaches 100 % near dropout), so
   rev 1's +3V3 has a 0 V low end. Its VFB range is for CCM; the AP63200 runs PFM at light load.
 - The LDO output ranges (ME6211, XC6206) are specified at 25 °C.

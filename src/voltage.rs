@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Write as _};
 
 use crate::design::{Component, Design, PinKind};
-use crate::inputs::{BoardInputs, Input, Max};
+use crate::inputs::{BoardInputs, Follow, Input, Max};
 use crate::limits::{Bound, Class, Drive, DriveKind, Library, Part, Quantity, Range};
 
 /// A voltage range from the board's ground. Either end is `None` when it can't be worked out.
@@ -111,9 +111,10 @@ pub struct NetVoltage {
     /// The low end is only a floor the net can't go below, not a value it is known to reach: a regulator that
     /// isn't held sags somewhere above 0 V. A check can pass on it but must not fail on it.
     pub floor: bool,
-    /// Nets this one is joined to only through resistors, inductors, LEDs and jumpers, with nothing else
-    /// driving it. A node of passive parts always sits between the voltages around it, so at every moment
-    /// this net is between the lowest and highest of these. Empty when that isn't known.
+    /// Nets this one is joined to only through resistors, LEDs and jumpers, with nothing else driving it and no
+    /// capacitor or inductor on it. A node of such parts always sits between the voltages around it, so at
+    /// every moment this net is between the lowest and highest of these. Empty when that isn't known: a
+    /// capacitor holds a node's old voltage and an inductor overshoots, so either can take it outside them.
     pub between: Vec<usize>,
 }
 
@@ -233,7 +234,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
     }
     let follows = |i: &Input| match &i.max {
         Max::Value(_) => None,
-        Max::Pin { pin, .. } => net_of(&pin.reference, &pin.pin),
+        Max::Pin(f) => net_of(&f.pin.reference, &f.pin.pin),
     };
     let seed_deps = |is: &[&Input]| -> Vec<usize> { is.iter().filter_map(|i| follows(i)).collect() };
 
@@ -370,7 +371,7 @@ fn input_range(design: &Design, i: &Input, follows: Option<usize>, out: &[Option
                 ..Default::default()
             },
         ),
-        (Max::Pin { pin, plus }, Some(net)) => {
+        (Max::Pin(Follow { pin, plus }), Some(net)) => {
             let top = span_of(out, net).max.map(|m| m + plus);
             let plus_text = if *plus == 0.0 {
                 String::new()
@@ -404,7 +405,7 @@ fn input_range(design: &Design, i: &Input, follows: Option<usize>, out: &[Option
                 },
             )
         }
-        (Max::Pin { pin, .. }, None) => (
+        (Max::Pin(Follow { pin, .. }), None) => (
             Span::unknown(),
             Why {
                 text: format!("UNKNOWN: {head} follows {pin}, which isn't in the design"),
@@ -1121,6 +1122,8 @@ fn recommended(part: &Part, pin: &str) -> (Option<f64>, Option<f64>) {
 struct Group {
     nets: Vec<usize>,
     pulls: Vec<Pull>,
+    /// A capacitor or inductor touches the group, so it can leave the range of the nets around it.
+    reactive: bool,
 }
 
 enum Pull {
@@ -1224,7 +1227,7 @@ impl Group {
             .iter()
             .any(|p| matches!(p, Pull::Net { .. }) || matches!(p, Pull::Output { push_pull, .. } if *push_pull));
         nv.driver = if real { Driver::Pulled } else { Driver::Weak };
-        if self.pulls.iter().all(|p| matches!(p, Pull::Net { .. })) {
+        if !self.reactive && self.pulls.iter().all(|p| matches!(p, Pull::Net { .. })) {
             nv.between = self
                 .pulls
                 .iter()
@@ -1273,11 +1276,18 @@ fn build_groups(design: &Design, lib: &Library, inputs: &BoardInputs, strong: &[
         .into_values()
         .map(|nets| {
             let mut pulls = vec![];
+            let mut reactive = false;
             for &net in &nets {
                 for (r, pnum) in &design.nets[net].pins {
                     let Some(c) = design.components.get(r) else { continue };
                     if c.dnp {
                         continue;
+                    }
+                    if is_capacitor(lib, c)
+                        || c.lib_id.starts_with("Device:L")
+                        || class_of(lib, c) == Some(Class::Inductor)
+                    {
+                        reactive = true;
                     }
                     let Some(pin) = c.pins.get(pnum) else { continue };
                     if is_link(lib, c) {
@@ -1337,7 +1347,7 @@ fn build_groups(design: &Design, lib: &Library, inputs: &BoardInputs, strong: &[
                     }
                 }
             }
-            Group { nets, pulls }
+            Group { nets, pulls, reactive }
         })
         .collect()
 }
