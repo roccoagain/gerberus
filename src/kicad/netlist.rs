@@ -499,7 +499,10 @@ impl Builder {
         }
         // Like KiCad, items join only where their connection points coincide (a line's points are its two
         // ends), and a wire never joins a bus. The exceptions: a junction joins every line passing through it,
-        // and a label joins the lines passing through it when there are at least two.
+        // and so does a label when two or more lines pass through it (`connection_graph.cpp`). A label in the
+        // middle of a single line also names that line, unless a pin, power symbol or no-connect flag sits at
+        // its point: then the label goes to that item instead. That last rule isn't in `connection_graph.cpp`;
+        // it was found by testing `kicad-cli sch export netlist` (KiCad 10.0.8).
         for nodes in wire_points.values().chain(bus_points.values()) {
             for w in nodes.windows(2) {
                 uf.union(w[0], w[1]);
@@ -513,7 +516,12 @@ impl Builder {
                     .collect(),
                 _ => continue,
             };
-            if matches!(item, Item::Label(..)) && through.len() < 2 {
+            if matches!(item, Item::Label(..))
+                && through.len() == 1
+                && items.iter().any(|(q, other)| {
+                    q == p && matches!(other, Item::Pin(..) | Item::PowerSymbol(..) | Item::NoConnect)
+                })
+            {
                 continue;
             }
             for li in through {
