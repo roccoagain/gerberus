@@ -41,13 +41,15 @@ cites the numbers, their datasheet pages and how each net got its range. The ten
 | `tvs-standoff` | a rail rises above a TVS diode's stand-off voltage | warning |
 | `cap-voltage` | a capacitor sees more than its rated voltage (error), or more than `policy.toml` allows (warning) | error / warning |
 | `resistor-power` | a resistor's worst-case V²/R is over its rating (error) or the policy's share of it (warning) | error / warning |
-| `floating-input` | an input pin is on a net nothing drives | error |
+| `floating-input` | an input pin is on a net nothing drives (UNKNOWN when only open-drain or tri-state outputs, connectors or unmodelled parts reach it) | error |
 | `unpowered` | a power pin is on a net nothing supplies | error |
 | `regulator-headroom` | a regulator's supply can fall below what its datasheet output range needs | warning |
 | `unchecked` | (UNKNOWN only) a fitted part or pin has no limits to check against | |
 
 A bound relative to another pin (`VDD + 0.3 V`) passes only if it holds however the two nets move, or if
-everything that drives the pin is itself bounded by that pin's net. A regulator that isn't held leaves its
+everything that drives the pin is itself bounded by that pin's net (pull-ups to it, outputs of parts it alone
+supplies, diodes and regulators fed from it; not switch nodes that can overshoot it). `bidirectional` makes only
+a TVS's breakdown a magnitude; abs max, recommended and stand-off ranges stay signed. A regulator that isn't held leaves its
 rail's low end as a floor, so a check can pass on it but never fail on it. `--all` lists passes, `--json` prints
 the findings, and the command exits with status 1 when any error FAILs.
 

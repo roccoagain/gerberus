@@ -27,7 +27,7 @@ fn run_on(design: &Design, inputs: &BoardInputs) -> (Voltages, Report) {
     let lib = Library::load_dir(&root("parts")).unwrap();
     let policy = Policy::load(&root("policy.toml")).unwrap();
     let v = compute(design, &lib, inputs);
-    let r = check(design, &lib, &policy, &v);
+    let r = check(design, &lib, &policy, inputs, &v);
     (v, r)
 }
 
@@ -322,4 +322,169 @@ fn report_serialises() {
     let (_, _, r) = run("can-encoder-rev1", "can-encoder.kicad_sch");
     let json = serde_json::to_string(&r).unwrap();
     assert!(json.contains("\"rule\":\"tvs-breakdown\"") && json.contains("\"verdict\":\"fail\""));
+}
+
+/// A cap rated below a rail fails even when the rail's low end is only a floor: the top end is real.
+#[test]
+fn floors_only_soften_the_end_they_set() {
+    let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    let (v33, gnd) = (net(&d, "+3V3"), net(&d, "GND"));
+    add(
+        &mut d,
+        "C98",
+        "Device:C",
+        "1uF",
+        None,
+        vec![pin("1", PinKind::Passive, v33), pin("2", PinKind::Passive, gnd)],
+    );
+    d.components
+        .get_mut("C98")
+        .unwrap()
+        .fields
+        .insert("Voltage".into(), "2.5V".into());
+    let (v, r) = run_on(&d, &inputs);
+    assert!(v.nets[v33].floor, "+3V3's low end is a floor on the sniffer");
+    let f = r.by_rule("cap-voltage").find(|f| f.reference == "C98").unwrap();
+    assert_eq!(
+        (f.verdict, f.severity),
+        (Verdict::Fail, Severity::Error),
+        "{}",
+        f.message
+    );
+}
+
+/// A polarised capacitor fitted backwards fails its negative rating.
+#[test]
+fn reversed_polarised_capacitor_fails() {
+    let dir = std::env::temp_dir().join(format!("gerberus-polcap-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("POLCAP.toml"),
+        "mpn = \"POLCAP\"\nmanufacturer = \"M\"\ndescription = \"test polarised cap\"\nclass = \"capacitor\"\n\
+         [datasheet]\ntitle = \"t\"\ndocument = \"d\"\nurl = \"u\"\n[pins]\n1 = \"+\"\n2 = \"-\"\n\
+         [[limit]]\npins = [\"+\"]\nto = \"-\"\nabs_max = { unknown = \"none\" }\n\
+         recommended = { min = 0, max = 16, page = 1 }\n",
+    )
+    .unwrap();
+    let lib = Library::load_dirs(&[&root("parts"), &dir]).unwrap();
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let (v5, gnd) = (net(&d, "+5V"), net(&d, "GND"));
+    add(
+        &mut d,
+        "C98",
+        "Device:C_Polarized",
+        "10uF",
+        Some("POLCAP"),
+        vec![pin("1", PinKind::Passive, gnd), pin("2", PinKind::Passive, v5)],
+    );
+    let policy = Policy::load(&root("policy.toml")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    let r = check(&d, &lib, &policy, &inputs, &v);
+    std::fs::remove_dir_all(&dir).unwrap();
+    let f = r.by_rule("cap-voltage").find(|f| f.reference == "C98").unwrap();
+    assert_eq!(
+        (f.verdict, f.severity),
+        (Verdict::Fail, Severity::Error),
+        "{}",
+        f.message
+    );
+}
+
+/// An input reached only by an open-drain output isn't proven driven.
+#[test]
+fn open_drain_only_input_is_unknown() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let a = new_net(&mut d, "/OD");
+    let (v33, gnd) = (net(&d, "+3V3"), net(&d, "GND"));
+    add(
+        &mut d,
+        "U8",
+        "Logic:OD",
+        "X",
+        None,
+        vec![
+            pin("1", PinKind::OpenCollector, a),
+            pin("2", PinKind::PowerIn, v33),
+            pin("3", PinKind::PowerIn, gnd),
+        ],
+    );
+    add(
+        &mut d,
+        "U9",
+        "Logic:Buffer",
+        "X",
+        None,
+        vec![
+            pin("1", PinKind::Input, a),
+            pin("2", PinKind::PowerIn, v33),
+            pin("3", PinKind::PowerIn, gnd),
+        ],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f = r.by_rule("floating-input").find(|f| f.reference == "U9").unwrap();
+    assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
+}
+
+/// A regulator whose range the part file doesn't give still gets a headroom finding.
+#[test]
+fn every_regulator_gets_a_headroom_finding() {
+    use gerberus::limits::{DriveKind, Range};
+    let (d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let mut lib = Library::load_dir(&root("parts")).unwrap();
+    let drive = lib
+        .parts
+        .get_mut("XC6206P332MR-G")
+        .unwrap()
+        .drives
+        .iter_mut()
+        .find(|d| d.kind == DriveKind::Regulates)
+        .unwrap();
+    drive.range = Range::Unknown("test".into());
+    let policy = Policy::load(&root("policy.toml")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    let r = check(&d, &lib, &policy, &inputs, &v);
+    let f: Vec<_> = r
+        .by_rule("regulator-headroom")
+        .filter(|f| f.reference == "U5")
+        .collect();
+    assert_eq!(f.len(), 1);
+    assert_eq!(f[0].verdict, Verdict::Unknown, "{}", f[0].message);
+}
+
+/// A floor carries through a resistor: a rail fed from a sagging rail doesn't fail a minimum either.
+#[test]
+fn floors_carry_through_resistors() {
+    let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    let v33 = net(&d, "+3V3");
+    let f = new_net(&mut d, "+3V3F");
+    add(
+        &mut d,
+        "R98",
+        "Device:R",
+        "10",
+        None,
+        vec![pin("1", PinKind::Passive, v33), pin("2", PinKind::Passive, f)],
+    );
+    // Move the sensor's VDD onto the filtered rail.
+    let u3 = d.components.get_mut("U3").unwrap();
+    let vdd = u3
+        .pins
+        .values_mut()
+        .find(|p| p.net == v33 && p.kind == PinKind::PowerIn)
+        .unwrap();
+    let num = vdd.number.clone();
+    vdd.net = f;
+    d.nets[v33].pins.retain(|(r, p)| !(r == "U3" && *p == num));
+    d.nets[f].pins.push(("U3".into(), num));
+    let (v, r) = run_on(&d, &inputs);
+    assert!(v.nets[f].floor);
+    assert_eq!(r.errors(), 0, "{:#?}", fails(&r));
+    assert!(
+        r.findings
+            .iter()
+            .filter(|x| x.reference == "U3" && x.rule == "recommended")
+            .all(|x| x.verdict != Verdict::Fail),
+        "{:#?}",
+        fails(&r)
+    );
 }

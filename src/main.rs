@@ -116,7 +116,15 @@ fn load_library(dirs: &[PathBuf]) -> Result<Library, String> {
 fn analyse(
     path: &Path,
     o: &Options,
-) -> Result<(gerberus::design::Design, Library, gerberus::voltage::Voltages), String> {
+) -> Result<
+    (
+        gerberus::design::Design,
+        Library,
+        BoardInputs,
+        gerberus::voltage::Voltages,
+    ),
+    String,
+> {
     let lib = load_library(&o.dirs)?;
     let design = gerberus::kicad::load(path)?;
     let inputs_path = o
@@ -129,7 +137,7 @@ fn analyse(
         return Err(format!("{}: {}", inputs_path.display(), problems.join("; ")));
     }
     let v = gerberus::voltage::compute(&design, &lib, &inputs);
-    Ok((design, lib, v))
+    Ok((design, lib, inputs, v))
 }
 
 fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
@@ -141,9 +149,9 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
         .cloned()
         .collect();
     let o = options(path, &rest, &["--inputs"])?;
-    let (design, lib, v) = analyse(path, &o)?;
+    let (design, lib, inputs, v) = analyse(path, &o)?;
     let policy = gerberus::policy::Policy::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("policy.toml"))?;
-    let report = gerberus::rules::check(&design, &lib, &policy, &v);
+    let report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
     if json {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
@@ -154,7 +162,7 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
 
 fn voltages(path: &Path, rest: &[String]) -> Result<bool, String> {
     let o = options(path, rest, &["--inputs", "--explain"])?;
-    let (design, _lib, v) = analyse(path, &o)?;
+    let (design, _lib, _inputs, v) = analyse(path, &o)?;
     if o.explain.is_empty() {
         for (net, nv) in design.nets.iter().zip(&v.nets) {
             println!("{}: {}", net.name, nv.span);

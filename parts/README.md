@@ -172,7 +172,8 @@ down to the inputs it comes from. It starts from `inputs.toml` (the `to` pins ar
   rated range when `inputs.toml` gives none. Anything else on the feedback net makes the output UNKNOWN.
   Without `feedback`, the drive sets the pin's own net. The range holds only while the supply stays inside the
   supply pin's recommended range and meets the `headroom`. Below that, or with no `headroom`, the low end is
-  0 V. Above the recommended maximum, the top end follows the supply. Line and load regulation aren't modelled.
+  0 V, marked as only a floor: checks can pass on it but not fail on it, and nets fed from it inherit the mark.
+  Above the recommended maximum, the top end follows the supply. Line and load regulation aren't modelled.
 - **Switch nodes** (`switches`): whatever their range gives; both ends are UNKNOWN on today's parts.
 - **Everything else**: the union of what can pull the net: nets reached through resistors, inductors, LEDs and
   jumpers (capacitors count as open, TVS diodes as off), and IC output pins, which reach at most their part's
