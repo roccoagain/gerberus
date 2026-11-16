@@ -1,6 +1,7 @@
 mpn = "0402CG101J500NT"
 manufacturer = "Fenghua (FH)"
 description = "100 pF 50 V C0G MLCC, 0402"
+class = "capacitor"
 
 [datasheet]
 title = "Fenghua general type MLCC"

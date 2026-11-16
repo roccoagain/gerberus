@@ -1,6 +1,7 @@
 mpn = "TPS560430YFDBVR"
 manufacturer = "Texas Instruments"
 description = "4 V to 36 V, 600 mA synchronous buck, 2.1 MHz forced PWM, adjustable, SOT-23-6"
+class = "ic"
 
 [datasheet]
 title = "TPS560430 SIMPLE SWITCHER 4-V to 36-V, 600-mA Synchronous Step-Down Converter"

@@ -1,6 +1,7 @@
 mpn = "GRM21BR61H106KE43L"
 manufacturer = "Murata"
 description = "10 uF 50 V X5R MLCC, 0805"
+class = "capacitor"
 
 [datasheet]
 title = "GRM21BR61H106KE43 reference sheet"

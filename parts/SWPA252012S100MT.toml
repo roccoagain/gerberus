@@ -1,6 +1,7 @@
 mpn = "SWPA252012S100MT"
 manufacturer = "Sunlord"
 description = "10 uH wire-wound power inductor, 2.5 x 2.0 x 1.2 mm"
+class = "inductor"
 
 # No datasheet: LCSC lists none for C37428 and sunlordinc.com is blocked from the cloud environment.
 

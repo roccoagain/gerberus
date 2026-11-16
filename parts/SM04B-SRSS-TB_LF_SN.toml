@@ -1,6 +1,7 @@
 mpn = "SM04B-SRSS-TB(LF)(SN)"
 manufacturer = "JST"
 description = "JST SH 4-pin header, 1.0 mm pitch, side entry"
+class = "connector"
 
 [datasheet]
 title = "SH Connector, 1.0 mm pitch disconnectable crimp style"

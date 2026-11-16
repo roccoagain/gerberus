@@ -1,6 +1,7 @@
 mpn = "0402WGF1502TCE"
 manufacturer = "UNI-ROYAL (Uniroyal Electronics)"
 description = "15 kohm 1 % 0.0625 W thick-film resistor, 0402"
+class = "resistor"
 
 [datasheet]
 title = "Thick Film Chip Resistors, 01005/0201/0402/0603/0805/1206/1210/1812/2010/2512 Series"

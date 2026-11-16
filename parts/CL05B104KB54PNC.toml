@@ -1,6 +1,7 @@
 mpn = "CL05B104KB54PNC"
 manufacturer = "Samsung Electro-Mechanics"
 description = "100 nF 50 V X7R MLCC, 0402"
+class = "capacitor"
 
 [datasheet]
 title = "Samsung Electro-Mechanics MLCC catalogue"

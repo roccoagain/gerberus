@@ -1,6 +1,7 @@
 mpn = "KT-0805G"
 manufacturer = "Hubei KENTO Electronic"
 description = "Green LED, 0805"
+class = "led"
 
 [datasheet]
 title = "0805 green (翠绿) chip LED specification"

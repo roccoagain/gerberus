@@ -1,6 +1,7 @@
 mpn = "SMF26A"
 manufacturer = "MDD (Microdiode)"
 description = "26 V unidirectional TVS, 200 W, SOD-123FL"
+class = "tvs"
 
 [datasheet]
 title = "SMF5.0(C)A thru SMF440(C)A Transient Voltage Suppressor"

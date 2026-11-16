@@ -1,6 +1,7 @@
 mpn = "TCAN1044AVDDFRQ1"
 manufacturer = "Texas Instruments"
 description = "Automotive fault-protected CAN FD transceiver with VIO level shifter, SOT-23-8 (DDF)"
+class = "ic"
 
 [datasheet]
 title = "TCAN1044A-Q1 Automotive Fault-Protected CAN FD Transceiver with Standby mode"

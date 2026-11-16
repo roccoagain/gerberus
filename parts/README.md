@@ -12,6 +12,7 @@ the datasheet that comes from. Checkers compare these with the voltage range the
 mpn = "TPS560430YFDBVR"            # matched against the schematic's MPN field (or Value, if there's no MPN)
 manufacturer = "Texas Instruments"
 description = "36 V 600 mA buck, SOT-23-6"
+class = "ic"                        # capacitor, resistor, inductor, diode, tvs, led, connector, oscillator, ic
 
 [datasheet]                         # leave out only when no datasheet can be found; then every value is unknown
 title = "TPS560430 ... Step-Down Converter"
@@ -23,8 +24,12 @@ url = "https://www.ti.com/lit/ds/symlink/tps560430.pdf"
 2 = "GND"
 5 = "VIN"
 
+[[variant]]                         # optional: another part number with the same limits (another package)
+mpn = "TPS560430YFDDCR"             # hypothetical; gives its own pin map, or reuses [pins] without one
+pins = { 1 = "CB", 2 = "GND", 3 = "FB", 4 = "EN", 5 = "VIN", 6 = "SW" }
+
 [[limit]]
-pins = ["VIN"]                      # datasheet pin names; each gets the limit on its own
+pins = ["VIN"]                      # datasheet pin names, never numbers, so every package shares the limits
 to = "GND"                          # measured from this pin
 abs_max = { min = -0.3, max = 38, page = 4 }
 recommended = { min = 4, max = 36, page = 4, note = "optional free text" }
@@ -62,6 +67,31 @@ A range is either `{ min = ..., max = ..., page = N, note = "..." }` or `{ unkno
   stand-off voltage (VRWM), and a passive's rated voltage, power or current. Notes say which.
 - Rated values of passives and connectors go in `recommended`, not `abs_max`: a capacitor's rated voltage is the
   most it may see continuously, and the withstanding-voltage test above it is a short test, not a rating.
+
+### Where limits come from
+
+`scoutfly parts board.kicad_sch` reports, for every placed part, where its limits come from:
+
+1. **A part file.** The shared `parts/` folder loads first, then a `parts/` folder next to the schematic, then
+   any `--parts` folders. A later file for the same part number replaces the earlier one, so a board can
+   override the shared library.
+2. **A class default.** A capacitor with no part file takes its rated voltage from its schematic `Voltage`
+   field, or from its value (`100nF 50V`, `6V3`). It is marked as not checked against a datasheet. Other
+   classes have no default.
+3. **Nothing.** The part is reported as `UNCHECKED`, never as passing.
+
+### Derating policy
+
+Datasheet limits are facts; derating is project judgement. It lives in `policy.toml` at the repository root,
+never in a part file:
+
+```toml
+[[derate]]
+class = "capacitor"     # or mpn = "..." for one part, which wins over a class rule
+quantity = "voltage"
+factor = 0.8            # use at most 80 % of the rating
+reason = "..."
+```
 
 ### Board inputs
 

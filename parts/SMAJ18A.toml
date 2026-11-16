@@ -1,6 +1,7 @@
 mpn = "SMAJ18A"
 manufacturer = "MDD (Microdiode)"
 description = "18 V unidirectional TVS, 400 W, SMA (DO-214AC)"
+class = "tvs"
 
 [datasheet]
 title = "SMAJ5.0(C)A thru SMAJ440(C)A Transient Voltage Suppressor"

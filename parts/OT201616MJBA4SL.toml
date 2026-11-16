@@ -1,6 +1,7 @@
 mpn = "OT201616MJBA4SL"
 manufacturer = "YXC"
 description = "16 MHz CMOS crystal oscillator, 1.8 V to 3.3 V, 2.0 x 1.6 mm"
+class = "oscillator"
 
 [datasheet]
 title = "YSO110TR Wide Voltage Crystal Oscillator"

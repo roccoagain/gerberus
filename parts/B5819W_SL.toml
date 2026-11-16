@@ -1,6 +1,7 @@
 mpn = "B5819W SL"
 manufacturer = "Jiangsu Changjing Electronics (CJ)"
 description = "40 V 1 A Schottky barrier diode, SOD-123"
+class = "diode"
 
 [datasheet]
 title = "SOD-123 Plastic-Encapsulate Diodes, B5817W-B5819W Schottky Barrier Diode"

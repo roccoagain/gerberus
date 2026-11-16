@@ -1,6 +1,7 @@
 mpn = "MT6701CT-STD-R"
 manufacturer = "MagnTek"
 description = "14-bit magnetic angle sensor, SSI / I2C / ABZ / analog / PWM, SOP-8"
+class = "ic"
 
 [datasheet]
 title = "MT6701 differential-Hall magnetic angle sensor IC (Chinese)"

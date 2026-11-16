@@ -1,6 +1,7 @@
 mpn = "CL21A226MAQNNNE"
 manufacturer = "Samsung Electro-Mechanics"
 description = "22 uF 25 V X5R MLCC, 0805"
+class = "capacitor"
 
 [datasheet]
 title = "Samsung Electro-Mechanics MLCC catalogue"

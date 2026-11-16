@@ -1,6 +1,7 @@
 mpn = "STM32G0B1KBT6TR"
 manufacturer = "STMicroelectronics"
 description = "Arm Cortex-M0+ MCU, 128 KB flash, FDCAN and USB, LQFP-32"
+class = "ic"
 
 [datasheet]
 title = "STM32G0B1xB/xC/xE Arm Cortex-M0+ 32-bit MCU, up to 512KB Flash, 144KB RAM, 6x USART, timers, ADC, DAC, comm. I/Fs, 1.7-3.6V"

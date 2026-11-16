@@ -1,0 +1,9 @@
+# Derating policy: project judgement, kept apart from the datasheet facts in parts/.
+# A checker warns when a net stays inside a part's recommended range but above `factor` of it.
+# A rule with `mpn` wins over a class rule for the same quantity.
+
+[[derate]]
+class = "capacitor"
+quantity = "voltage"
+factor = 0.8
+reason = "keep MLCCs at or below 80 % of rated voltage; X5R/X7R lose capacitance under DC bias and margin covers ripple"

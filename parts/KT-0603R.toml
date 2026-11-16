@@ -1,6 +1,7 @@
 mpn = "KT-0603R"
 manufacturer = "Hubei KENTO Electronic"
 description = "Red LED, 0603"
+class = "led"
 
 [datasheet]
 title = "0603 red (红光) chip LED specification"

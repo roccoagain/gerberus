@@ -1,6 +1,7 @@
 mpn = "TCAN330GDCNR"
 manufacturer = "Texas Instruments"
 description = "3.3 V CAN FD transceiver with shutdown and silent mode, SOT-23-8 (DCN)"
+class = "ic"
 
 [datasheet]
 title = "TCAN33x 3.3V CAN Transceivers with CAN FD (Flexible Data Rate)"

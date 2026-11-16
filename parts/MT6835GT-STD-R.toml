@@ -1,6 +1,7 @@
 mpn = "MT6835GT-STD-R"
 manufacturer = "MagnTek"
 description = "21-bit magnetic angle encoder, SPI / ABZ / UVW / PWM, TSSOP-16"
+class = "ic"
 
 [datasheet]
 title = "MT6835 21-bit high-resolution, high-accuracy magnetic angle encoder IC (Chinese)"

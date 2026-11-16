@@ -1,6 +1,7 @@
 mpn = "AP63200WU-7"
 manufacturer = "Diodes Incorporated"
 description = "3.8 V to 32 V, 2 A synchronous buck, 500 kHz, adjustable, TSOT-26"
+class = "ic"
 
 [datasheet]
 title = "AP63200/AP63201/AP63203/AP63205 3.8V to 32V Input, 2A Low IQ Synchronous Buck Converter"

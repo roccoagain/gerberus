@@ -1,6 +1,7 @@
 mpn = "CL10A475KO8NNNC"
 manufacturer = "Samsung Electro-Mechanics"
 description = "4.7 uF 16 V X5R MLCC, 0603"
+class = "capacitor"
 
 [datasheet]
 title = "Samsung Electro-Mechanics MLCC catalogue"

@@ -2,9 +2,11 @@
 
 use std::path::{Path, PathBuf};
 
+use scoutfly::design::{Component, Pin, PinKind};
 use scoutfly::inputs::BoardInputs;
 use scoutfly::kicad;
-use scoutfly::limits::{Bound, Library, Quantity, Range, component_mpn};
+use scoutfly::limits::{Bound, Coverage, Library, Lookup, Quantity, Range, class_default, component_mpn, coverage};
+use scoutfly::policy::Policy;
 
 fn root(rel: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)
@@ -169,7 +171,8 @@ fn relative_bounds_resolve() {
     assert_eq!(max.resolve(|_| None), None);
 }
 
-const HEAD: &str = "mpn = \"X\"\nmanufacturer = \"M\"\ndescription = \"D\"\n[pins]\n1 = \"A\"\n2 = \"B\"\n";
+const HEAD: &str =
+    "mpn = \"X\"\nmanufacturer = \"M\"\ndescription = \"D\"\nclass = \"ic\"\n[pins]\n1 = \"A\"\n2 = \"B\"\n";
 
 #[test]
 fn rejects_malformed_files() {
@@ -211,4 +214,155 @@ fn reports_unsound_files() {
         "{problems}"
     );
     assert!(problems.contains("reaches outside abs_max"), "{problems}");
+}
+
+/// Each capacitor's schematic `Voltage` field agrees with its datasheet rating.
+#[test]
+fn capacitor_voltage_fields_match_datasheets() {
+    let lib = library();
+    let mut problems = Vec::new();
+    for (dir, sch) in BOARDS {
+        let design = kicad::load(&root(&format!("tests/fixtures/{dir}/{sch}"))).unwrap();
+        for (r, c) in &design.components {
+            let Some(field) = c.fields.get("Voltage") else { continue };
+            let part = lib.part_for(c).unwrap();
+            let from_sheet = part.limits[0].recommended.values().unwrap().1;
+            let from_field = class_default(c).unwrap().limits[0].recommended.values().unwrap().1;
+            if from_sheet != from_field {
+                problems.push(format!("{dir}: {r} says {field}, datasheet says {from_sheet} V"));
+            }
+        }
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+fn capacitor(value: &str, voltage: Option<&str>) -> Component {
+    let mut c = Component {
+        reference: "C9".into(),
+        value: value.into(),
+        lib_id: "Device:C_Small".into(),
+        ..Default::default()
+    };
+    if let Some(v) = voltage {
+        c.fields.insert("Voltage".into(), v.into());
+    }
+    for n in ["1", "2"] {
+        c.pins.insert(
+            n.into(),
+            Pin {
+                number: n.into(),
+                name: String::new(),
+                kind: PinKind::Passive,
+                no_connect: false,
+                net: 0,
+            },
+        );
+    }
+    c
+}
+
+#[test]
+fn capacitors_without_a_file_get_a_class_default() {
+    let lib = library();
+    for (value, field, want) in [
+        ("1uF", Some("35V"), Some(35.0)),
+        ("100nF 6V3", None, Some(6.3)),
+        ("10uF", None, None),
+    ] {
+        let c = capacitor(value, field);
+        match lib.lookup(&c) {
+            Lookup::ClassDefault(p) => {
+                assert_eq!(p.limits[0].recommended.values(), Some((-want.unwrap(), want.unwrap())))
+            }
+            Lookup::Unchecked(_) => assert_eq!(want, None, "{value}"),
+            Lookup::Datasheet(p) => panic!("{value} matched {}", p.mpn),
+        }
+    }
+}
+
+/// A part with no limits shows as unchecked instead of passing silently.
+#[test]
+fn coverage_reports_unchecked_parts() {
+    let lib = library();
+    let design = kicad::load(&root("tests/fixtures/can-encoder-rev1/can-encoder.kicad_sch")).unwrap();
+    let cov = coverage(&design, &lib);
+    // JP1 is a solder jumper with no part number that rev 1 left in its BOM.
+    assert!(matches!(cov["JP1"], Coverage::Unchecked { .. }), "{:?}", cov["JP1"]);
+    assert_eq!(cov["J3"], Coverage::NotFitted);
+    assert_eq!(cov["D2"], Coverage::Datasheet { mpn: "SMAJ18A".into() });
+    let unchecked: Vec<&String> = cov
+        .iter()
+        .filter(|(_, c)| matches!(c, Coverage::Unchecked { .. }))
+        .map(|(r, _)| r)
+        .collect();
+    assert_eq!(unchecked, ["JP1"]);
+}
+
+fn scratch_dir(name: &str) -> PathBuf {
+    let d = std::env::temp_dir().join(format!("scoutfly-test-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+/// A board's own parts folder overrides the shared library, and a variant reuses the limits by pin name.
+#[test]
+fn board_files_override_and_variants_share_limits() {
+    let board = scratch_dir("override");
+    std::fs::write(
+        board.join("SMAJ18A.toml"),
+        format!(
+            "{}\n[[variant]]\nmpn = \"SMAJ18A-ALT\"\npins = {{ 2 = \"K\", 1 = \"A\" }}\n",
+            std::fs::read_to_string(root("parts/SMAJ18A.toml"))
+                .unwrap()
+                .replace("MDD (Microdiode)", "Board copy")
+        ),
+    )
+    .unwrap();
+    let lib = Library::load_dirs(&[&root("parts"), &board]).unwrap();
+    assert_eq!(lib.parts["SMAJ18A"].manufacturer, "Board copy");
+    assert_eq!(lib.parts["SMAJ18A-ALT"].pins_named("K"), ["2"]);
+    assert_eq!(lib.parts["SMAJ18A-ALT"].limits.len(), lib.parts["SMAJ18A"].limits.len());
+    assert!(lib.parts["SMAJ18A"].problems().is_empty());
+    // Two files for one part number in the same folder is an error.
+    std::fs::copy(board.join("SMAJ18A.toml"), board.join("copy.toml")).unwrap();
+    assert!(Library::load_dirs(&[&board]).is_err());
+    std::fs::remove_dir_all(&board).unwrap();
+}
+
+#[test]
+fn variant_pin_maps_must_name_every_limited_pin() {
+    let text = format!(
+        "{HEAD}[[variant]]\nmpn = \"Y\"\npins = {{ 1 = \"A\" }}\n[[limit]]\npins = [\"A\"]\nto = \"B\"\nabs_max = {{ unknown = \"x\" }}\nrecommended = {{ unknown = \"x\" }}"
+    );
+    let part: scoutfly::limits::Part = toml::from_str(&text).unwrap();
+    assert!(
+        part.problems().join("\n").contains("variant \"Y\" has no pin named B"),
+        "{:?}",
+        part.problems()
+    );
+}
+
+#[test]
+fn derating_policy_is_separate_from_limits() {
+    let lib = library();
+    let policy = Policy::load(&root("policy.toml")).unwrap();
+    let cap = &lib.parts["CL21A226MAQNNNE"];
+    let d = policy.derate_for(cap, &cap.limits[0]).unwrap();
+    assert_eq!(d.factor, 0.8);
+    let tvs = &lib.parts["SMAJ18A"];
+    assert!(policy.derate_for(tvs, &tvs.limits[0]).is_none());
+
+    let dir = scratch_dir("policy");
+    std::fs::write(
+        dir.join("p.toml"),
+        "[[derate]]\nquantity = \"voltage\"\nfactor = 1.5\nreason = \"x\"\n",
+    )
+    .unwrap();
+    let err = Policy::load(&dir.join("p.toml")).unwrap_err();
+    assert!(
+        err.contains("exactly one of `class` and `mpn`") && err.contains("not in (0, 1]"),
+        "{err}"
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
 }

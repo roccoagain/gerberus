@@ -1,6 +1,7 @@
 mpn = "ME6211C33M5G-N"
 manufacturer = "Microne"
 description = "3.3 V 500 mA LDO with enable, SOT-23-5"
+class = "ic"
 
 [datasheet]
 title = "ME6211 Series High Speed LDO Regulators, Low ESR Cap"

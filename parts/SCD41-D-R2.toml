@@ -1,6 +1,7 @@
 mpn = "SCD41-D-R2"
 manufacturer = "Sensirion"
 description = "Photoacoustic CO2, temperature and humidity sensor, I2C, LGA-20"
+class = "ic"
 
 [datasheet]
 title = "SCD4x CO2, temperature and humidity sensor"

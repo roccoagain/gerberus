@@ -1,6 +1,7 @@
 mpn = "NUP2105LT1G"
 manufacturer = "onsemi"
 description = "Dual-line bidirectional CAN bus protector, 24 V working voltage, SOT-23"
+class = "tvs"
 
 [datasheet]
 title = "NUP2105L, SZNUP2105L Dual Line CAN Bus Protector"

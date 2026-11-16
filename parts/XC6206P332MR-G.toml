@@ -1,6 +1,7 @@
 mpn = "XC6206P332MR-G"
 manufacturer = "Torex"
 description = "3.3 V 200 mA LDO, SOT-23 (MR)"
+class = "ic"
 
 [datasheet]
 title = "XC6206 Series Positive Voltage Regulators"

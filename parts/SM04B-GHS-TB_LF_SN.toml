@@ -1,6 +1,7 @@
 mpn = "SM04B-GHS-TB(LF)(SN)"
 manufacturer = "JST"
 description = "JST GH 4-pin header, 1.25 mm pitch, side entry"
+class = "connector"
 
 [datasheet]
 title = "GH Connector, 1.25 mm pitch disconnectable crimp style"

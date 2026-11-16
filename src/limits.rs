@@ -18,13 +18,41 @@ pub struct Part {
     pub mpn: String,
     pub manufacturer: String,
     pub description: String,
+    /// What kind of part this is. A derating policy picks parts by class.
+    pub class: Class,
     /// Missing only when no datasheet could be found; every limit must then be unknown.
     pub datasheet: Option<Datasheet>,
     /// Pin number (as printed in the datasheet and used by the footprint) to datasheet pin name. Several
-    /// numbers may share a name, such as two `GND` pads.
+    /// numbers may share a name, such as two `GND` pads. Limits name pins, never numbers, so other packages
+    /// of the same die only need their own pin map (see `variants`).
     pub pins: BTreeMap<String, String>,
+    /// Other part numbers covered by the same datasheet limits, such as other packages or reel sizes. Each
+    /// gives its own pin map, or reuses `pins` when it has none.
+    #[serde(default, rename = "variant")]
+    pub variants: Vec<Variant>,
     #[serde(default, rename = "limit")]
     pub limits: Vec<Limit>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Variant {
+    pub mpn: String,
+    pub pins: Option<BTreeMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Class {
+    Capacitor,
+    Resistor,
+    Inductor,
+    Diode,
+    Tvs,
+    Led,
+    Connector,
+    Oscillator,
+    Ic,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -247,12 +275,50 @@ impl Part {
             .filter(move |l| l.quantity == quantity && l.pins.contains(&name))
     }
 
+    /// Every pin name a limit refers to, in `pins`, `to` or a relative bound.
+    fn used_pin_names(&self) -> Vec<&str> {
+        let mut out = Vec::new();
+        for l in &self.limits {
+            out.extend(l.pins.iter().chain(&l.to).map(String::as_str));
+            for r in [Some(&l.abs_max), Some(&l.recommended), l.breakdown.as_ref()]
+                .into_iter()
+                .flatten()
+            {
+                if let Range::Known { min, max, .. } = r {
+                    for b in [min, max] {
+                        if let Bound::Pin { pin, .. } = b {
+                            out.push(pin.as_str());
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
     /// Everything wrong with the file that the parser can't catch. Empty when the file is sound.
     pub fn problems(&self) -> Vec<String> {
         let mut out = Vec::new();
         let names: Vec<&str> = self.pins.values().map(String::as_str).collect();
         if self.pins.is_empty() {
             out.push("no pins".into());
+        }
+        for v in &self.variants {
+            if v.mpn == self.mpn || self.variants.iter().filter(|w| w.mpn == v.mpn).count() > 1 {
+                out.push(format!("variant {:?} is listed twice", v.mpn));
+            }
+            if let Some(pins) = &v.pins {
+                let mut missing: Vec<&str> = self
+                    .used_pin_names()
+                    .into_iter()
+                    .filter(|n| !pins.values().any(|p| p == n))
+                    .collect();
+                missing.sort();
+                missing.dedup();
+                if !missing.is_empty() {
+                    out.push(format!("variant {:?} has no pin named {}", v.mpn, missing.join(", ")));
+                }
+            }
         }
         for (i, l) in self.limits.iter().enumerate() {
             let at = |what: &str| format!("limit {} ({}): {what}", i + 1, l.pins.join(", "));
@@ -327,7 +393,7 @@ impl Part {
     }
 }
 
-/// Every part file in a directory, keyed by part number.
+/// Every part file in one or more directories, keyed by part number (variants included).
 #[derive(Debug, Clone, Default)]
 pub struct Library {
     pub parts: BTreeMap<String, Part>,
@@ -335,36 +401,95 @@ pub struct Library {
     pub files: BTreeMap<String, PathBuf>,
 }
 
+/// Where a component's limits come from.
+#[derive(Debug, Clone)]
+pub enum Lookup<'a> {
+    /// A part file, from a datasheet.
+    Datasheet(&'a Part),
+    /// No part file, but the part's class gives a generic limit, such as a capacitor's rated voltage from its
+    /// schematic `Voltage` field. Not checked against a datasheet.
+    ClassDefault(Part),
+    /// Nothing to check against. Checkers must report the part's pins as unchecked, not as passing.
+    Unchecked(String),
+}
+
 impl Library {
     /// Loads every `*.toml` file in `dir`. Fails on the first file that doesn't parse, or on two files with
     /// the same part number.
     pub fn load_dir(dir: &Path) -> Result<Library, String> {
+        let mut lib = Library::default();
+        lib.add_dir(dir)?;
+        Ok(lib)
+    }
+
+    /// Loads several directories in order. A later directory's file replaces an earlier one with the same
+    /// part number, so a board's own `parts/` folder can override the shared library.
+    pub fn load_dirs(dirs: &[&Path]) -> Result<Library, String> {
+        let mut lib = Library::default();
+        for dir in dirs {
+            lib.add_dir(dir)?;
+        }
+        Ok(lib)
+    }
+
+    fn add_dir(&mut self, dir: &Path) -> Result<(), String> {
         let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
             .map_err(|e| format!("{}: {e}", dir.display()))?
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| p.extension().is_some_and(|x| x == "toml"))
             .collect();
         paths.sort();
-        let mut lib = Library::default();
+        let mut here: BTreeMap<String, PathBuf> = BTreeMap::new();
         for path in paths {
             let part = Part::load(&path)?;
-            if let Some(prev) = lib.files.get(&part.mpn) {
-                return Err(format!(
-                    "{}: part {:?} is already defined in {}",
-                    path.display(),
-                    part.mpn,
-                    prev.display()
-                ));
+            for (mpn, variant) in part.expand() {
+                if let Some(prev) = here.get(&mpn) {
+                    return Err(format!(
+                        "{}: part {mpn:?} is already defined in {}",
+                        path.display(),
+                        prev.display()
+                    ));
+                }
+                here.insert(mpn.clone(), path.clone());
+                self.files.insert(mpn.clone(), path.clone());
+                self.parts.insert(mpn, variant);
             }
-            lib.files.insert(part.mpn.clone(), path);
-            lib.parts.insert(part.mpn.clone(), part);
         }
-        Ok(lib)
+        Ok(())
     }
 
-    /// The part a schematic component uses: its `MPN` field, or its value when it has no `MPN`.
+    /// The part file a schematic component uses: its `MPN` field, or its value when it has no `MPN`.
     pub fn part_for(&self, c: &Component) -> Option<&Part> {
         self.parts.get(component_mpn(c))
+    }
+
+    /// Where a component's limits come from: its part file, a class default, or nowhere.
+    pub fn lookup(&self, c: &Component) -> Lookup<'_> {
+        if let Some(p) = self.part_for(c) {
+            return Lookup::Datasheet(p);
+        }
+        if let Some(p) = class_default(c) {
+            return Lookup::ClassDefault(p);
+        }
+        Lookup::Unchecked(format!("no part file for {:?} and no class default", component_mpn(c)))
+    }
+}
+
+impl Part {
+    /// This part and each variant as parts of their own, keyed by part number.
+    fn expand(&self) -> Vec<(String, Part)> {
+        let mut base = self.clone();
+        base.variants.clear();
+        let mut out = vec![(self.mpn.clone(), base.clone())];
+        for v in &self.variants {
+            let mut p = base.clone();
+            p.mpn = v.mpn.clone();
+            if let Some(pins) = &v.pins {
+                p.pins = pins.clone();
+            }
+            out.push((v.mpn.clone(), p));
+        }
+        out
     }
 }
 
@@ -374,4 +499,110 @@ pub fn component_mpn(c: &Component) -> &str {
         Some(m) if !m.is_empty() => m,
         _ => c.value.trim(),
     }
+}
+
+/// A generic limit from the part's class, for a two-pin capacitor whose rated voltage is in its `Voltage`
+/// field or its value (`100nF 50V`). Other classes have no default: a resistor's power or an inductor's
+/// current can't be read off the schematic reliably.
+pub fn class_default(c: &Component) -> Option<Part> {
+    let is_cap = c.lib_id.starts_with("Device:C") || c.lib_id.starts_with("Device:CP");
+    if !is_cap || c.pins.len() != 2 {
+        return None;
+    }
+    let (volts, from) = match c.fields.get("Voltage").and_then(|v| parse_volts(v)) {
+        Some(v) => (v, "Voltage field"),
+        None => (c.value.split_whitespace().find_map(parse_volts)?, "value"),
+    };
+    let numbers: Vec<String> = c.pins.keys().cloned().collect();
+    let polarised = c.lib_id.starts_with("Device:CP");
+    let min = if polarised {
+        Bound::Unknown("a polarised capacitor's reverse rating is not in the schematic".into())
+    } else {
+        Bound::Value(-volts)
+    };
+    Some(Part {
+        mpn: component_mpn(c).to_string(),
+        manufacturer: String::new(),
+        description: format!("class default for {}", c.reference),
+        class: Class::Capacitor,
+        datasheet: None,
+        pins: numbers.iter().map(|n| (n.clone(), n.clone())).collect(),
+        variants: Vec::new(),
+        limits: vec![Limit {
+            quantity: Quantity::Voltage,
+            pins: vec![numbers[0].clone()],
+            to: Some(numbers[1].clone()),
+            bidirectional: false,
+            abs_max: Range::Unknown("class default: only the rated voltage is known".into()),
+            recommended: Range::Known {
+                min,
+                max: Bound::Value(volts),
+                page: None,
+                note: Some(format!(
+                    "rated voltage from the schematic's {from}, not checked against a datasheet"
+                )),
+            },
+            breakdown: None,
+        }],
+    })
+}
+
+/// `50V`, `6.3V`, `6V3` or `50 V` as volts.
+fn parse_volts(s: &str) -> Option<f64> {
+    let s = s.trim();
+    let s = s
+        .strip_suffix(['V', 'v'])
+        .map(str::trim_end)
+        .map(str::to_string)
+        .or_else(|| {
+            let (a, b) = s.split_once(['V', 'v'])?;
+            (!a.is_empty() && !b.is_empty() && b.chars().all(|c| c.is_ascii_digit())).then(|| format!("{a}.{b}"))
+        })?;
+    let v: f64 = s.parse().ok()?;
+    (v.is_finite() && v > 0.0).then_some(v)
+}
+
+/// How one placed component is covered by limits.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Coverage {
+    Datasheet {
+        mpn: String,
+    },
+    ClassDefault {
+        note: String,
+    },
+    Unchecked {
+        reason: String,
+    },
+    /// Not fitted, not on the board or not in the BOM.
+    NotFitted,
+}
+
+/// How every component of a design is covered, keyed by reference.
+pub fn coverage(design: &crate::design::Design, lib: &Library) -> BTreeMap<String, Coverage> {
+    design
+        .components
+        .iter()
+        .map(|(r, c)| {
+            let cov = if c.dnp || !c.in_bom || !c.on_board {
+                Coverage::NotFitted
+            } else {
+                match lib.lookup(c) {
+                    Lookup::Datasheet(p) => Coverage::Datasheet { mpn: p.mpn.clone() },
+                    Lookup::ClassDefault(p) => Coverage::ClassDefault {
+                        note: match &p.limits[0].recommended {
+                            Range::Known {
+                                note: Some(n),
+                                max: Bound::Value(v),
+                                ..
+                            } => format!("{v} V; {n}"),
+                            _ => String::new(),
+                        },
+                    },
+                    Lookup::Unchecked(reason) => Coverage::Unchecked { reason },
+                }
+            };
+            (r.clone(), cov)
+        })
+        .collect()
 }

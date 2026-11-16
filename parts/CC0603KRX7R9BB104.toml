@@ -1,6 +1,7 @@
 mpn = "CC0603KRX7R9BB104"
 manufacturer = "Yageo"
 description = "100 nF 50 V X7R MLCC, 0603"
+class = "capacitor"
 
 [datasheet]
 title = "Yageo Surface-Mount Ceramic Multilayer Capacitors, General Purpose and High Cap., X7R 6.3 V to 250 V"

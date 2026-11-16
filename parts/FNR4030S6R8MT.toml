@@ -1,6 +1,7 @@
 mpn = "FNR4030S6R8MT"
 manufacturer = "Changjiang Microelectronics (CJiang)"
 description = "6.8 uH wire-wound shielded power inductor, 4.0 x 4.0 x 3.0 mm"
+class = "inductor"
 
 [datasheet]
 title = "Wire Wound SMD Power Inductors, FNR Series"

@@ -4,4 +4,5 @@ pub mod design;
 pub mod inputs;
 pub mod kicad;
 pub mod limits;
+pub mod policy;
 pub mod sexpr;

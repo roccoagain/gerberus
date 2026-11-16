@@ -1,6 +1,7 @@
 mpn = "0603WAF1002T5E"
 manufacturer = "UNI-ROYAL (Uniroyal Electronics)"
 description = "10 kohm 1 % 0.1 W thick-film resistor, 0603"
+class = "resistor"
 
 [datasheet]
 title = "Thick Film Chip Resistors, 01005/0201/0402/0603/0805/1206/1210/1812/2010/2512 Series"
