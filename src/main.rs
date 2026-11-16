@@ -6,12 +6,15 @@ use gerberus::limits::{Coverage, Library, coverage};
 use gerberus::pinout;
 
 const USAGE: &str = "usage:
-  gerberus netlist <design.kicad_sch>
-  gerberus parts <design.kicad_sch> [--parts DIR]...
+  gerberus netlist <design>
+  gerberus parts <design> [--parts DIR]...
   gerberus pinout <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--parts DIR]...
-  gerberus voltages <design.kicad_sch> [--inputs FILE] [--parts DIR]... [--explain NET]...
-  gerberus check <design.kicad_sch> [--inputs FILE] [--parts DIR]... [--all] [--json]
-  gerberus bom <design.kicad_sch> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
+  gerberus voltages <design> [--inputs FILE] [--parts DIR]... [--explain NET]...
+  gerberus check <design> [--inputs FILE] [--parts DIR]... [--all] [--json]
+  gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
+
+<design> is a KiCad root .kicad_sch, an Altium .PrjPcb project, or a single Altium .SchDoc. `pinout` reads
+KiCad designs only, since it compares against the KiCad board.
 
 `parts` reports where each part's limits come from. It reads the shared library, then a `parts/` folder next
 to the schematic if there is one (its files override the shared ones), then any --parts folders in order.
@@ -60,7 +63,7 @@ fn main() -> ExitCode {
 }
 
 fn netlist(path: &Path) -> Result<bool, String> {
-    let design = gerberus::kicad::load(path)?;
+    let design = gerberus::load(path)?;
     for net in &design.nets {
         let pins: Vec<String> = net.pins.iter().map(|(r, p)| format!("{r}.{p}")).collect();
         println!("{}: {}", net.name, pins.join(" "));
@@ -126,7 +129,7 @@ fn analyse(
     String,
 > {
     let lib = load_library(&o.dirs)?;
-    let design = gerberus::kicad::load(path)?;
+    let design = gerberus::load(path)?;
     let inputs_path = o
         .inputs
         .clone()
@@ -182,7 +185,7 @@ fn voltages(path: &Path, rest: &[String]) -> Result<bool, String> {
 
 fn parts(path: &Path, rest: &[String]) -> Result<bool, String> {
     let lib = load_library(&options(path, rest, &[])?.dirs)?;
-    let design = gerberus::kicad::load(path)?;
+    let design = gerberus::load(path)?;
     let cov = coverage(&design, &lib);
     let (mut sheet, mut default, mut unchecked) = (0, 0, 0);
     for (r, c) in &cov {
@@ -246,7 +249,7 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
         .checked_mul(3600)
         .map(std::time::Duration::from_secs)
         .ok_or(format!("--max-age {max_age_hours} is too large"))?;
-    let design = gerberus::kicad::load(path)?;
+    let design = gerberus::load(path)?;
     let mut source = Lcsc::new(cache, max_age, offline);
     let report = check(&design, &mut source, opts);
     let mut count = std::collections::BTreeMap::new();
