@@ -1,0 +1,199 @@
+# Every Samsung Electro-Mechanics CL multilayer ceramic capacitor, from its part number: CL10A106MP8NNNC is size
+# 10 (0603), dielectric A (X5R), 106 (10 uF), tolerance M (+/-20 %), rated voltage P (10 V), thickness 8, electrode
+# N, product N, control N, packaging C (7 inch paper reel). Codes are on page 4, dielectric temperature ranges on
+# page 5. The text layer of this catalogue drops minus signs, so the -55 / -30 °C ends read as 55 / 30.
+family = "Samsung CL"
+manufacturer = "Samsung Electro-Mechanics"
+description = "MLCC"
+class = "capacitor"
+mpn = "CL{size}{dielectric}{value}{tolerance}{voltage}{thickness}{electrode}{product}{control}{packaging}"
+
+[datasheet]
+title = "Samsung Electro-Mechanics MLCC catalogue"
+document = "November 2015"
+url = "https://datasheet.lcsc.com/datasheet/pdf/02336ea48ea44ca18c72517dd3cb7b47.pdf"
+
+[field.size]
+page = 4
+codes = ["02", "03", "05", "10", "21", "31", "32", "42", "43", "55"]
+
+[field.dielectric]
+page = 4
+codes = ["C", "A", "B", "X", "F", "Y", "Z"]
+
+[field.value]
+page = 4
+kind = "capacitance-pf"
+
+# B, C and D are in picofarads (for values under 10 pF), and Z is +80/-20 %, so they give no fraction.
+[field.tolerance]
+page = 4
+codes = ["B", "C", "D", "F", "G", "J", "K", "M", "Z"]
+values = { F = 0.01, G = 0.02, J = 0.05, K = 0.1, M = 0.2 }
+
+[field.voltage]
+page = 4
+codes = ["R", "Q", "P", "O", "A", "L", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]
+
+[field.thickness]
+page = 4
+codes = ["2", "3", "5", "8", "9", "A", "C", "D", "E", "F", "H", "I", "J", "L", "M", "P", "Q", "S", "U", "V", "Y"]
+
+[field.electrode]
+page = 4
+codes = ["A", "N", "G", "L", "S"]
+
+# N normal, A/B arrays, L LICC, J SLIC, or a size-tolerance code (S, Q, R, U, Z, 9).
+[field.product]
+page = 4
+codes = ["N", "A", "B", "L", "J", "S", "Q", "R", "U", "Z", "9"]
+
+[field.control]
+page = 4
+codes = ["N"]
+
+[field.packaging]
+page = 4
+codes = ["B", "P", "C", "H", "8", "O", "D", "L", "E", "G", "F", "S", "Z", "Y"]
+
+# Rated voltage, by code (page 4, 6. RATED VOLTAGE CODE).
+
+[[rating]]
+when = { voltage = ["R"] }
+voltage = 4
+page = 4
+note = "rated voltage code R = 4 V"
+
+[[rating]]
+when = { voltage = ["Q"] }
+voltage = 6.3
+page = 4
+note = "rated voltage code Q = 6.3 V"
+
+[[rating]]
+when = { voltage = ["P"] }
+voltage = 10
+page = 4
+note = "rated voltage code P = 10 V"
+
+[[rating]]
+when = { voltage = ["O"] }
+voltage = 16
+page = 4
+note = "rated voltage code O = 16 V"
+
+[[rating]]
+when = { voltage = ["A"] }
+voltage = 25
+page = 4
+note = "rated voltage code A = 25 V"
+
+[[rating]]
+when = { voltage = ["L"] }
+voltage = 35
+page = 4
+note = "rated voltage code L = 35 V"
+
+[[rating]]
+when = { voltage = ["B"] }
+voltage = 50
+page = 4
+note = "rated voltage code B = 50 V"
+
+[[rating]]
+when = { voltage = ["C"] }
+voltage = 100
+page = 4
+note = "rated voltage code C = 100 V"
+
+[[rating]]
+when = { voltage = ["D"] }
+voltage = 200
+page = 4
+note = "rated voltage code D = 200 V"
+
+[[rating]]
+when = { voltage = ["E"] }
+voltage = 250
+page = 4
+note = "rated voltage code E = 250 V"
+
+[[rating]]
+when = { voltage = ["F"] }
+voltage = 350
+page = 4
+note = "rated voltage code F = 350 V"
+
+[[rating]]
+when = { voltage = ["G"] }
+voltage = 500
+page = 4
+note = "rated voltage code G = 500 V"
+
+[[rating]]
+when = { voltage = ["H"] }
+voltage = 630
+page = 4
+note = "rated voltage code H = 630 V"
+
+[[rating]]
+when = { voltage = ["I"] }
+voltage = 1000
+page = 4
+note = "rated voltage code I = 1000 V"
+
+[[rating]]
+when = { voltage = ["J"] }
+voltage = 2000
+page = 4
+note = "rated voltage code J = 2000 V"
+
+[[rating]]
+when = { voltage = ["K"] }
+voltage = 3000
+page = 4
+note = "rated voltage code K = 3000 V"
+
+# Operation temperature range, by dielectric (page 5, Class I and Class II tables).
+
+[[rating]]
+when = { dielectric = ["C"] }
+temperature = { min = -55, max = 125 }
+page = 5
+note = "code C = C0G"
+
+[[rating]]
+when = { dielectric = ["A"] }
+temperature = { min = -55, max = 85 }
+page = 5
+note = "code A = X5R"
+
+[[rating]]
+when = { dielectric = ["B"] }
+temperature = { min = -55, max = 125 }
+page = 5
+note = "code B = X7R"
+
+[[rating]]
+when = { dielectric = ["X"] }
+temperature = { min = -55, max = 105 }
+page = 5
+note = "code X = X6S"
+
+[[rating]]
+when = { dielectric = ["F"] }
+temperature = { min = -30, max = 85 }
+page = 5
+note = "code F = Y5V"
+
+[[rating]]
+when = { dielectric = ["Y"] }
+temperature = { min = -55, max = 125 }
+page = 5
+note = "code Y = X7S"
+
+[[rating]]
+when = { dielectric = ["Z"] }
+temperature = { min = -55, max = 125 }
+page = 5
+note = "code Z = X7T"

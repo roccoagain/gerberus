@@ -1,0 +1,519 @@
+# Every Yageo RC_L thick-film chip resistor, from its part number: RC0805FR-0710KL is size 0805, tolerance F
+# (±1 %), packing R (paper tape), reel 07 (7 inch, standard power), 10K (10 kohm), L (the default code).
+family = "Yageo RC_L"
+manufacturer = "Yageo"
+description = "thick-film chip resistor"
+class = "resistor"
+mpn = "RC{size}{tolerance}{packing}-{reel}{value}L"
+rcwv_page = 7
+
+[datasheet]
+title = "General purpose chip resistors, RC_L series, sizes 0075 to 2512"
+document = "Product specification, August 02, 2022 V.12"
+url = "https://datasheet.lcsc.com/datasheet/pdf/b426be3ce22c6de3e0c3a2248e49159e.pdf"
+
+[field.size]
+page = 2
+codes = ["0075", "0100", "0201", "0402", "0603", "0805", "1206", "1210", "1218", "2010", "2512"]
+
+[field.tolerance]
+page = 2
+codes = { B = 0.001, D = 0.005, F = 0.01, J = 0.05 }
+
+[field.packing]
+page = 2
+codes = ["R", "K", "S"]
+
+# 07, 10, 13: reel size, standard power. 7W and 3W: twice the standard power. 7D: twice the quantity. 7N: ESD-safe.
+[field.reel]
+page = 2
+codes = ["07", "10", "13", "7W", "7D", "7N", "3W"]
+
+[field.value]
+page = 2
+kind = "resistance"
+
+# Table 2 and Table 3: power at 70 °C, operating temperature range and maximum working voltage, per size. Sizes
+# with a second row give twice the power with reel code 7W or 3W.
+
+[[rating]]
+when = { size = ["0075"], packing = ["S"], reel = ["07", "10", "13", "7N"] }
+power = 0.02
+max_working_voltage = 10
+temperature = { min = -55, max = 125 }
+page = 4
+note = "RC0075, 1/50 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0100"], packing = ["R", "S"], reel = ["07", "10", "13", "7N"] }
+power = 0.03125
+max_working_voltage = 15
+temperature = { min = -55, max = 125 }
+page = 4
+note = "RC0100, 1/32 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0201"], packing = ["R"], reel = ["07", "10", "13", "7D"] }
+power = 0.05
+max_working_voltage = 25
+temperature = { min = -55, max = 125 }
+page = 5
+note = "RC0201, 1/20 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0402"], packing = ["R"], reel = ["07", "10", "13", "7D"] }
+power = 0.0625
+max_working_voltage = 50
+temperature = { min = -55, max = 155 }
+page = 5
+note = "RC0402, 1/16 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0402"], packing = ["R"], reel = ["7W", "3W"] }
+power = 0.125
+max_working_voltage = 50
+temperature = { min = -55, max = 155 }
+page = 5
+note = "RC0402 double power, 1/8 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0603"], packing = ["R"], reel = ["07", "10", "13"] }
+power = 0.1
+max_working_voltage = 75
+temperature = { min = -55, max = 155 }
+page = 5
+note = "RC0603, 1/10 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0603"], packing = ["R"], reel = ["7W", "3W"] }
+power = 0.2
+max_working_voltage = 75
+temperature = { min = -55, max = 155 }
+page = 5
+note = "RC0603 double power, 1/5 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0805"], packing = ["R"], reel = ["07", "10", "13"] }
+power = 0.125
+max_working_voltage = 150
+temperature = { min = -55, max = 155 }
+page = 5
+note = "RC0805, 1/8 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0805"], packing = ["R"], reel = ["7W", "3W"] }
+power = 0.25
+max_working_voltage = 150
+temperature = { min = -55, max = 155 }
+page = 5
+note = "RC0805 double power, 1/4 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["1206"], packing = ["R"], reel = ["07", "10", "13"] }
+power = 0.25
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 6
+note = "RC1206, 1/4 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["1206"], packing = ["R"], reel = ["7W", "3W"] }
+power = 0.5
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 6
+note = "RC1206 double power, 1/2 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["1210"], packing = ["R"], reel = ["07", "10", "13"] }
+power = 0.5
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 6
+note = "RC1210, 1/2 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["1218"], packing = ["K"], reel = ["07", "10", "13"] }
+power = 1
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 6
+note = "RC1218, 1 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["2010"], packing = ["K"], reel = ["07", "10", "13"] }
+power = 0.75
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 6
+note = "RC2010, 3/4 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["2512"], packing = ["K"], reel = ["07", "10", "13"] }
+power = 1
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 6
+note = "RC2512, 1 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["2512"], packing = ["K"], reel = ["7W", "3W"] }
+power = 2
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 6
+note = "RC2512 double power, 2 W at 70 °C, derated above"
+
+# Temperature coefficient, the TEMPERATURE COEFFICIENT column of Tables 2 and 3. An asymmetric range gives its
+# larger end.
+
+[[tcr]]
+when = { size = ["0075"] }
+ohms = { min = 10, below = 100 }
+ppm = 600
+page = 4
+note = "RC0075, 10 ohm <= R < 100 ohm: -200 to +600 ppm/°C"
+
+[[tcr]]
+when = { size = ["0075"] }
+ohms = { min = 100, max = 1e6 }
+ppm = 200
+page = 4
+
+[[tcr]]
+when = { size = ["0100"] }
+ohms = { min = 1, below = 10 }
+ppm = 600
+page = 4
+note = "RC0100, 1 ohm <= R < 10 ohm: -200 to +600 ppm/°C"
+
+[[tcr]]
+when = { size = ["0100"] }
+ohms = { min = 10, below = 100 }
+ppm = 300
+page = 4
+
+[[tcr]]
+when = { size = ["0100"] }
+ohms = { min = 100, max = 10e6 }
+ppm = 200
+page = 4
+
+[[tcr]]
+when = { size = ["0100"] }
+ohms = { above = 10e6, max = 22e6 }
+ppm = 250
+page = 4
+
+[[tcr]]
+when = { size = ["0201"] }
+ohms = { min = 1, max = 10 }
+ppm = 350
+page = 5
+note = "RC0201, 1 ohm <= R <= 10 ohm: -100 to +350 ppm/°C"
+
+[[tcr]]
+when = { size = ["0201"] }
+ohms = { above = 10, max = 10e6 }
+ppm = 200
+page = 5
+
+[[tcr]]
+when = { size = ["0402", "0603"], reel = ["07", "10", "13", "7D"] }
+ohms = { min = 1, max = 10 }
+ppm = 200
+page = 5
+
+[[tcr]]
+when = { size = ["0402", "0603"], reel = ["07", "10", "13", "7D"] }
+ohms = { above = 10, max = 10e6 }
+ppm = 100
+page = 5
+
+[[tcr]]
+when = { size = ["0402", "0603"], reel = ["07", "10", "13", "7D"] }
+ohms = { above = 10e6, max = 22e6 }
+ppm = 200
+page = 5
+
+[[tcr]]
+when = { size = ["0402", "0603", "0805"], reel = ["7W", "3W"] }
+ohms = { min = 1, max = 1e6 }
+ppm = 200
+page = 5
+
+[[tcr]]
+when = { size = ["0805"], packing = ["R"], reel = ["07", "10", "13"] }
+ohms = { min = 1, max = 10 }
+ppm = 200
+page = 5
+
+[[tcr]]
+when = { size = ["0805"], packing = ["R"], reel = ["07", "10", "13"] }
+ohms = { above = 10, max = 10e6 }
+ppm = 100
+page = 5
+
+[[tcr]]
+when = { size = ["0805"], packing = ["R"], reel = ["07", "10", "13"] }
+ohms = { above = 10e6, max = 22e6 }
+ppm = 200
+page = 5
+
+[[tcr]]
+when = { size = ["0805"], packing = ["R"], reel = ["07", "10", "13"] }
+ohms = { above = 24e6, max = 100e6 }
+ppm = 300
+page = 5
+
+[[tcr]]
+when = { size = ["1206"], packing = ["R"], reel = ["07", "10", "13"] }
+ohms = { min = 1, max = 10 }
+ppm = 200
+page = 6
+
+[[tcr]]
+when = { size = ["1206"], packing = ["R"], reel = ["07", "10", "13"] }
+ohms = { above = 10, max = 10e6 }
+ppm = 100
+page = 6
+
+[[tcr]]
+when = { size = ["1206"], packing = ["R"], reel = ["07", "10", "13"] }
+ohms = { above = 10e6, max = 22e6 }
+ppm = 200
+page = 6
+
+[[tcr]]
+when = { size = ["1206"], packing = ["R"], reel = ["07", "10", "13"] }
+ohms = { min = 24e6, max = 100e6 }
+ppm = 300
+page = 6
+
+[[tcr]]
+when = { size = ["1206", "2512"], reel = ["7W", "3W"] }
+ohms = { min = 1, max = 1e6 }
+ppm = 200
+page = 6
+
+[[tcr]]
+when = { size = ["1210", "1218", "2010", "2512"], reel = ["07", "10", "13"] }
+ohms = { min = 1, max = 10 }
+ppm = 200
+page = 6
+
+[[tcr]]
+when = { size = ["1210", "2010", "2512"], reel = ["07", "10", "13"] }
+ohms = { above = 10, max = 10e6 }
+ppm = 100
+page = 6
+
+[[tcr]]
+when = { size = ["1218"], packing = ["K"], reel = ["07", "10", "13"] }
+ohms = { above = 10, max = 1e6 }
+ppm = 100
+page = 6
+
+[[tcr]]
+when = { size = ["1210", "2010", "2512"], reel = ["07", "10", "13"] }
+ohms = { above = 10e6, max = 22e6 }
+ppm = 200
+page = 6
+
+# Resistance range, the RESISTANCE RANGE column of Tables 2 and 3, by size and tolerance (B 0.1 %, D 0.5 %,
+# F 1 %, J 5 %). A part number outside these isn't in the datasheet, so it isn't rated.
+
+[[range]]
+when = { size = ["0075"], tolerance = ["J", "F"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 10, max = 1e+06 }
+page = 4
+
+[[range]]
+when = { size = ["0100"], tolerance = ["J"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 2.2e+07 }
+page = 4
+
+[[range]]
+when = { size = ["0100"], tolerance = ["F"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+07 }
+page = 4
+
+[[range]]
+when = { size = ["0100"], tolerance = ["D"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 33, max = 470000 }
+page = 4
+
+[[range]]
+when = { size = ["0201"], tolerance = ["J", "F"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+07 }
+page = 5
+
+[[range]]
+when = { size = ["0201"], tolerance = ["D"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+06 }
+page = 5
+
+[[range]]
+when = { size = ["0201"], tolerance = ["B"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 10, max = 1e+06 }
+page = 5
+
+[[range]]
+when = { size = ["0402"], tolerance = ["J"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 2.2e+07 }
+page = 5
+
+[[range]]
+when = { size = ["0402"], tolerance = ["F"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+07 }
+page = 5
+
+[[range]]
+when = { size = ["0402"], tolerance = ["D"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+06 }
+page = 5
+
+[[range]]
+when = { size = ["0402"], tolerance = ["B"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 10, max = 1e+06 }
+page = 5
+
+[[range]]
+when = { size = ["0402"], tolerance = ["J", "F"], reel = ["7W", "3W"] }
+ohms = { min = 1, max = 1e+06 }
+page = 5
+
+[[range]]
+when = { size = ["0603"], tolerance = ["J"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 2.2e+07 }
+page = 5
+
+[[range]]
+when = { size = ["0603"], tolerance = ["F"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+07 }
+page = 5
+
+[[range]]
+when = { size = ["0603"], tolerance = ["D"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+06 }
+page = 5
+
+[[range]]
+when = { size = ["0603"], tolerance = ["B"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 10, max = 1e+06 }
+page = 5
+
+[[range]]
+when = { size = ["0603"], tolerance = ["J", "F"], reel = ["7W", "3W"] }
+ohms = { min = 1, max = 1e+06 }
+page = 5
+
+[[range]]
+when = { size = ["0805"], tolerance = ["J"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+08 }
+page = 5
+
+[[range]]
+when = { size = ["0805"], tolerance = ["F"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+07 }
+page = 5
+
+[[range]]
+when = { size = ["0805"], tolerance = ["D"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+06 }
+page = 5
+
+[[range]]
+when = { size = ["0805"], tolerance = ["B"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 10, max = 1e+06 }
+page = 5
+
+[[range]]
+when = { size = ["0805"], tolerance = ["J", "F"], reel = ["7W", "3W"] }
+ohms = { min = 1, max = 1e+06 }
+page = 5
+
+[[range]]
+when = { size = ["1206"], tolerance = ["J"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+08 }
+page = 6
+
+[[range]]
+when = { size = ["1206"], tolerance = ["F"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+07 }
+page = 6
+
+[[range]]
+when = { size = ["1206"], tolerance = ["D"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+06 }
+page = 6
+
+[[range]]
+when = { size = ["1206"], tolerance = ["B"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 10, max = 1e+06 }
+page = 6
+
+[[range]]
+when = { size = ["1206"], tolerance = ["J", "F"], reel = ["7W", "3W"] }
+ohms = { min = 1, max = 1e+06 }
+page = 6
+
+[[range]]
+when = { size = ["1210"], tolerance = ["J"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 2.2e+07 }
+page = 6
+
+[[range]]
+when = { size = ["1210"], tolerance = ["F"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+07 }
+page = 6
+
+[[range]]
+when = { size = ["1210"], tolerance = ["B", "D"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 10, max = 1e+06 }
+page = 6
+
+[[range]]
+when = { size = ["2010"], tolerance = ["J"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 2.2e+07 }
+page = 6
+
+[[range]]
+when = { size = ["2010"], tolerance = ["F"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+07 }
+page = 6
+
+[[range]]
+when = { size = ["2010"], tolerance = ["B", "D"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 10, max = 1e+06 }
+page = 6
+
+[[range]]
+when = { size = ["2512"], tolerance = ["J"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 2.2e+07 }
+page = 6
+
+[[range]]
+when = { size = ["2512"], tolerance = ["F"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+07 }
+page = 6
+
+[[range]]
+when = { size = ["2512"], tolerance = ["B", "D"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 10, max = 1e+06 }
+page = 6
+
+[[range]]
+when = { size = ["1218"], tolerance = ["J", "F"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 1, max = 1e+06 }
+page = 6
+
+[[range]]
+when = { size = ["1218"], tolerance = ["B", "D"], reel = ["07", "10", "13", "7D", "7N"] }
+ohms = { min = 10, max = 1e+06 }
+page = 6
+
+[[range]]
+when = { size = ["2512"], tolerance = ["J", "F"], reel = ["7W", "3W"] }
+ohms = { min = 1, max = 1e+06 }
+page = 6

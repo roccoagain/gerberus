@@ -218,10 +218,80 @@ off on a file by hand, so a value that both readings and the page don't back sta
 1. **A part file.** The shared `parts/` folder loads first, then a `parts/` folder next to the schematic, then
    any `--parts` folders. A later file for the same part number replaces the earlier one, so a board can
    override the shared library.
-2. **A class default.** A capacitor with no part file takes its rated voltage from its schematic `Voltage`
+2. **A part family**, for a part number with no part file of its own (see below).
+3. **A class default.** A capacitor with no part file takes its rated voltage from its schematic `Voltage`
    field, or from its value (`100nF 50V`, `6V3`). It is marked as not checked against a datasheet. Other
    classes have no default.
-3. **Nothing.** The part is reported as `UNCHECKED`, never as passing.
+4. **Nothing.** The part is reported as `UNCHECKED`, never as passing.
+
+### Part families
+
+Most resistors and capacitors come in series whose part number spells out the size, tolerance, value and rating,
+all from one datasheet. A family file covers the whole series: a file with a top-level `family` key, in any part
+folder. For a part number with no part file, gerberus decodes it with each family (a later folder's family first)
+and writes the part file a person would have written for that one part, every value cited to the series
+datasheet. `gerberus part show <MPN>` prints it, so it can be checked with `gerberus datasheet verify` like any
+other file.
+
+```toml
+family = "Yageo RC_L"
+manufacturer = "Yageo"
+description = "thick-film chip resistor"
+class = "resistor"                                  # resistor or capacitor
+mpn = "RC{size}{tolerance}{packing}-{reel}{value}L" # each {field} is one coded part of the number
+
+[datasheet]                                         # the series datasheet, as in a part file
+title = "..."
+document = "..."
+url = "..."
+
+[field.size]                                        # every field names the page that explains its codes
+page = 2
+codes = ["0402", "0603", "0805"]
+
+[field.tolerance]                                   # codes with the fraction each stands for
+page = 2
+codes = { B = 0.001, D = 0.005, F = 0.01, J = 0.05 }
+
+[field.value]                                       # the value: "resistance" (4K7, 97R6, 1M) or
+page = 2                                            # "capacitance-pf" (104 = 100 nF, 1R5 = 1.5 pF)
+kind = "resistance"
+
+[[rating]]                                          # a row of the ratings table, for the codes in `when`
+when = { size = ["0805"], reel = ["07", "10", "13"] }
+power = 0.125                                       # resistors: watts at the rated ambient
+max_working_voltage = 150                           # resistors: the size's cap on sqrt(P x R)
+temperature = { min = -55, max = 155 }
+page = 5
+
+[[tcr]]                                             # resistors: temperature coefficient by resistance
+when = { size = ["0805"] }
+ohms = { above = 10, max = 10e6 }                   # min/max include the end, above/below don't
+ppm = 100
+page = 5
+
+[[range]]                                           # values the series is made in; with any of these, a
+when = { size = ["0805"], tolerance = ["F"] }       # part number outside all of them isn't rated
+ohms = { min = 1, max = 10e6 }
+page = 5
+```
+
+A resistor family also gives `rcwv_page`, the page that says the rated voltage is √(P·R) or the maximum
+working voltage, whichever is less.
+
+Capacitor rows give `voltage` (the rated voltage) instead of `power`. A field can list its codes and give
+`values` for only some of them: a capacitor tolerance in picofarads (B, C, D) or +80/−20 % (Z) gives no fraction,
+so the part gets no tolerance. Each rating comes from the one row that covers the part number and gives it: no
+row leaves it out (power or rated voltage left out makes the part unchecked, with the reason), and two rows are an
+error. So is a missing temperature coefficient when the family has `[[tcr]]` rows, and a part number that splits
+into fields more than one way. A resistor's rated voltage is √(P·R) from the decoded value, capped by the maximum working voltage. A 0 Ω
+jumper isn't rated, since it has a current rating rather than a power one.
+
+A part file written by hand for the same part number always wins, wherever it is (a built-in file beats a
+board's own family); of two families, the one in the later folder wins. `gerberus part show` runs the same checks
+as `check` on what it prints. `cargo test` checks that every hand-written
+file a family also decodes agrees with it. The built-in families are Yageo RC_L resistors (`yageo-rc.toml`) and
+Samsung CL capacitors (`samsung-cl.toml`).
 
 ### Derating policy
 
