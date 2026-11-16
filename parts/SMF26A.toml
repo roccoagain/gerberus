@@ -18,3 +18,4 @@ to = "A"
 abs_max = { unknown = "the maximum ratings table gives only pulse ratings (200 W peak pulse power, 20 A forward surge); there is no DC voltage maximum" }
 recommended = { min = { unknown = "the datasheet gives no forward-bias operating range" }, max = 26, page = 2, note = "reverse stand-off voltage VRWM" }
 breakdown = { min = 28.9, max = 31.9, page = 2, note = "VBR at IT = 1 mA; clamps at 42.1 V at IPP = 4.8 A" }
+clamp = { volts = 42.1, current = 4.8, page = 2, note = "VC maximum clamping voltage at IPP, 10/1000 us waveform" }

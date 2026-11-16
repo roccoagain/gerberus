@@ -40,3 +40,14 @@ reason = "IEC 61000-4-2 level 4 (8 kV contact, 15 kV air), the usual target for 
 [junction]
 margin = 20
 reason = "reliability derating: keep junctions 20 °C below their maximum"
+
+# `gerberus stress`: each supply input is switched on through a cable into the board, in ngspice. The cable's
+# inductance rings with the input capacitors; each run draws it from this range, and every part value from its
+# tolerance. Project judgement, not datasheet figures.
+[spice]
+cable_inductance = [0.1e-6, 1.0e-6]
+cable_resistance = 0.1
+rise_time = 1e-6
+duration = 2e-3
+runs = 16
+reason = "hot plug through up to 1 µH of cable (about a metre), 0.1 Ω, switched on in 1 µs"

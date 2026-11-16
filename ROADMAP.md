@@ -16,7 +16,7 @@ Each phase reads one more part of the design. It starts with the schematic, then
 
 ## v0.3 — Power and stress
 
-- [ ] SPICE stress checks on power and analog circuits, with tolerance sweeps. *(Copies: PSpice Advanced Analysis, smoke and Monte Carlo)*
+- [x] SPICE stress checks on power and analog circuits, with tolerance sweeps. Power is done (`gerberus stress`: hot-plug transients in ngspice, Monte Carlo over part tolerances); analog signal paths aren't modelled yet. *(Copies: PSpice Advanced Analysis, smoke and Monte Carlo)*
 - [x] Power dissipation → junction temperature for every part. *(Copies: Simcenter Flotherm / Ansys Icepak, simplified)*
 - [x] Derating against reliability standards. *(Copies: Relyence, Windchill reliability prediction)*
 - [x] ESD and reverse-polarity protection on every external connector. *(Copies: what a human design review checks)*

@@ -228,6 +228,25 @@ pub fn claims(part: &Part) -> Vec<Claim> {
                 );
             }
         }
+        if let Some(c) = &l.clamp {
+            for (v, unit, name) in [(c.volts, Unit::Volt, "volts"), (c.current, Unit::Amp, "current")] {
+                out.push(Claim {
+                    label: format!("limit {} ({what}) clamp {name}", i + 1),
+                    value: Claimed::Number(v),
+                    role: Role::Value,
+                    unit,
+                    page: c.page,
+                    context: ["VC", "clamping", "IPP", "VCL"]
+                        .into_iter()
+                        .map(String::from)
+                        .chain(context.iter().cloned())
+                        .collect(),
+                    derived: None,
+                    other_end: None,
+                    avoid: vec![],
+                });
+            }
+        }
     }
     for (i, e) in part.esd.iter().enumerate() {
         let pins: Vec<&str> = e.pins.iter().map(String::as_str).collect();
@@ -1503,7 +1522,7 @@ pub fn render(mpn: &str, outcomes: &[Outcome], all: bool) -> String {
 }
 
 /// The keys of a part file whose values a second reader fills in.
-const VALUE_KEYS: [&str; 18] = [
+const VALUE_KEYS: [&str; 19] = [
     "efficiency",
     "theta_ja",
     "tj_max",
@@ -1515,6 +1534,7 @@ const VALUE_KEYS: [&str; 18] = [
     "abs_max",
     "recommended",
     "breakdown",
+    "clamp",
     "range",
     "headroom",
     "tolerance",
@@ -1757,6 +1777,19 @@ pub fn compare(first: &Part, second: &Part) -> Vec<Difference> {
             b.breakdown.as_ref(),
             &mut out,
         );
+        let clamp = |c: Option<&crate::limits::Clamp>| {
+            c.map_or("absent".to_string(), |c| {
+                format!("{} V at {} A (page {})", c.volts, c.current, c.page)
+            })
+        };
+        let (ca, cb) = (clamp(a.clamp.as_ref()), clamp(b.clamp.as_ref()));
+        if ca != cb {
+            out.push(Difference {
+                at: format!("{at} clamp"),
+                first: ca,
+                second: cb,
+            });
+        }
     }
     if first.drives.len() != second.drives.len() {
         out.push(Difference {

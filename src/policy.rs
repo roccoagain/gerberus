@@ -16,6 +16,8 @@ pub struct Policy {
     pub esd: Option<EsdLevel>,
     /// How far below its maximum a junction is kept.
     pub junction: Option<JunctionMargin>,
+    /// The cable and sweep for `gerberus stress`.
+    pub spice: Option<crate::spice::SpicePolicy>,
 }
 
 /// Keep every junction `margin` °C below its maximum temperature: reliability derating.

@@ -296,6 +296,19 @@ pub struct Limit {
     /// For TVS, Zener and ESD parts: the voltage at which the part starts to conduct. A rail that can sit
     /// above `breakdown.min` will drive current through the part continuously.
     pub breakdown: Option<Range>,
+    /// For TVS and ESD parts: the clamping voltage at a pulse current, which sets how hard the part holds a
+    /// rail once past breakdown.
+    pub clamp: Option<Clamp>,
+}
+
+/// A protection part's clamping voltage `volts` at the peak pulse current `current`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Clamp {
+    pub volts: f64,
+    pub current: f64,
+    pub page: u32,
+    pub note: Option<String>,
 }
 
 /// A min/max pair, or a reason why the datasheet doesn't give one.
@@ -657,6 +670,20 @@ impl Part {
             if l.breakdown.is_some() && l.quantity != Quantity::Voltage {
                 out.push(at("`breakdown` only applies to voltage limits"));
             }
+            if let Some(c) = &l.clamp {
+                match &l.breakdown {
+                    None => out.push(at("`clamp` needs a `breakdown` range")),
+                    Some(Range::Known {
+                        max: Bound::Value(b), ..
+                    }) if c.volts <= *b => {
+                        out.push(at(&format!("clamp {} V is not above breakdown max {b} V", c.volts)));
+                    }
+                    _ => {}
+                }
+                if c.current.is_nan() || c.current <= 0.0 || c.page == 0 {
+                    out.push(at("`clamp` needs a positive current and a 1-based page"));
+                }
+            }
             let ranges = [
                 ("abs_max", Some(&l.abs_max)),
                 ("recommended", Some(&l.recommended)),
@@ -961,6 +988,7 @@ pub fn class_default(c: &Component) -> Option<Part> {
                 derived: None,
             },
             breakdown: None,
+            clamp: None,
         }],
         drives: Vec::new(),
         capacitance: Vec::new(),

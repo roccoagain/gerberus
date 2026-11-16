@@ -72,6 +72,7 @@ A range is either `{ min = ..., max = ..., page = N, note = "..." }` or `{ unkno
 | `abs_max` | Beyond this the part may be damaged |
 | `recommended` | The range the datasheet says to operate in |
 | `breakdown` | TVS, Zener and ESD parts: where the part starts to conduct (VBR). A rail that can sit above `breakdown.min` drives current through the part continuously |
+| `clamp` | TVS and ESD parts, with `breakdown`: `{ volts, current, page }`, the maximum clamping voltage VC at the peak pulse current IPP. `gerberus stress` takes the part's resistance past breakdown from it |
 | `bidirectional` | `breakdown` is a magnitude and applies in both polarities. `abs_max` and `recommended` stay signed |
 
 ### What a part drives
