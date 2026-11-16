@@ -2,6 +2,8 @@ mpn = "TCAN1044AVDDFRQ1"
 manufacturer = "Texas Instruments"
 description = "Automotive fault-protected CAN FD transceiver with VIO level shifter, SOT-23-8 (DDF)"
 class = "ic"
+theta_ja = { value = 122, page = 5, note = "6.5 thermal characteristics, DDF (SOT) package" }
+tj_max = { value = 150, page = 5, note = "operating junction temperature, recommended operating conditions; the absolute maximum TJ is 165 C (p4)" }
 
 [datasheet]
 title = "TCAN1044A-Q1 Automotive Fault-Protected CAN FD Transceiver with Standby mode"
@@ -86,3 +88,11 @@ model = "iec-air"
 volts = 15000
 page = 4
 note = "system level, CAN bus terminals to GND: powered air discharge per SAE J2962-2 / ISO 10605"
+
+[[supply]]
+pins = ["VCC"]
+current = { min = 0, max = 0.08, page = 5, note = "ICC normal mode, dominant, STB = 0 V, TXD = 0 V, RL = 50 ohm: the bus held dominant. 130 mA with a bus fault (CANH = CANL = +-25 V, RL open)" }
+
+[[supply]]
+pins = ["VIO"]
+current = { min = 0, max = 0.0003, page = 5, note = "IIO normal mode, dominant, RXD floating" }

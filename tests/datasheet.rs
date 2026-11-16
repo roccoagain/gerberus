@@ -578,3 +578,60 @@ VDIF      Dropout voltage       IOUT = 100 mA               0.25    0.35     V
     let o = check_claim(&claim(0.25, Role::Value, Unit::Volt, &[]), page);
     assert_eq!(o.status, Status::Mismatch, "{o:?}");
 }
+
+#[test]
+fn thermal_and_supply_current_values() {
+    let page = "
+Thermal metric                                   DBV (SOT-23)     UNIT
+RθJA    Junction-to-ambient thermal resistance       173.0        °C/W
+TJ      Operating junction temperature       –40          125     °C
+Tstg    Storage temperature                  –65          150     °C
+ICC     Supply current      Dominant, RL = 50 Ω        45      80     mA
+";
+    let o = check_claim(&claim(173.0, Role::Value, Unit::CelsiusPerWatt, &[]), page);
+    assert!(!o.is_problem(), "{o:?}");
+    // Supply currents are claimed in amps; the table prints mA.
+    let o = check_claim(&claim(0.08, Role::Max, Unit::Amp, &["ICC"]), page);
+    assert!(!o.is_problem(), "{o:?}");
+    let mut tj = claim(125.0, Role::Max, Unit::Celsius, &["TJ"]);
+    tj.avoid = vec!["storage".into()];
+    let o = check_claim(&tj, page);
+    assert!(!o.is_problem(), "{o:?}");
+    // The storage maximum isn't a junction maximum.
+    let mut wrong = claim(150.0, Role::Max, Unit::Celsius, &["TJ"]);
+    wrong.avoid = vec!["storage".into()];
+    assert!(check_claim(&wrong, page).is_problem());
+}
+
+#[test]
+fn a_minus_after_cjk_text_is_kept() {
+    let page = "工作温度在-40至125°C\n";
+    let o = check_claim(&claim(-40.0, Role::Min, Unit::Celsius, &[]), page);
+    assert!(!o.is_problem(), "{o:?}");
+}
+
+#[test]
+fn new_part_fields_make_claims() {
+    let part: Part = toml::from_str(
+        r#"
+mpn = "X"
+manufacturer = "Y"
+description = "test"
+class = "ic"
+temperature = { min = -40, max = 85, page = 3 }
+theta_ja = { value = 118, page = 4 }
+tj_max = { value = 105, page = 3 }
+efficiency = { value = 0.8, page = 5 }
+[pins]
+1 = "VDD"
+[[supply]]
+pins = ["VDD"]
+current = { min = 0, max = 0.0246, page = 6 }
+"#,
+    )
+    .unwrap();
+    let labels: Vec<String> = claims(&part).into_iter().map(|c| c.label).collect();
+    for want in ["theta_ja", "tj_max", "efficiency", "supply 1 (VDD) max"] {
+        assert!(labels.iter().any(|l| l.contains(want)), "no {want:?} in {labels:?}");
+    }
+}

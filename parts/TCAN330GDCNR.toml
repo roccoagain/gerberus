@@ -2,6 +2,9 @@ mpn = "TCAN330GDCNR"
 manufacturer = "Texas Instruments"
 description = "3.3 V CAN FD transceiver with shutdown and silent mode, SOT-23-8 (DCN)"
 class = "ic"
+temperature = { min = -40, max = 125, page = 5, note = "TA operational free-air temperature" }
+theta_ja = { value = 154.4, page = 6, note = "5.4 thermal information, DCN (SOT-23) package" }
+tj_max = { value = 150, page = 5, note = "operating junction temperature range TJ, listed in the 5.1 absolute maximum ratings table" }
 
 [datasheet]
 title = "TCAN33x 3.3V CAN Transceivers with CAN FD (Flexible Data Rate)"
@@ -67,3 +70,7 @@ model = "iec-contact"
 volts = 12000
 page = 5
 note = "CANH and CANL terminals to GND; the table misprints the standard as IEC 61400-4-2 (p21 says IEC61000-4-2)"
+
+[[supply]]
+pins = ["VCC"]
+current = { min = 0, max = 0.06, page = 6, note = "ICC normal mode, dominant, TXD = 0 V, RL = 50 ohm, high bus load: the bus held dominant. 180 mA with a bus fault (CANH = -12 V, RL open)" }

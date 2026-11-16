@@ -139,6 +139,16 @@ pub struct Regulation {
     pub pin: String,
     /// False for a feedback pin's own net, which a report needn't list separately from the output.
     pub sets_output: bool,
+    /// The output's range while it is held, and the lowest supply that holds it, when both are known.
+    pub held_at: Option<HeldAt>,
+}
+
+/// A regulator's output while it regulates, and the supply it needs for that.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HeldAt {
+    pub min: f64,
+    pub max: f64,
+    pub needs: f64,
 }
 
 /// The range of every net in a design, indexed like [`Design::nets`].
@@ -1166,7 +1176,13 @@ impl Plan<'_> {
                     _ => (min, max),
                 };
                 let held = matches!(hold, Hold::Held(_));
-                regulators.push(self.regulation(hold, *supply, sets_output));
+                let mut regulation = self.regulation(hold, *supply, sets_output);
+                regulation.held_at = needs.map(|needs| HeldAt {
+                    min: lo,
+                    max: hi,
+                    needs,
+                });
+                regulators.push(regulation);
                 let what = match (divider, on_output) {
                     (Some(d), true) => format!(
                         "{who} holds {} at {dlo} to {dhi} V ({src}); through the divider {} over {} ({}) the output is {} to {} V",
@@ -1221,6 +1237,7 @@ impl Plan<'_> {
             hold,
             pin: self.drive.pin.clone(),
             sets_output,
+            held_at: None,
         }
     }
 }

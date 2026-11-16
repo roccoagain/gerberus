@@ -2,6 +2,7 @@ mpn = "MT6701CT-STD-R"
 manufacturer = "MagnTek"
 description = "14-bit magnetic angle sensor, SSI / I2C / ABZ / analog / PWM, SOP-8"
 class = "ic"
+temperature = { min = -40, max = 125, page = 7, note = "all parameters are specified over -40 to 125 C" }
 
 [datasheet]
 title = "MT6701 differential-Hall magnetic angle sensor IC (Chinese)"
@@ -42,3 +43,7 @@ model = "cdm"
 volts = 1500
 page = 6
 note = "静电防护能力（元件充电模式）"
+
+[[supply]]
+pins = ["VDD"]
+current = { min = 0, max = 0.014, page = 7, note = "Idd chip operating current (芯片工作电流), VDD 3.0 to 5.5 V, -40 to 125 C" }

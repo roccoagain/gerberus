@@ -50,6 +50,50 @@ pub struct Part {
     /// Electrostatic discharge ratings, per group of pins.
     #[serde(default)]
     pub esd: Vec<Esd>,
+    /// Junction-to-ambient thermal resistance of this package, in °C/W.
+    pub theta_ja: Option<Rated>,
+    /// The hottest the junction may get, in °C: the recommended or operating junction limit where the datasheet
+    /// gives one, else the absolute maximum.
+    pub tj_max: Option<Rated>,
+    /// Worst-case operating current into supply pins, per group of pins.
+    #[serde(default)]
+    pub supply: Vec<SupplyCurrent>,
+    /// A switching regulator's lowest efficiency over the loads and supplies the note gives, as a fraction.
+    /// Without it, a checker can't work out what the regulator draws from its input or dissipates.
+    pub efficiency: Option<Rated>,
+}
+
+/// One datasheet number with its page.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Rated {
+    pub value: f64,
+    pub page: u32,
+    pub note: Option<String>,
+}
+
+/// The most current a part draws into a group of supply pins, averaged over the time it takes to heat up, in
+/// amps: the MAX column of its supply-current row at the conditions in `current`'s note (a brief peak, such as
+/// a sensor's measurement pulse, doesn't count). A regulator's entry on its input is its own ground (quiescent)
+/// current; what it passes to its output comes from what the output supplies. The entry's pins are all on one
+/// rail.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SupplyCurrent {
+    pub pins: Vec<String>,
+    pub current: Range,
+}
+
+impl SupplyCurrent {
+    /// The maximum, when it is a number.
+    pub fn max(&self) -> Option<f64> {
+        match &self.current {
+            Range::Known {
+                max: Bound::Value(v), ..
+            } => Some(*v),
+            _ => None,
+        }
+    }
 }
 
 /// How an ESD rating was tested. A component-level rating (HBM, CDM) only covers handling in a controlled
@@ -170,6 +214,9 @@ pub struct Drive {
     /// For a regulator: the supply it needs above its output. Without it, a checker can't assume the output
     /// is held at `range`.
     pub headroom: Option<Headroom>,
+    /// For a forward drive: the current in amps that `range` was measured at. Below it the forward
+    /// voltage falls under `range`'s minimum, so a checker can't count on that minimum there.
+    pub current: Option<f64>,
     /// `V(pin) - V(to)` in volts, with its page. Conditions (load current, temperature) go in the note.
     pub range: Range,
 }
@@ -522,6 +569,39 @@ impl Part {
             && (t.min >= t.max || t.min.is_nan() || t.max.is_nan() || self.datasheet.is_none() || t.page == 0)
         {
             out.push("temperature needs a datasheet page and min below max".into());
+        }
+        if let Some(e) = &self.efficiency
+            && (!(e.value > 0.0 && e.value <= 1.0) || self.datasheet.is_none() || e.page == 0)
+        {
+            out.push(format!(
+                "efficiency {} needs a datasheet page and must be in (0, 1]",
+                e.value
+            ));
+        }
+        for (what, r) in [("theta_ja", &self.theta_ja), ("tj_max", &self.tj_max)] {
+            if let Some(r) = r
+                && (!(r.value > 0.0 && r.value.is_finite()) || self.datasheet.is_none() || r.page == 0)
+            {
+                out.push(format!("{what} {} needs a datasheet page and must be above 0", r.value));
+            }
+        }
+        for (i, s) in self.supply.iter().enumerate() {
+            let page = matches!(&s.current, Range::Known { page: Some(p), .. } if *p > 0);
+            if s.pins.is_empty()
+                || !s.max().is_some_and(|m| m >= 0.0 && m.is_finite())
+                || self.datasheet.is_none()
+                || !page
+            {
+                out.push(format!(
+                    "supply {}: needs pins, a datasheet page and a numeric max of at least 0",
+                    i + 1
+                ));
+            }
+            for p in &s.pins {
+                if !names.contains(&p.as_str()) {
+                    out.push(format!("supply {}: pin {p:?} is not in [pins]", i + 1));
+                }
+            }
         }
         for v in &self.variants {
             if v.mpn == self.mpn || self.variants.iter().filter(|w| w.mpn == v.mpn).count() > 1 {
@@ -885,6 +965,10 @@ pub fn class_default(c: &Component) -> Option<Part> {
         drives: Vec::new(),
         capacitance: Vec::new(),
         esd: Vec::new(),
+        theta_ja: None,
+        tj_max: None,
+        supply: Vec::new(),
+        efficiency: None,
     })
 }
 
