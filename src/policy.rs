@@ -41,12 +41,22 @@ pub struct Derate {
 impl Policy {
     pub fn load(path: &Path) -> Result<Policy, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let policy: Policy = toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+        Policy::parse(&text, &path.display().to_string())
+    }
+
+    /// The `policy.toml` at the root of this repository, built into the binary.
+    pub fn builtin() -> Result<Policy, String> {
+        Policy::parse(include_str!("../policy.toml"), "policy.toml (built in)")
+    }
+
+    /// Parses a policy file's text; `origin` names it in errors.
+    pub fn parse(text: &str, origin: &str) -> Result<Policy, String> {
+        let policy: Policy = toml::from_str(text).map_err(|e| format!("{origin}: {e}"))?;
         let problems = policy.problems();
         if problems.is_empty() {
             Ok(policy)
         } else {
-            Err(format!("{}: {}", path.display(), problems.join("; ")))
+            Err(format!("{origin}: {}", problems.join("; ")))
         }
     }
 
