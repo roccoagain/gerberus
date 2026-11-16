@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Write as _};
 
 use crate::design::{Component, Design, PinKind};
-use crate::inputs::BoardInputs;
+use crate::inputs::{BoardInputs, Follow, Input, Max};
 use crate::limits::{Bound, Class, Drive, DriveKind, Library, Part, Quantity, Range};
 
 /// A voltage range from the board's ground. Either end is `None` when it can't be worked out.
@@ -111,6 +111,11 @@ pub struct NetVoltage {
     /// The low end is only a floor the net can't go below, not a value it is known to reach: a regulator that
     /// isn't held sags somewhere above 0 V. A check can pass on it but must not fail on it.
     pub floor: bool,
+    /// Nets this one is joined to only through resistors, LEDs and jumpers, with nothing else driving it and no
+    /// capacitor or inductor on it. A node of such parts always sits between the voltages around it, so at
+    /// every moment this net is between the lowest and highest of these. Empty when that isn't known: a
+    /// capacitor holds a node's old voltage and an inductor overshoots, so either can take it outside them.
+    pub between: Vec<usize>,
 }
 
 /// Whether a regulator's supply leaves it enough room to hold its output.
@@ -207,9 +212,11 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
     let mut out: Vec<Option<NetVoltage>> = vec![None; n];
     let net_of = |r: &str, p: &str| design.components.get(r)?.pins.get(p).map(|p| p.net);
 
-    // 1. Inputs, and the pins they are measured from, which are 0 V.
+    // 1. Inputs, and the pins they are measured from, which are 0 V. Fault inputs belong to their own case
+    //    (see `BoardInputs::case`). An input's own net is set once everything its range reads is known.
     let mut fixed = vec![false; n];
-    for i in &inputs.inputs {
+    let mut seeds: BTreeMap<usize, Vec<&Input>> = BTreeMap::new();
+    for i in inputs.inputs.iter().filter(|i| i.fault.is_none()) {
         let (Some(pn), Some(tn)) = (net_of(&i.pin.reference, &i.pin.pin), net_of(&i.to.reference, &i.to.pin)) else {
             continue;
         };
@@ -221,20 +228,15 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
                 ..Default::default()
             },
         );
-        merge(
-            &mut out[pn],
-            Span::new(i.min, i.max),
-            Why {
-                text: format!(
-                    "input {} on {} from {}: {} to {} V ({})",
-                    i.name, i.pin, i.to, i.min, i.max, i.source
-                ),
-                ..Default::default()
-            },
-        );
+        seeds.entry(pn).or_default().push(i);
         fixed[tn] = true;
         fixed[pn] = true;
     }
+    let follows = |i: &Input| match &i.max {
+        Max::Value(_) => None,
+        Max::Pin(f) => net_of(&f.pin.reference, &f.pin.pin),
+    };
+    let seed_deps = |is: &[&Input]| -> Vec<usize> { is.iter().filter_map(|i| follows(i)).collect() };
 
     // 2. What fitted parts drive, from their part files.
     let mut plans: BTreeMap<usize, Vec<Plan<'_>>> = BTreeMap::new();
@@ -261,6 +263,18 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
     let mut done_groups = vec![false; groups.len()];
     loop {
         let mut progress = false;
+        for (&t, is) in &seeds {
+            if out[t].is_some() || !seed_deps(is).iter().all(|&d| out[d].is_some()) {
+                continue;
+            }
+            let mut nv: Option<NetVoltage> = None;
+            for i in is {
+                let (span, why) = input_range(design, i, follows(i), &out);
+                merge(&mut nv, span, why);
+            }
+            out[t] = nv;
+            progress = true;
+        }
         for (&t, ps) in &plans {
             if out[t].is_some() || !ps.iter().all(|p| p.deps.iter().all(|&d| out[d].is_some())) {
                 continue;
@@ -316,6 +330,11 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
         )
     };
     let mut late: Vec<(usize, NetVoltage)> = vec![];
+    for (&t, is) in &seeds {
+        if out[t].is_none() {
+            late.push((t, unknown(stuck(&seed_deps(is), &out), vec![])));
+        }
+    }
     for (&t, ps) in &plans {
         if out[t].is_none() {
             let deps: Vec<usize> = ps.iter().flat_map(|p| p.deps.clone()).collect();
@@ -341,6 +360,61 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
     }
 }
 
+/// One input's range, and why. `follows` is the net its top follows, if it follows one.
+fn input_range(design: &Design, i: &Input, follows: Option<usize>, out: &[Option<NetVoltage>]) -> (Span, Why) {
+    let head = format!("input {} on {} from {}", i.name, i.pin, i.to);
+    match (&i.max, follows) {
+        (Max::Value(max), _) => (
+            Span::new(i.min, *max),
+            Why {
+                text: format!("{head}: {} to {max} V ({})", i.min, i.source),
+                ..Default::default()
+            },
+        ),
+        (Max::Pin(Follow { pin, plus }), Some(net)) => {
+            let top = span_of(out, net).max.map(|m| m + plus);
+            let plus_text = if *plus == 0.0 {
+                String::new()
+            } else {
+                format!(" {plus:+} V")
+            };
+            let span = Span {
+                min: Some(i.min),
+                max: top,
+            };
+            let range = match top {
+                Some(t) if t >= i.min => format!("{span}"),
+                Some(_) => "UNKNOWN, as the pin it follows can sit below the input's minimum".into(),
+                None => "UNKNOWN".into(),
+            };
+            let span = if top.is_some_and(|t| t < i.min) {
+                Span::unknown()
+            } else {
+                span
+            };
+            (
+                span,
+                Why {
+                    text: format!(
+                        "{head}: {} V up to the voltage on {pin} ({}){plus_text}, so {range} ({})",
+                        i.min, design.nets[net].name, i.source
+                    ),
+                    from: vec![net],
+                    bounded: *plus <= 0.0 && i.min <= 0.0,
+                    low_floor: false,
+                },
+            )
+        }
+        (Max::Pin(Follow { pin, .. }), None) => (
+            Span::unknown(),
+            Why {
+                text: format!("UNKNOWN: {head} follows {pin}, which isn't in the design"),
+                ..Default::default()
+            },
+        ),
+    }
+}
+
 fn unknown(text: String, from: Vec<usize>) -> NetVoltage {
     NetVoltage {
         span: Span::unknown(),
@@ -351,6 +425,7 @@ fn unknown(text: String, from: Vec<usize>) -> NetVoltage {
         }],
         driver: Driver::Strong,
         floor: false,
+        between: vec![],
     }
 }
 
@@ -373,6 +448,7 @@ fn merge(slot: &mut Option<NetVoltage>, span: Span, why: Why) {
                 floor: why.low_floor && span.min.is_some(),
                 why: vec![why],
                 driver: Driver::Strong,
+                between: vec![],
             });
         }
     }
@@ -1050,6 +1126,8 @@ fn recommended(part: &Part, pin: &str) -> (Option<f64>, Option<f64>) {
 struct Group {
     nets: Vec<usize>,
     pulls: Vec<Pull>,
+    /// A capacitor or inductor touches the group, so it can leave the range of the nets around it.
+    reactive: bool,
 }
 
 enum Pull {
@@ -1153,6 +1231,18 @@ impl Group {
             .iter()
             .any(|p| matches!(p, Pull::Net { .. }) || matches!(p, Pull::Output { push_pull, .. } if *push_pull));
         nv.driver = if real { Driver::Pulled } else { Driver::Weak };
+        if !self.reactive && self.pulls.iter().all(|p| matches!(p, Pull::Net { .. })) {
+            nv.between = self
+                .pulls
+                .iter()
+                .filter_map(|p| match p {
+                    Pull::Net { net, .. } => Some(*net),
+                    _ => None,
+                })
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+        }
         nv
     }
 }
@@ -1190,11 +1280,18 @@ fn build_groups(design: &Design, lib: &Library, inputs: &BoardInputs, strong: &[
         .into_values()
         .map(|nets| {
             let mut pulls = vec![];
+            let mut reactive = false;
             for &net in &nets {
                 for (r, pnum) in &design.nets[net].pins {
                     let Some(c) = design.components.get(r) else { continue };
                     if c.dnp {
                         continue;
+                    }
+                    if is_capacitor(lib, c)
+                        || c.lib_id.starts_with("Device:L")
+                        || class_of(lib, c) == Some(Class::Inductor)
+                    {
+                        reactive = true;
                     }
                     let Some(pin) = c.pins.get(pnum) else { continue };
                     if is_link(lib, c) {
@@ -1254,7 +1351,7 @@ fn build_groups(design: &Design, lib: &Library, inputs: &BoardInputs, strong: &[
                     }
                 }
             }
-            Group { nets, pulls }
+            Group { nets, pulls, reactive }
         })
         .collect()
 }

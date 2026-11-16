@@ -19,6 +19,10 @@ pub struct BoardInputs {
     /// Connector pins the outside world doesn't drive, such as a debug probe's target-voltage sense pin.
     #[serde(default)]
     pub undriven: Vec<Undriven>,
+    /// Limits on the voltage between two input pins, such as a CAN bus's differential voltage, where the two
+    /// pins move together.
+    #[serde(default)]
+    pub differential: Vec<Differential>,
     /// The ambient temperature range the board works in. Without it, parts are taken over their own rated
     /// range.
     pub temperature: Option<BoardTemperature>,
@@ -29,6 +33,17 @@ pub struct BoardInputs {
 pub struct Undriven {
     pub pin: PinRef,
     /// Why nothing outside drives it.
+    pub source: String,
+}
+
+/// `V(pin) − V(to)` stays between `min` and `max` volts, whatever each pin's own range allows.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Differential {
+    pub pin: PinRef,
+    pub to: PinRef,
+    pub min: f64,
+    pub max: f64,
     pub source: String,
 }
 
@@ -51,9 +66,46 @@ pub struct Input {
     pub to: PinRef,
     /// Volts.
     pub min: f64,
-    pub max: f64,
+    /// Volts, or the voltage of another pin, for a debug probe whose outputs follow the target voltage it senses.
+    pub max: Max,
     /// Where the range comes from: a design document, a spec, a battery's chemistry.
     pub source: String,
+    /// The name of a fault case, such as `VBUS shorted onto CANH`. A fault input is left out of the normal
+    /// analysis. Each case is checked on its own: its inputs (every input with that name) replace the normal
+    /// inputs on the nets they touch.
+    pub fault: Option<String>,
+}
+
+/// The top of an input's range.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum Max {
+    Value(f64),
+    /// The voltage of another pin's net, plus `plus` volts.
+    Pin(Follow),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Follow {
+    pub pin: PinRef,
+    #[serde(default)]
+    pub plus: f64,
+}
+
+impl Max {
+    pub fn value(&self) -> Option<f64> {
+        match self {
+            Max::Value(v) => Some(*v),
+            Max::Pin(_) => None,
+        }
+    }
+}
+
+impl From<f64> for Max {
+    fn from(v: f64) -> Max {
+        Max::Value(v)
+    }
 }
 
 /// A part pin written as `REF.PIN`.
@@ -90,6 +142,51 @@ impl BoardInputs {
         toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
     }
 
+    /// The fault cases, in the order the file first names them.
+    pub fn faults(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = vec![];
+        for f in self.inputs.iter().filter_map(|i| i.fault.as_deref()) {
+            if !out.contains(&f) {
+                out.push(f);
+            }
+        }
+        out
+    }
+
+    /// The inputs of one fault case: the normal inputs, except those on a net one of the case's inputs drives,
+    /// plus the case's own inputs. Other cases are left out.
+    pub fn case(&self, design: &Design, fault: &str) -> BoardInputs {
+        let net = |p: &PinRef| design.pin_net(&p.reference, &p.pin).map(|n| n.name.clone());
+        let ours: Vec<&Input> = self
+            .inputs
+            .iter()
+            .filter(|i| i.fault.as_deref() == Some(fault))
+            .collect();
+        let taken: Vec<Option<String>> = ours.iter().map(|i| net(&i.pin)).collect();
+        let mut inputs: Vec<Input> = self
+            .inputs
+            .iter()
+            .filter(|i| i.fault.is_none() && !taken.contains(&net(&i.pin)))
+            .cloned()
+            .collect();
+        inputs.extend(ours.into_iter().map(|i| Input {
+            fault: None,
+            ..i.clone()
+        }));
+        // A fault on either pin breaks the link between them.
+        let differential = self
+            .differential
+            .iter()
+            .filter(|d| !taken.contains(&net(&d.pin)) && !taken.contains(&net(&d.to)))
+            .cloned()
+            .collect();
+        BoardInputs {
+            inputs,
+            differential,
+            ..self.clone()
+        }
+    }
+
     /// Everything that doesn't match the design or doesn't make sense. Empty when the file is sound.
     pub fn problems(&self, design: &Design) -> Vec<String> {
         let mut out = Vec::new();
@@ -112,22 +209,76 @@ impl BoardInputs {
             {
                 out.push(format!("{}: {} and {} are on the same net, {a}", i.name, i.pin, i.to));
             }
-            if !(i.min.is_finite() && i.max.is_finite()) || i.min > i.max {
-                out.push(format!("{}: min {} and max {} are not a range", i.name, i.min, i.max));
+            match &i.max {
+                Max::Value(max) => {
+                    if !(i.min.is_finite() && max.is_finite()) || i.min > *max {
+                        out.push(format!("{}: min {} and max {max} are not a range", i.name, i.min));
+                    }
+                }
+                Max::Pin(Follow { pin, plus }) => {
+                    if !i.min.is_finite() || !plus.is_finite() {
+                        out.push(format!("{}: min {} and plus {plus} must be numbers", i.name, i.min));
+                    }
+                    match design.pin_net(&pin.reference, &pin.pin) {
+                        None => out.push(format!("{}: max follows pin {pin}, which is not in the design", i.name)),
+                        Some(n) if nets.first().cloned().flatten().as_deref() == Some(n.name.as_str()) => out.push(
+                            format!("{}: max follows {pin}, which is on the input's own net", i.name),
+                        ),
+                        Some(_) => {}
+                    }
+                }
             }
             if i.source.trim().is_empty() {
                 out.push(format!("{}: no source", i.name));
+            }
+            if i.fault.as_deref().is_some_and(|f| f.trim().is_empty()) {
+                out.push(format!("{}: an empty fault name", i.name));
             }
         }
         for u in &self.undriven {
             if design.pin_net(&u.pin.reference, &u.pin.pin).is_none() {
                 out.push(format!("undriven {}: the pin is not in the design", u.pin));
             }
-            if self.inputs.iter().any(|i| i.pin == u.pin) {
+            if self.inputs.iter().any(|i| i.pin == u.pin && i.fault.is_none()) {
                 out.push(format!("undriven {}: an input also drives it", u.pin));
             }
             if u.source.trim().is_empty() {
                 out.push(format!("undriven {}: no source", u.pin));
+            }
+        }
+        let driven: Vec<Option<&str>> = self
+            .inputs
+            .iter()
+            .filter(|i| i.fault.is_none())
+            .map(|i| design.pin_net(&i.pin.reference, &i.pin.pin).map(|n| n.name.as_str()))
+            .collect();
+        for d in &self.differential {
+            let nets: Vec<Option<&str>> = [&d.pin, &d.to]
+                .into_iter()
+                .map(|p| design.pin_net(&p.reference, &p.pin).map(|n| n.name.as_str()))
+                .collect();
+            if nets.iter().any(Option::is_none) {
+                out.push(format!(
+                    "differential {} to {}: a pin is not in the design",
+                    d.pin, d.to
+                ));
+            } else if nets[0] == nets[1] {
+                out.push(format!("differential {} to {}: both pins are on one net", d.pin, d.to));
+            } else if nets.iter().any(|n| !driven.contains(n)) {
+                // A fault case drops a differential only when it replaces an input on one of its nets.
+                out.push(format!(
+                    "differential {} to {}: both pins must be on nets a normal input drives",
+                    d.pin, d.to
+                ));
+            }
+            if !(d.min.is_finite() && d.max.is_finite()) || d.min > d.max {
+                out.push(format!(
+                    "differential {} to {}: min {} and max {} are not a range",
+                    d.pin, d.to, d.min, d.max
+                ));
+            }
+            if d.source.trim().is_empty() {
+                out.push(format!("differential {} to {}: no source", d.pin, d.to));
             }
         }
         if let Some(t) = &self.temperature

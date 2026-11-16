@@ -125,7 +125,14 @@ fn tvs_numbers(lib: &Library, mpn: &str) -> (f64, f64) {
 
 fn vbus_max(dir: &str) -> f64 {
     let inputs = BoardInputs::load(&root(&format!("tests/fixtures/{dir}/inputs.toml"))).unwrap();
-    inputs.inputs.iter().find(|i| i.name == "VBUS").unwrap().max
+    inputs
+        .inputs
+        .iter()
+        .find(|i| i.name == "VBUS")
+        .unwrap()
+        .max
+        .value()
+        .unwrap()
 }
 
 /// Rev 1's known bug is visible in the data: its TVS (D2, SMAJ18A) starts conducting below the bus maximum.
@@ -435,6 +442,72 @@ fn inputs_reject_same_net_and_repeated_names() {
         "{problems}"
     );
     assert!(problems.contains("A: the name is used twice"), "{problems}");
+}
+
+#[test]
+fn inputs_reject_bad_probe_faults_and_differentials() {
+    let design = kicad::load(&root("tests/fixtures/can-encoder/can-encoder.kicad_sch")).unwrap();
+    let text = r#"board = "x"
+[[input]]
+name = "P"
+pin = "J3.2"
+to = "J3.1"
+min = 0
+max = { pin = "J9.9" }
+source = "s"
+
+[[input]]
+name = "Q"
+pin = "J3.3"
+to = "J3.1"
+min = 0
+max = { pin = "J3.3" }
+source = "s"
+
+[[input]]
+name = "F"
+fault = " "
+pin = "J1.2"
+to = "J1.4"
+min = 0
+max = 1
+source = "s"
+
+[[differential]]
+pin = "J1.2"
+to = "J2.2"
+min = 1
+max = 0
+source = ""
+
+[[differential]]
+pin = "J1.2"
+to = "J3.2"
+min = 0
+max = 1
+source = "s"
+"#;
+    let inputs: BoardInputs = toml::from_str(text).unwrap();
+    let problems = inputs.problems(&design).join("\n");
+    for want in [
+        "P: max follows pin J9.9, which is not in the design",
+        "Q: max follows J3.3, which is on the input's own net",
+        "F: an empty fault name",
+        "differential J1.2 to J2.2: both pins are on one net",
+        "differential J1.2 to J2.2: min 1 and max 0 are not a range",
+        "differential J1.2 to J2.2: no source",
+        "differential J1.2 to J3.2: both pins must be on nets a normal input drives",
+    ] {
+        assert!(problems.contains(want), "missing {want:?} in\n{problems}");
+    }
+}
+
+/// A typo inside `max = { ... }` is an error, not a silently dropped `plus`.
+#[test]
+fn follow_rejects_unknown_keys() {
+    let text = "board = \"x\"\n[[input]]\nname = \"P\"\npin = \"J3.2\"\nto = \"J3.1\"\nmin = 0\n\
+                max = { pin = \"J3.5\", pls = 0.3 }\nsource = \"s\"\n";
+    assert!(toml::from_str::<BoardInputs>(text).is_err());
 }
 
 /// Regulators and switch nodes name the pin that powers them, and only a switch node's range may follow it.

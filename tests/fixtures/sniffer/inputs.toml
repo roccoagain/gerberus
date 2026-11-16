@@ -16,6 +16,33 @@ min = 0
 max = 3.3
 source = "the board's interface contract in hardware/sniffer/DESIGN.md: treat the UART as 3.3 V only. This is what hosts are told to drive, not a limit of the MCU (PA3 is FT_ea)"
 
+# The debug probe drives SWDIO, SWCLK and NRST when it is plugged in, at up to the target voltage it senses on
+# J2.1. TC2030 pinout from hardware/sniffer/DESIGN.md: 1 VCC, 2 SWDIO, 3 NRST, 4 SWCLK, 5 GND.
+
+[[input]]
+name = "SWDIO (debug probe)"
+pin = "J2.2"
+to = "J2.5"
+min = 0
+max = { pin = "J2.1" }
+source = "hardware/sniffer/DESIGN.md, J2 row: program with an ST-Link or J-Link. Assumes the probe's outputs follow the target voltage it senses on VCC (VTref) rather than a fixed 3.3 V; not checked against a probe manual"
+
+[[input]]
+name = "NRST (debug probe)"
+pin = "J2.3"
+to = "J2.5"
+min = 0
+max = { pin = "J2.1" }
+source = "hardware/sniffer/DESIGN.md, J2 row: program with an ST-Link or J-Link. Assumes the probe's outputs follow the target voltage it senses on VCC (VTref) rather than a fixed 3.3 V; not checked against a probe manual"
+
+[[input]]
+name = "SWCLK (debug probe)"
+pin = "J2.4"
+to = "J2.5"
+min = 0
+max = { pin = "J2.1" }
+source = "hardware/sniffer/DESIGN.md, J2 row: program with an ST-Link or J-Link. Assumes the probe's outputs follow the target voltage it senses on VCC (VTref) rather than a fixed 3.3 V; not checked against a probe manual"
+
 # Connector pins nothing outside drives. Every other connector pin with no input makes its net UNKNOWN.
 
 [[undriven]]
@@ -25,3 +52,7 @@ source = "hardware/sniffer/DESIGN.md, J1 row: 2 TX (board → host); the host on
 [[undriven]]
 pin = "J2.1"
 source = "hardware/sniffer/DESIGN.md, J2 row: ARM 6-pin pinout, 1 VCC. Assumes the probe senses the target voltage on VCC (VTref) and doesn't power the board through it"
+
+[[undriven]]
+pin = "J2.6"
+source = "hardware/sniffer/DESIGN.md, J2 row: 6 SWO (unused); the probe only listens on SWO"
