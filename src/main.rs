@@ -13,6 +13,9 @@ const USAGE: &str = "usage:
   gerberus check <design> [--inputs FILE] [--parts DIR]... [--all] [--json]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
   gerberus si <board.kicad_pcb> [--parts DIR]... [--all] [--json] [--plots DIR]
+  gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
+  gerberus datasheet blank <part.toml>
+  gerberus datasheet compare <first.toml> <second.toml>
 
 <design> is a KiCad root .kicad_sch, an Altium .PrjPcb project, or a single Altium .SchDoc. `pinout` reads
 KiCad designs only, since it compares against the KiCad board.
@@ -45,6 +48,12 @@ capacitance of parts on the lines, then simulates each pair at 480 Mb/s and chec
 against the USB 2.0 Template 1 mask. --plots writes each pair's eye diagram and impedance profile (TDR) as SVG
 files into DIR. It reads part capacitance from the same part folders as `parts`, matched by footprint value.
 It exits with status 1 when any error FAILs.
+`datasheet` checks part files against their datasheets (see .claude/skills/datasheet-to-part). `verify` downloads each
+file's datasheet (cached in --cache, default ~/.cache/gerberus/datasheets), or reads --pdf, and looks for every
+cited value on its page: in the right MIN/TYP/MAX column, in the right unit, on a row that names the pin. It
+needs poppler's `pdftotext`. --all also lists confirmed values. It exits with status 1 when a value is missing
+or mismatched. `blank` prints the part file with every datasheet value replaced by \"?\", for a second reader to
+fill in blind; `compare` lists every value where two readings disagree and exits with status 1 if any do.
 
 Every command exits with status 2 when it can't run (bad arguments, unreadable files).";
 
@@ -58,6 +67,7 @@ fn main() -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "si" => si(Path::new(path), rest),
+        [cmd, sub, rest @ ..] if cmd == "datasheet" => datasheet(sub, rest),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);
@@ -407,4 +417,61 @@ fn si(path: &Path, rest: &[String]) -> Result<bool, String> {
         print!("{}", gerberus::si::render(&report, all));
     }
     Ok(report.errors() == 0)
+}
+
+fn datasheet(sub: &str, rest: &[String]) -> Result<bool, String> {
+    use gerberus::datasheet;
+    use gerberus::limits::Part;
+    match (sub, rest) {
+        ("blank", [file]) => {
+            let text = std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
+            print!("{}", datasheet::blank(&text).map_err(|e| format!("{file}: {e}"))?);
+            Ok(true)
+        }
+        ("compare", [a, b]) => {
+            let (first, second) = (Part::load(Path::new(a))?, Part::load(Path::new(b))?);
+            let diffs = datasheet::compare(&first, &second);
+            for d in &diffs {
+                println!("{}: {} vs {}", d.at, d.first, d.second);
+            }
+            println!("{}: {} difference(s)", first.mpn, diffs.len());
+            Ok(diffs.is_empty())
+        }
+        ("verify", rest) => {
+            let (mut files, mut pdf, mut cache, mut all) = (vec![], None, datasheet::default_cache_dir(), false);
+            let mut it = rest.iter();
+            while let Some(a) = it.next() {
+                match a.as_str() {
+                    "--all" => all = true,
+                    "--pdf" => pdf = Some(PathBuf::from(it.next().ok_or("--pdf needs a file")?)),
+                    "--cache" => cache = Some(PathBuf::from(it.next().ok_or("--cache needs a directory")?)),
+                    f if !f.starts_with("--") => files.push(PathBuf::from(f)),
+                    _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
+                }
+            }
+            if files.is_empty() || (pdf.is_some() && files.len() > 1) {
+                return Err(format!("name one or more part files (one with --pdf)\n{USAGE}"));
+            }
+            let mut ok = true;
+            for f in &files {
+                let part = Part::load(f)?;
+                let pdf = match (&pdf, &part.datasheet) {
+                    (Some(p), _) => p.clone(),
+                    (None, Some(d)) => {
+                        let dir = cache.as_ref().ok_or("no cache directory; give --cache")?;
+                        datasheet::fetch(&d.url, dir)?
+                    }
+                    (None, None) => {
+                        println!("{}: no datasheet, nothing to verify", part.mpn);
+                        continue;
+                    }
+                };
+                let outcomes = datasheet::verify(&part, &pdf);
+                ok &= !outcomes.iter().any(datasheet::Outcome::is_problem);
+                print!("{}", datasheet::render(&part.mpn, &outcomes, all));
+            }
+            Ok(ok)
+        }
+        _ => Err(format!("unknown datasheet command\n{USAGE}")),
+    }
 }

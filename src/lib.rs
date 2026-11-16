@@ -2,6 +2,7 @@
 
 pub mod altium;
 pub mod bom;
+pub mod datasheet;
 pub mod design;
 pub mod inputs;
 pub mod kicad;

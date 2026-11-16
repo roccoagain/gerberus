@@ -20,7 +20,7 @@ url = "https://www.lcsc.com/datasheet/C25752.pdf"
 pins = ["1"]
 to = "2"
 abs_max = { unknown = "the datasheet gives a short-time overload voltage test (2.5 x RCWV, at most 100 V), not an absolute maximum" }
-recommended = { min = -50, max = 50, page = 5, note = "max. working voltage for 0402; the rated continuous working voltage sqrt(P x R) also applies, whichever is lower" }
+recommended = { min = -27.39, max = 27.39, page = 5, derived = "-sqrt(0.0625 * 12000) .. sqrt(0.0625 * 12000); RCWV = sqrt(P x R), with P from the power rating and R from the part number, below the 0402 max working voltage 50 V; non-polar, so the same magnitude applies in both directions", note = "Section 9 voltage rating: rated continuous DC or RMS AC working voltage RCWV = sqrt(P x R), never above the Max. Working Voltage (50 V for 0402, section 7 Ratings); P = 1/16 W at 70 C ambient" }
 
 [[limit]]
 quantity = "power"

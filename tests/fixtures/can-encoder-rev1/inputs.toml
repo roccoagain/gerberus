@@ -58,38 +58,62 @@ min = 7
 max = 25.2
 source = "hardware/can-encoder/rev1-archive/DESIGN.md, CAN pins vs VBUS miswiring: a cable that shorts VBUS onto CANH/CANL would damage the TCAN330"
 
-# The debug probe drives SWDIO, SWCLK and NRST when it is plugged in, at up to the target voltage it senses on
-# J3.1. TC2030 pinout from hardware/can-encoder/rev1-archive/DESIGN.md: 1 VCC, 2 SWDIO, 3 NRST, 4 SWCLK, 5 GND.
+# A debug probe, if one is plugged in, drives SWDIO, SWCLK and NRST. No particular probe is used, so each pin
+# gets two inputs: one following the target voltage on J3.1, one fixed at 3.3 V. The net takes both. TC2030 pinout from hardware/can-encoder/rev1-archive/DESIGN.md: 1 VCC, 2 SWDIO, 3 NRST, 4 SWCLK, 5 GND.
 
 [[input]]
-name = "SWDIO (debug probe)"
+name = "SWDIO (probe following VTref)"
 pin = "J3.2"
 to = "J3.5"
 min = 0
 max = { pin = "J3.1" }
-source = "hardware/sniffer/DESIGN.md, J2 row: program with an ST-Link or J-Link. Assumes the probe's outputs follow the target voltage it senses on VCC (VTref) rather than a fixed 3.3 V; not checked against a probe manual"
+source = "No particular probe: Rocco, 2026-11-16, the boards aren't built yet and he usually prints over serial. Any probe might be used, so this covers one whose outputs follow the target voltage it senses on VCC (VTref)"
 
 [[input]]
-name = "NRST (debug probe)"
+name = "SWDIO (probe at a fixed 3.3 V)"
+pin = "J3.2"
+to = "J3.5"
+min = 0
+max = 3.3
+source = "No particular probe: Rocco, 2026-11-16, the boards aren't built yet and he usually prints over serial. Any probe might be used, so this covers one whose outputs are fixed at 3.3 V whatever the target voltage. Assumes no probe drives above 3.3 V; not checked against a probe manual"
+
+[[input]]
+name = "NRST (probe following VTref)"
 pin = "J3.3"
 to = "J3.5"
 min = 0
 max = { pin = "J3.1" }
-source = "hardware/sniffer/DESIGN.md, J2 row: program with an ST-Link or J-Link. Assumes the probe's outputs follow the target voltage it senses on VCC (VTref) rather than a fixed 3.3 V; not checked against a probe manual"
+source = "No particular probe: Rocco, 2026-11-16, the boards aren't built yet and he usually prints over serial. Any probe might be used, so this covers one whose outputs follow the target voltage it senses on VCC (VTref)"
 
 [[input]]
-name = "SWCLK (debug probe)"
+name = "NRST (probe at a fixed 3.3 V)"
+pin = "J3.3"
+to = "J3.5"
+min = 0
+max = 3.3
+source = "No particular probe: Rocco, 2026-11-16, the boards aren't built yet and he usually prints over serial. Any probe might be used, so this covers one whose outputs are fixed at 3.3 V whatever the target voltage. Assumes no probe drives above 3.3 V; not checked against a probe manual"
+
+[[input]]
+name = "SWCLK (probe following VTref)"
 pin = "J3.4"
 to = "J3.5"
 min = 0
 max = { pin = "J3.1" }
-source = "hardware/sniffer/DESIGN.md, J2 row: program with an ST-Link or J-Link. Assumes the probe's outputs follow the target voltage it senses on VCC (VTref) rather than a fixed 3.3 V; not checked against a probe manual"
+source = "No particular probe: Rocco, 2026-11-16, the boards aren't built yet and he usually prints over serial. Any probe might be used, so this covers one whose outputs follow the target voltage it senses on VCC (VTref)"
+
+[[input]]
+name = "SWCLK (probe at a fixed 3.3 V)"
+pin = "J3.4"
+to = "J3.5"
+min = 0
+max = 3.3
+source = "No particular probe: Rocco, 2026-11-16, the boards aren't built yet and he usually prints over serial. Any probe might be used, so this covers one whose outputs are fixed at 3.3 V whatever the target voltage. Assumes no probe drives above 3.3 V; not checked against a probe manual"
 
 # Connector pins nothing outside drives. Every other connector pin with no input makes its net UNKNOWN.
 
 [[undriven]]
 pin = "J3.1"
-source = "hardware/can-encoder/rev1-archive/DESIGN.md, J3 row: same pinout as the sniffer, 1 VCC. Assumes the probe senses the target voltage on VCC (VTref) and doesn't power the board through it"
+source = "hardware/can-encoder/rev1-archive/DESIGN.md, J3 row: same pinout as the sniffer, 1 VCC. No particular probe is used; assumes whichever one only senses the target voltage here and doesn't power the board through it, and that the board is powered while a probe is connected"
 
 [[undriven]]
 pin = "J3.6"
