@@ -401,6 +401,7 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                         message: format!("{msg}; {}", policy.reason),
                         nets: vec![],
                         case: None,
+                        headline: None,
                     });
                 };
                 let Some((max, _, min, _)) = sweep.peak(an, b) else {

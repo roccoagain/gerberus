@@ -282,6 +282,7 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             message,
             nets: vec![net],
             case: None,
+            headline: None,
         };
         let connector = pins[0].split('.').next().unwrap_or_default().to_string();
         if let Some(direct) = clamps.get(&None) {
@@ -594,5 +595,6 @@ pub fn reverse_polarity(
         message,
         nets: input_net.into_iter().collect(),
         case: Some(case_name.to_string()),
+        headline: None,
     }
 }
