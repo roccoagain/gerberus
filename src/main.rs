@@ -14,7 +14,9 @@ to the schematic if there is one (its files override the shared ones), then any 
 
 `pinout` checks that each part's symbol pins, footprint pads and datasheet pin table agree. It reads the board
 next to the schematic (same name, .kicad_pcb) unless --pcb names another, and the same part folders as
-`parts`. It exits with status 1 when it finds an error.";
+`parts`. It exits with status 1 when it finds a pinout error.
+
+Every command exits with status 2 when it can't run: bad arguments or a file it can't read.";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -35,7 +37,7 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");
-            ExitCode::FAILURE
+            ExitCode::from(2)
         }
     }
 }

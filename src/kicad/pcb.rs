@@ -21,6 +21,8 @@ pub struct Footprint {
     pub reference: String,
     /// Library footprint, such as `Package_SO:SOIC-8_3.9x4.9mm_P1.27mm`.
     pub lib_id: String,
+    /// KiCad's "not in schematic" attribute: a footprint added on the board only, such as a test point or logo.
+    pub board_only: bool,
     /// Pads with a number, in file order. Unnumbered pads (holes, paste-only shapes) are left out. A number
     /// can repeat, such as an exposed pad split into several shapes.
     pub pads: Vec<Pad>,
@@ -79,6 +81,9 @@ pub fn load_footprints(path: &Path) -> Result<Vec<Footprint>, String> {
         out.push(Footprint {
             reference,
             lib_id: fp.arg(1).unwrap_or_default().to_string(),
+            board_only: fp
+                .child("attr")
+                .is_some_and(|a| a.items().iter().skip(1).any(|i| i.text() == Some("board_only"))),
             pads,
         });
     }

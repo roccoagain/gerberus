@@ -128,7 +128,7 @@ pub fn check(design: &Design, footprints: Option<&[Footprint]>, lib: &Library) -
 
     if footprints.is_some() {
         for (r, fps) in &by_ref {
-            let numbered = fps.iter().any(|f| !f.pads.is_empty());
+            let numbered = fps.iter().any(|f| !f.board_only && !f.pads.is_empty());
             if numbered && !design.components.contains_key(*r) {
                 report.findings.push(Finding {
                     reference: r.to_string(),
@@ -401,15 +401,15 @@ pub fn shown_name(name: &str) -> Option<String> {
     (!out.is_empty() && out != "~").then_some(out)
 }
 
-/// Upper case with only letters, digits and polarity signs kept: `TRI-STATE` is `TRISTATE`, but `V+` and `V-`
-/// stay apart.
+/// Upper case with only letters, digits and polarity signs kept: `TRI-STATE` is `TRISTATE`, but `V+` and `V-`,
+/// and `-IN` and `IN`, stay apart.
 fn compact(name: &str) -> String {
     let shown = shown_name(name).unwrap_or_default();
     let n = shown.chars().count();
     shown
         .chars()
         .enumerate()
-        .filter(|(i, c)| c.is_ascii_alphanumeric() || *c == '+' || (*c == '-' && i + 1 == n))
+        .filter(|(i, c)| c.is_ascii_alphanumeric() || *c == '+' || (*c == '-' && (*i == 0 || i + 1 == n)))
         .map(|(_, c)| c.to_ascii_uppercase())
         .collect()
 }
@@ -423,11 +423,14 @@ fn tokens(name: &str) -> BTreeSet<String> {
         if word.is_empty() {
             continue;
         }
-        let parts: Vec<&str> = word.split('-').collect();
-        let pieces: Vec<&str> = if parts.len() > 1 && parts.iter().all(|p| !p.is_empty()) {
-            parts
-        } else {
-            vec![word]
+        // `PB8-BOOT0` and `PF0-OSC_IN` are a port pin and its alternate function. Other hyphenated names
+        // (`LED-A`, `VDD-IO`) are one name, so they are split only after a port pin.
+        let pieces: Vec<&str> = match word.split_once('-') {
+            Some((port, rest)) if is_port_pin(port) && !rest.is_empty() => std::iter::once(port)
+                .chain(rest.split('-'))
+                .filter(|p| !p.is_empty())
+                .collect(),
+            _ => vec![word],
         };
         for p in pieces {
             let p = p
@@ -441,20 +444,42 @@ fn tokens(name: &str) -> BTreeSet<String> {
     out
 }
 
+/// `TRI-STATE`: letters on both sides of each hyphen, so the hyphen is spelling, not a polarity sign.
+fn is_hyphenated_word(word: &str) -> bool {
+    !word.starts_with('-') && !word.ends_with('-') && !word.contains('+')
+}
+
+/// A microcontroller port pin such as `PA9` or `PB12`.
+fn is_port_pin(word: &str) -> bool {
+    let mut c = word.chars();
+    c.next() == Some('P') && c.next().is_some_and(|ch| ch.is_ascii_uppercase()) && {
+        let rest = c.as_str();
+        !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_digit())
+    }
+}
+
 /// Names that mean the same pin across vendors. Kept short on purpose: every entry is a way for a real
 /// mistake to go unreported.
 const SYNONYMS: &[&[&str]] = &[
-    &["GND", "VSS", "VSSA", "AGND", "DGND", "PGND", "GROUND"],
+    // VSSA is here because small packages bond analog ground to VSS and datasheets name the pin either way.
+    // AGND, DGND and PGND are not: chips that have them usually have them side by side.
+    &["GND", "VSS", "VSSA", "GROUND"],
     &["VIN", "IN", "VI"],
     &["VOUT", "OUT", "VO", "OUTPUT"],
     &["VDD", "VCC"],
-    &["EN", "CE", "ENABLE", "OE", "TRISTATE"],
+    // Not CE or OE: memories have both, next to each other.
+    &["EN", "ENABLE", "TRISTATE"],
     &["K", "CATHODE"],
     &["A", "ANODE"],
     &["NC", "DNC", "NOCONNECT", "DONOTCONNECT"],
 ];
 
+/// A word's synonym-group name. A word with a polarity sign (`IN+`, `-IN`, `OUT-`) is never a synonym, so a
+/// differential pair can't collapse into one name.
 fn canonical(word: &str) -> String {
+    if word.contains(['+', '-']) && word.chars().any(|c| c.is_ascii_alphanumeric()) && !is_hyphenated_word(word) {
+        return word.to_string();
+    }
     let flat: String = word.chars().filter(char::is_ascii_alphanumeric).collect();
     SYNONYMS
         .iter()
@@ -490,6 +515,9 @@ mod tests {
         assert!(names_match("EN", "TRI-STATE"));
         assert!(names_match("OUT", "OUTPUT"));
         assert!(names_match("V-", "V-"));
+        assert!(names_match("PF0", "PF0-OSC_IN"));
+        assert!(names_match("PA14/PA15", "PA14-BOOT0/PA15"));
+        assert!(names_match("IN+", "IN+"));
     }
 
     #[test]
@@ -501,6 +529,15 @@ mod tests {
         assert!(!names_match("S", "STB"));
         assert!(!names_match("PA9", "PA10"));
         assert!(!names_match("TXD", "RXD"));
+        assert!(!names_match("IN+", "IN-"));
+        assert!(!names_match("+IN", "-IN"));
+        assert!(!names_match("OUT+", "OUT-"));
+        assert!(!names_match("-IN", "IN"));
+        assert!(!names_match("LED-A", "LED-K"));
+        assert!(!names_match("VDD-IO", "VDD-CORE"));
+        assert!(!names_match("I2C-SDA", "I2C-SCL"));
+        assert!(!names_match("~{CE}", "~{OE}"));
+        assert!(!names_match("AGND", "PGND"));
     }
 
     #[test]

@@ -87,6 +87,25 @@ fn sensor_supply_pin_named_after_another_pin_is_a_warning_not_a_swap() {
     assert!(has(&report, "U3", Severity::Warning, "19 \"VDD\" (datasheet VDDH)"));
 }
 
+/// A differential pair swapped on the symbol must not hide behind the `OUT`/`IN` synonyms.
+#[test]
+fn swapped_differential_pair_is_an_error() {
+    let (mut design, fps) = board("can-encoder", "can-encoder");
+    let mut lib = library();
+    let part = lib.parts.get_mut("TCAN1044AVDDFRQ1").unwrap();
+    part.pins.insert("6".into(), "OUT-".into());
+    part.pins.insert("7".into(), "OUT+".into());
+    let u4 = design.components.get_mut("U4").unwrap();
+    u4.pins.get_mut("6").unwrap().name = "OUT+".into();
+    u4.pins.get_mut("7").unwrap().name = "OUT-".into();
+    let report = run(&design, &fps, &lib);
+    assert!(
+        has(&report, "U4", Severity::Error, "pins look swapped"),
+        "{:#?}",
+        report.findings
+    );
+}
+
 #[test]
 fn swapped_datasheet_pins_are_an_error() {
     let (design, fps) = board("can-encoder", "can-encoder");
@@ -193,15 +212,18 @@ fn board_and_schematic_out_of_step() {
     let (mut design, mut fps) = board("testbed", "testbed");
     fps.retain(|f| f.reference != "R2");
     footprint_mut(&mut fps, "R1").lib_id = "Resistor_SMD:R_0402_1005Metric".into();
-    fps.push(Footprint {
-        reference: "TP9".into(),
+    let tp = |reference: &str, board_only: bool| Footprint {
+        reference: reference.into(),
         lib_id: "TestPoint:TestPoint_Pad_D1.0mm".into(),
+        board_only,
         pads: vec![Pad {
             number: "1".into(),
             kind: "smd".into(),
             net: None,
         }],
-    });
+    };
+    fps.push(tp("TP9", false));
+    fps.push(tp("TP10", true));
     design.components.get_mut("C1").unwrap().pins.remove("2");
     let report = run(&design, &fps, &library());
     assert!(has(&report, "R2", Severity::Error, "no footprint on the PCB"));
@@ -212,6 +234,11 @@ fn board_and_schematic_out_of_step() {
         "the board has Resistor_SMD:R_0402_1005Metric"
     ));
     assert!(has(&report, "TP9", Severity::Warning, "no symbol in the schematic"));
+    assert_eq!(
+        report.for_ref("TP10").count(),
+        0,
+        "board-only footprints belong only on the board"
+    );
     assert!(has(
         &report,
         "C1",
