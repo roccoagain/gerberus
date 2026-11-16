@@ -123,8 +123,6 @@ fn netlist_matches_the_board() {
 
 #[test]
 fn check_fails_exactly_the_planted_bugs() {
-    // Without the thermal rules (gerberus PR #17). Once they are in, the list also has `error forward-current D17`,
-    // `error junction-temperature U7` and `warning forward-current D15` / `D16` (the board's thermal sheet).
     let want = [
         "error abs-max U3 [VAUX reversed]",
         "error abs-max U5 [VIN shorted onto CANH]",
@@ -132,6 +130,8 @@ fn check_fails_exactly_the_planted_bugs() {
         "error abs-max U6",
         "error cap-voltage C2",
         "error floating-input U3",
+        "error forward-current D17",
+        "error junction-temperature U7",
         "error recommended R15",
         "error recommended R16",
         "error recommended R17",
@@ -146,6 +146,8 @@ fn check_fails_exactly_the_planted_bugs() {
         "warning esd J3",
         "warning esd J3",
         "warning esd J3",
+        "warning forward-current D15",
+        "warning forward-current D16",
         "warning recommended U6",
         "warning regulator-headroom U3",
         "warning tvs-standoff D11",
@@ -162,7 +164,7 @@ fn check_fails_exactly_the_planted_bugs() {
 
 #[test]
 fn check_messages_cite_the_numbers() {
-    let cases: [(&str, &str, Option<&str>, &[&str]); 8] = [
+    let cases: [(&str, &str, Option<&str>, &[&str]); 10] = [
         ("abs-max", "U6", None, &["PA4", "/mcu/VSENSE", "26 V", "4 V"]),
         (
             "abs-max",
@@ -176,6 +178,8 @@ fn check_messages_cite_the_numbers() {
         ("unpowered", "U9", None, &["VDD", "/sensors/+3V3_ENC"]),
         ("regulator-headroom", "U3", None, &["/power/VAUX", "can fall to 3 V"]),
         ("recommended", "U6", None, &["PA4", "26 V"]),
+        ("junction-temperature", "U7", None, &["371.4 mW", "70 °C", "105"]),
+        ("forward-current", "D17", None, &["28.46 mA", "25 mA"]),
     ];
     for (rule, reference, case, needles) in cases {
         let fails: Vec<_> = find(rule, reference, case)
@@ -214,6 +218,11 @@ fn each_section_has_a_pass_case() {
     // mcu: clamped UART pins, and USB pins clamped (port 1) or covered by a surge diode (port 2).
     for reference in ["J4", "J5", "J6"] {
         all("esd", reference, None, Verdict::Pass);
+    }
+    // thermal: the LED through 1k, and the MCUs and transceivers that aren't overloaded.
+    all("forward-current", "D8", None, Verdict::Pass);
+    for reference in ["U4", "U5", "U6"] {
+        all("junction-temperature", reference, None, Verdict::Pass);
     }
     // sensors: the powered sensor.
     all("unpowered", "U8", None, Verdict::Pass);
