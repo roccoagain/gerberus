@@ -567,7 +567,7 @@ fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
             Some(m) if !m.is_empty() => format!("{} ({m})", f.reference),
             _ => f.reference.clone(),
         });
-        d.render(&mut out, show.style, show.verbose, gerberus::diag::width());
+        d.render(&mut out, show.style, show.verbose, show.columns());
     }
     print!("{out}");
     let (mut all, mut fp_only, mut sheet_only, mut none) = (0, 0, 0, 0);

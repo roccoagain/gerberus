@@ -874,7 +874,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
 pub fn render(report: &Report, show: &Show) -> String {
     let mut out = String::new();
     let style = show.style;
-    let width = crate::diag::width();
+    let width = show.columns();
     for a in &report.assumptions {
         let _ = writeln!(out, "{}: {a}", style.paint("1", "assumption"));
     }

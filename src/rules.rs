@@ -1322,9 +1322,12 @@ pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Findin
 /// The report as text: errors, then warnings, then (if `show` asks) unknowns and passes, then a summary.
 pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -> String {
     let mut out = String::new();
-    let width = crate::diag::width();
+    let width = show.columns();
     let mut details = false;
-    for f in &report.findings {
+    // Errors, then warnings, then unknowns and passes: `check` sorts its findings so, but `stress` doesn't.
+    let mut sorted: Vec<&Finding> = report.findings.iter().collect();
+    sorted.sort_by_key(|f| (f.verdict, f.severity));
+    for f in sorted {
         let d = diagnostic(design, volts, report, f);
         if !show.lists(d.level) {
             continue;

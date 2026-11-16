@@ -86,9 +86,11 @@ pub struct Show {
     pub unknown: bool,
     /// List passes too.
     pub passes: bool,
-    /// Print how each net in a FAIL got its range.
+    /// Print the longer explanations: how each net in a FAIL got its range, and long lists in full.
     pub verbose: bool,
     pub style: Style,
+    /// Columns to wrap notes at; 0 means 100.
+    pub width: usize,
 }
 
 impl Show {
@@ -99,7 +101,13 @@ impl Show {
             passes: true,
             verbose: true,
             style: Style::default(),
+            width: 0,
         }
+    }
+
+    /// The column notes wrap at.
+    pub fn columns(&self) -> usize {
+        if self.width == 0 { 100 } else { self.width }
     }
 
     /// Reads `--all`, `--unknown`, `--verbose`/`-v` and `--color WHEN` out of `args`, returning the rest.
@@ -122,6 +130,7 @@ impl Show {
             }
         }
         show.style = Style::detect(color.as_deref())?;
+        show.width = width();
         Ok((show, rest))
     }
 
@@ -216,7 +225,12 @@ impl Diagnostic {
             None => lead,
         };
         notes.extend(cited);
-        let also: Vec<String> = pieces.map(|p| tidy(&p)).collect();
+        let mut also: Vec<String> = pieces.map(|p| tidy(&p)).collect();
+        // A short last clause like `not modelled` labels the text after the next colon: keep them together.
+        if !segs.is_empty() && also.last().is_some_and(|l| l.split_whitespace().count() <= 3) {
+            let label = also.pop().unwrap_or_default();
+            segs[0] = format!("{label}: {}", segs[0]);
+        }
         let mut details = vec![];
         if also.len() > 4 {
             notes.extend(also[..3].iter().cloned());
@@ -338,7 +352,7 @@ pub fn summary(out: &mut String, show: &Show, counts: [usize; 4], has_details: b
     if has_details && !show.verbose {
         let _ = writeln!(
             out,
-            "   {eq} {note}: --verbose shows how each net in a finding got its voltage range"
+            "   {eq} {note}: --verbose shows the longer explanations, such as how each net got its voltage range"
         );
     }
 }
@@ -410,7 +424,8 @@ fn is_aside(inner: &str) -> bool {
         w.strip_prefix('p')
             .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
     };
-    inner.chars().count() > 24 || (inner.contains(' ') && inner.split([' ', ',']).any(page))
+    // A net name like `unconnected-(J5-SBU1-PadA8)` has no spaces, however long; a citation always does.
+    inner.contains(' ') && (inner.chars().count() > 24 || inner.split([' ', ',']).any(page))
 }
 
 /// Takes the aside that ends `s` off it.
@@ -622,6 +637,31 @@ mod tests {
         );
         assert_eq!(g.location.as_deref(), Some("U3.3 (CE)"));
         assert_eq!(g.notes, ["UNKNOWN: only U3.3 is on this net, so nothing sets it"]);
+    }
+
+    #[test]
+    fn long_net_names_stay_in_place() {
+        let g = d(
+            "esd",
+            "J5",
+            "J5.A8 (unconnected-(J5-SBU1-PadA8)) has no clamp, and nothing says what U1.X (FOO gives no ESD rating \
+             for it) survive",
+        );
+        assert_eq!(g.location.as_deref(), Some("J5.A8 (unconnected-(J5-SBU1-PadA8))"));
+        assert!(
+            g.headline
+                .starts_with("J5.A8 (unconnected-(J5-SBU1-PadA8)) has no clamp")
+        );
+    }
+
+    #[test]
+    fn a_short_label_keeps_its_text() {
+        let g = d(
+            "usb-eye",
+            "USB",
+            "at J6: eye height 0 mV; driven into 45 Ω; not modelled: TP1 (TP)",
+        );
+        assert_eq!(g.notes, ["driven into 45 Ω", "not modelled: TP1 (TP)"]);
     }
 
     #[test]
