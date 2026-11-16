@@ -1,6 +1,6 @@
 //! Works out which pins connect, across every sheet of a KiCad schematic, and names the nets as KiCad does.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::schematic::{self, LabelKind, LibPin, LibSymbol, PowerScope, Pt, SchematicFile};
@@ -52,6 +52,9 @@ enum Priority {
 #[derive(Debug, Clone)]
 struct Candidate {
     priority: Priority,
+    /// Among power pins, KiCad prefers a global power symbol (0), then a local one (1), then a hidden power pin
+    /// on an ordinary part (2). Every other candidate is 0.
+    rank: u8,
     /// Depth of the sheet it sits on; a shallower name wins a tie.
     depth: usize,
     name: String,
@@ -60,10 +63,16 @@ struct Candidate {
 #[derive(Debug, Clone)]
 struct PlacedPin {
     reference: String,
+    /// Reference with the unit letter for multi-unit parts, such as `U1A`. KiCad uses it in names built
+    /// from pin names.
+    unit_reference: String,
     number: String,
     name: String,
     kind: PinKind,
     no_connect: bool,
+    /// Another pin on the same unit has this pin's name but a different number, split by whether that
+    /// other pin is a no-connect type pin. KiCad then adds `-Pad<n>` to names built from this pin.
+    name_repeated: (bool, bool),
 }
 
 /// One group of connected items on one sheet instance.
@@ -79,6 +88,8 @@ struct Subgraph {
 
 #[derive(Default)]
 struct Builder {
+    /// Every `(reference, unit)` seen so far, to spot duplicate references.
+    claimed: HashSet<(String, u32)>,
     subgraphs: Vec<Subgraph>,
     components: BTreeMap<String, Component>,
     warnings: Vec<String>,
@@ -111,13 +122,41 @@ fn on_segment(p: Pt, a: Pt, b: Pt) -> bool {
     cross == 0 && p.0 >= a.0.min(b.0) && p.0 <= a.0.max(b.0) && p.1 >= a.1.min(b.1) && p.1 <= a.1.max(b.1)
 }
 
+/// KiCad's unit letters: 1 → A, 26 → Z, 27 → AA.
+fn unit_letter(mut unit: u32) -> String {
+    let mut out = Vec::new();
+    while unit > 0 {
+        unit -= 1;
+        out.push(b'A' + (unit % 26) as u8);
+        unit /= 26;
+    }
+    out.reverse();
+    String::from_utf8(out).unwrap_or_default()
+}
+
+/// KiCad shows a pin named `~` as having no name.
+fn shown_name(name: &str) -> &str {
+    if name == "~" { "" } else { name }
+}
+
 /// What sits at a connection point on a sheet.
 enum Item {
-    Pin(PlacedPin, Option<(PowerScope, String)>),
+    /// A pin on a part, with how it names a net, if it does.
+    Pin(PlacedPin, Option<PinDriver>),
+    /// The power-input pin of a power symbol, such as `GND` or `+3V3`.
+    PowerSymbol(PowerScope, String),
     Label(LabelKind, String),
-    SheetPin { sheet_path: String, name: String },
+    SheetPin {
+        sheet_path: String,
+        name: String,
+    },
     Junction,
     NoConnect,
+}
+
+enum PinDriver {
+    /// A hidden power-input pin on a part joins the global net named after the pin.
+    HiddenPower(String),
 }
 
 /// KiCad escapes `/` in generated net names.
@@ -169,6 +208,8 @@ impl Builder {
             ));
         }
         let mut items: Vec<(Pt, Item)> = Vec::new();
+        // Pairs of item indices joined inside a part (jumpers), not by wires.
+        let mut internal: Vec<(usize, usize)> = Vec::new();
         for sym in &f.symbols {
             let lib_key = sym.lib_name.as_deref().unwrap_or(&sym.lib_id);
             let Some(lib) = f.lib_symbols.get(lib_key) else {
@@ -179,6 +220,29 @@ impl Builder {
                 continue;
             };
             let (reference, unit) = sym.reference_at(inst_path);
+            if !reference.starts_with('#') && lib.power.is_none() {
+                if reference.ends_with('?') {
+                    self.warnings.push(format!(
+                        "sheet {name_path}: symbol `{}` has no reference ({reference}); annotate the schematic",
+                        sym.lib_id
+                    ));
+                }
+                let key = (reference.clone(), unit);
+                match self.claimed.get(&key) {
+                    Some(_) => self.warnings.push(format!(
+                        "sheet {name_path}: reference {reference} (unit {unit}) is used by more than one symbol; \
+                         their pins are merged"
+                    )),
+                    None => {
+                        self.claimed.insert(key);
+                    }
+                }
+            }
+            let unit_reference = if lib.unit_count() > 1 {
+                format!("{reference}{}", unit_letter(unit))
+            } else {
+                reference.clone()
+            };
             let power = lib
                 .power
                 .map(|scope| (scope, sym.field("Value").unwrap_or_default().to_string()));
@@ -199,27 +263,60 @@ impl Builder {
                     c.fields.entry(k.clone()).or_insert_with(|| v.clone());
                 }
             }
-            for lp in pins_for(lib, &f.lib_symbols, unit, sym.body_style) {
+            let lib_pins = pins_for(lib, &f.lib_symbols, unit, sym.body_style);
+            // Item indices of this symbol's pins, by pin number, for jumpers.
+            let mut by_number: HashMap<&str, Vec<usize>> = HashMap::new();
+            for lp in &lib_pins {
+                let repeated = |nc: bool| {
+                    lib_pins.iter().any(|o| {
+                        shown_name(&o.name) == shown_name(&lp.name)
+                            && o.number != lp.number
+                            && (o.kind == "no_connect") == nc
+                    })
+                };
                 let pin = PlacedPin {
                     reference: reference.clone(),
+                    unit_reference: unit_reference.clone(),
                     number: lp.number.clone(),
-                    name: lp.name.clone(),
+                    name: shown_name(&lp.name).to_string(),
                     kind: PinKind::from_kicad(&lp.kind),
                     no_connect: false,
+                    name_repeated: (repeated(false), repeated(true)),
                 };
                 let at = sym.place(lp.at);
-                if is_part && lp.hidden && pin.kind == PinKind::PowerIn && !lp.name.is_empty() {
-                    // Older libraries connect hidden power pins to a global net named after the pin.
-                    items.push((at, Item::Pin(pin.clone(), Some((PowerScope::Global, lp.name.clone())))));
-                    continue;
-                }
-                if is_part {
-                    items.push((at, Item::Pin(pin, None)));
-                } else if pin.kind == PinKind::PowerIn {
+                let item = if is_part {
+                    // Older libraries connect a hidden power-input pin on a part to a global net named after it.
+                    let implicit = lp.hidden && pin.kind == PinKind::PowerIn && !pin.name.is_empty();
+                    let name = pin.name.clone();
+                    Item::Pin(pin, implicit.then_some(PinDriver::HiddenPower(name)))
+                } else if pin.kind == PinKind::PowerIn
+                    && let Some((scope, name)) = &power
+                {
                     // Only a power symbol's power-input pin names a net. PWR_FLAG's output pin does not.
-                    if let Some(power) = &power {
-                        items.push((at, Item::Pin(pin, Some(power.clone()))));
+                    Item::PowerSymbol(*scope, name.clone())
+                } else {
+                    continue;
+                };
+                by_number.entry(lp.number.as_str()).or_default().push(items.len());
+                items.push((at, item));
+            }
+            // KiCad 10 jumpers: pins joined inside the part.
+            if lib.duplicate_pins_are_jumpers {
+                for group in by_number.values() {
+                    for w in group.windows(2) {
+                        internal.push((w[0], w[1]));
                     }
+                }
+            }
+            for group in &lib.jumper_pin_groups {
+                let members: Vec<usize> = group
+                    .iter()
+                    .filter_map(|n| by_number.get(n.as_str()))
+                    .flatten()
+                    .copied()
+                    .collect();
+                for w in members.windows(2) {
+                    internal.push((w[0], w[1]));
                 }
             }
         }
@@ -251,16 +348,30 @@ impl Builder {
         for (i, (p, _)) in items.iter().enumerate() {
             by_point.entry(*p).or_default().push(nw + i);
         }
-        for (p, nodes) in &by_point {
+        // Like KiCad, items join only where their connection points coincide (a wire's points are its two
+        // ends). The exceptions: a junction joins every wire passing through it, and a label joins the wires
+        // passing through it when there are at least two.
+        for nodes in by_point.values() {
             for w in nodes.windows(2) {
                 uf.union(w[0], w[1]);
             }
-            // A wire end, pin, label or junction anywhere along a wire joins it.
-            for (wi, (a, b)) in f.wires.iter().enumerate() {
-                if on_segment(*p, *a, *b) {
-                    uf.union(nodes[0], wi);
-                }
+        }
+        for (i, (p, item)) in items.iter().enumerate() {
+            let through: Vec<usize> = match item {
+                Item::Junction | Item::Label(..) => (0..nw)
+                    .filter(|&wi| on_segment(*p, f.wires[wi].0, f.wires[wi].1))
+                    .collect(),
+                _ => continue,
+            };
+            if matches!(item, Item::Label(..)) && through.len() < 2 {
+                continue;
             }
+            for wi in through {
+                uf.union(nw + i, wi);
+            }
+        }
+        for (a, b) in internal {
+            uf.union(nw + a, nw + b);
         }
 
         let mut groups: BTreeMap<usize, Subgraph> = BTreeMap::new();
@@ -268,18 +379,30 @@ impl Builder {
             let g = groups.entry(uf.find(nw + i)).or_default();
             match item {
                 Item::Pin(pin, None) => g.pins.push(pin),
-                Item::Pin(_, Some((scope, name))) => {
-                    let (priority, link) = match scope {
-                        PowerScope::Global => (Priority::GlobalPower, format!("global:{name}")),
-                        PowerScope::Local => (Priority::LocalPower, format!("local:{inst_path}:{name}")),
-                    };
-                    let shown = if scope == PowerScope::Global {
-                        name.clone()
-                    } else {
-                        format!("{name_path}{name}")
+                Item::Pin(pin, Some(PinDriver::HiddenPower(name))) => {
+                    g.pins.push(pin);
+                    g.candidates.push(Candidate {
+                        priority: Priority::GlobalPower,
+                        rank: 2,
+                        depth,
+                        name: name.clone(),
+                    });
+                    g.links.push(format!("global:{name}"));
+                    g.labels.push(name);
+                }
+                Item::PowerSymbol(scope, name) => {
+                    let (priority, rank, link, shown) = match scope {
+                        PowerScope::Global => (Priority::GlobalPower, 0, format!("global:{name}"), name.clone()),
+                        PowerScope::Local => (
+                            Priority::LocalPower,
+                            1,
+                            format!("local:{inst_path}:{name}"),
+                            format!("{name_path}{name}"),
+                        ),
                     };
                     g.candidates.push(Candidate {
                         priority,
+                        rank,
                         depth,
                         name: shown,
                     });
@@ -300,8 +423,13 @@ impl Builder {
                             format!("port:{inst_path}:{name}"),
                         ),
                     };
+                    // KiCad joins local labels, hierarchical labels and local power on one sheet by bare name.
+                    if kind == LabelKind::Hierarchical {
+                        g.links.push(format!("local:{inst_path}:{name}"));
+                    }
                     g.candidates.push(Candidate {
                         priority,
+                        rank: 0,
                         depth,
                         name: shown,
                     });
@@ -311,6 +439,7 @@ impl Builder {
                 Item::SheetPin { sheet_path, name } => {
                     g.candidates.push(Candidate {
                         priority: Priority::SheetPin,
+                        rank: 0,
                         depth,
                         name: format!("{name_path}{name}"),
                     });
@@ -411,38 +540,53 @@ impl Builder {
     }
 }
 
-fn pin_label(p: &PlacedPin) -> String {
-    if p.name.is_empty() || p.name == "~" {
-        format!("{}-Pad{}", p.reference, escape(&p.number))
+/// KiCad's `SCH_PIN::GetDefaultNetName`, without the `Net-(` or `unconnected-(` prefix.
+fn pin_net_name(p: &PlacedPin, unconnected: bool) -> String {
+    let unconnected = unconnected || p.kind == PinKind::NoConnect;
+    let repeated = if unconnected {
+        p.name_repeated.1
     } else {
-        format!("{}-{}", p.reference, escape(&p.name))
+        p.name_repeated.0
+    };
+    if !p.name.is_empty() && p.name != p.number {
+        // Pin names can repeat between units, so these names carry the unit letter.
+        let mut name = format!("{}-{}", p.unit_reference, escape(&p.name));
+        if unconnected || repeated {
+            name.push_str(&format!("-Pad{}", escape(&p.number)));
+        }
+        name
+    } else {
+        format!("{}-Pad{}", p.reference, escape(&p.number))
     }
 }
 
 fn net_name(candidates: &[Candidate], pins: &[PlacedPin]) -> String {
+    let low_quality = |n: &str| n.contains("-Pad");
     let best = candidates.iter().min_by(|a, b| {
         b.priority
             .cmp(&a.priority)
+            .then(a.rank.cmp(&b.rank))
             .then(a.depth.cmp(&b.depth))
+            .then(low_quality(&a.name).cmp(&low_quality(&b.name)))
             .then(a.name.cmp(&b.name))
     });
     if let Some(c) = best {
         return c.name.clone();
     }
-    if pins.len() == 1 {
-        let p = &pins[0];
-        let name = if p.name.is_empty() || p.name == "~" {
-            format!("{}-Pad{}", p.reference, escape(&p.number))
-        } else {
-            format!("{}-{}-Pad{}", p.reference, escape(&p.name), escape(&p.number))
-        };
-        return format!("unconnected-({name})");
+    if let [p] = pins {
+        return format!("unconnected-({})", pin_net_name(p, true));
     }
     // Like KiCad, prefer a name built from a pin name (`U1-SW`) over one built from a pad number (`C3-Pad1`).
-    let best = pins
-        .iter()
-        .map(pin_label)
-        .min_by_key(|n| (n.contains("-Pad"), n.clone()))
-        .unwrap_or_default();
-    format!("Net-({best})")
+    pins.iter()
+        .map(|p| {
+            let name = pin_net_name(p, false);
+            let prefix = if p.kind == PinKind::NoConnect {
+                "unconnected"
+            } else {
+                "Net"
+            };
+            format!("{prefix}-({name})")
+        })
+        .min_by_key(|n| (low_quality(n), n.clone()))
+        .unwrap_or_default()
 }

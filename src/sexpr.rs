@@ -35,6 +35,7 @@ pub fn parse(text: &str) -> Result<Sexp, ParseError> {
         bytes: text.as_bytes(),
         pos: 0,
         line: 1,
+        depth: 0,
     };
     p.skip_ws();
     let value = p.value()?;
@@ -45,10 +46,15 @@ pub fn parse(text: &str) -> Result<Sexp, ParseError> {
     Ok(value)
 }
 
+/// Deepest nesting accepted. Real KiCad files stay under about 20 levels; the limit keeps a hostile file from
+/// overflowing the stack.
+pub const MAX_DEPTH: usize = 256;
+
 struct Parser<'a> {
     bytes: &'a [u8],
     pos: usize,
     line: usize,
+    depth: usize,
 }
 
 impl Parser<'_> {
@@ -83,6 +89,10 @@ impl Parser<'_> {
 
     fn list(&mut self) -> Result<Sexp, ParseError> {
         let open_line = self.line;
+        if self.depth >= MAX_DEPTH {
+            return Err(self.error(&format!("lists are nested more than {MAX_DEPTH} deep")));
+        }
+        self.depth += 1;
         self.pos += 1; // '('
         let mut items = Vec::new();
         loop {
@@ -96,6 +106,7 @@ impl Parser<'_> {
                 }
                 Some(b')') => {
                     self.pos += 1;
+                    self.depth -= 1;
                     return Ok(Sexp::List(items));
                 }
                 Some(_) => items.push(self.value()?),
@@ -238,6 +249,15 @@ mod tests {
     fn reports_line_of_unclosed_list() {
         let err = parse("(a\n(b\n").unwrap_err();
         assert_eq!(err.line, 2);
+    }
+
+    #[test]
+    fn rejects_deep_nesting_without_overflowing() {
+        let deep = "(".repeat(1_000_000);
+        let err = parse(&deep).unwrap_err();
+        assert!(err.message.contains("nested"), "{err}");
+        let ok = format!("{}{}", "(a ".repeat(MAX_DEPTH), ")".repeat(MAX_DEPTH));
+        assert!(parse(&ok).is_ok());
     }
 
     #[test]
