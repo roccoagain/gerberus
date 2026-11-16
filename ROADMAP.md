@@ -24,7 +24,7 @@ Each phase reads one more part of the design. It starts with the schematic, then
 ## v0.4 — Layout
 
 - [ ] Layout electrical rules: trace width vs current (IPC-2152), decoupling cap distance, high-speed traces crossing plane splits, loop area. *(Copies: HyperLynx DRC)*
-- [ ] Trace impedance and length matching (USB, I²S, SPI). *(Copies: Polar Si9000, HyperLynx SI)*
+- [x] Trace impedance and length matching for USB 2.0 high speed, with an eye-diagram simulation (`gerberus si`). I²S and SPI still to do. *(Copies: Polar Si9000, HyperLynx SI)*
 - [ ] Voltage drop and current density across copper. *(Copies: HyperLynx PI, Altium Power Analyzer)*
 
 ## v0.5 — Build
