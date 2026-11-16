@@ -25,10 +25,10 @@ Each phase reads one more part of the design. It starts with the schematic, then
 
 Point Gerberus at a new board and get useful answers in minutes. Every `UNKNOWN` says exactly what to add and where, and adding it takes one command. These items come from running Gerberus on the capstone audio board rev 2 and the amp board (in roccoagain/hardware): 39 of rev 2's 58 parts were unchecked, `check` wouldn't run until someone wrote an `inputs.toml`, and the amp board gave 6 false `floating-input` errors.
 
-- [ ] `gerberus doctor <design>`: one to-do list of everything missing, ranked by how many results each item unlocks: parts with no part file, datasheets that can't be downloaded (the file name to save and the folder to save it in), and connector pins with no input range. `--json` for agents. *(New: paid tools assume a librarian already did this)*
+- [x] `gerberus doctor <design>`: one to-do list of everything missing, ranked by how many unknown results each item settles: parts with no part file (with the symbol's datasheet link, and a hint when several share one datasheet and could be a family), connector pins with no input range, pins a part file gives no limit or no `[[drive]]`. `--json` for agents. *(New: paid tools assume a librarian already did this)*
 - [x] `check` runs without an `inputs.toml`, and says what that leaves out. Pointing at `gerberus init` waits for `init`.
 - [ ] `gerberus init <design>`: writes a starter `inputs.toml` with every external connector pin and a range guessed from the connector type and net names, each marked as a guess with its reason. USB VBUS is 4.0–5.5 V (USB 3.x at the device), D+/D− 0–3.6 V with a "D± shorted to VBUS" fault case (USB 2.0 §7.1.1), and a net named like `12V` is taken at ±10 %. Findings that rest on a guess say so until a person replaces it.
-- [ ] Output readable like rustc's: each finding with the parts and nets involved, the numbers compared, and a `help:` line naming the fix.
+- [x] Output readable like rustc's: each finding with the parts and nets involved, the numbers compared, and a `help:` line naming the fix.
 - [x] Part families: one file covers a whole series by decoding its part number exactly, and writes each part's file with every value cited to the series datasheet (`gerberus part show`). Yageo RC_L resistors and Samsung CL capacitors are built in; the 28 resistors on rev 2 are all Yageo RC_L.
 - [ ] More families: UniRoyal 0402WGF/0603WAF, Murata GRM, KEMET C-series ceramics, and inductors.
 - [ ] Bulk library: JLCPCB basic parts first, then the most-used extended parts, each through `datasheet verify` and a blind second reading. Track what share of the test boards' parts are covered.
@@ -37,7 +37,7 @@ Point Gerberus at a new board and get useful answers in minutes. Every `UNKNOWN`
 - [ ] Modules and dev boards (Daisy Seed, ESP32 and STM32 modules, Raspberry Pi Pico) as parts with their header pinout and limits.
 - [ ] A `[[variant]]` the datasheet doesn't list (PESD5V0S1BAF), allowed only with a source from the maker that it is the same part.
 - [ ] `gerberus part new <mpn> [--pdf FILE]`: writes a part file into the project's `parts/` folder from the schematic (pins from the symbol, class from the reference, every value `{ unknown = "not read yet" }`), ready to fill in and `datasheet verify`.
-- [ ] A `datasheets/` folder next to the schematic for PDFs that can't be downloaded (MAX9722A, Daisy Seed), read by `datasheet verify` and `doctor` without `--pdf`.
+- [ ] A `datasheets/` folder next to the schematic for PDFs that can't be downloaded (MAX9722A, Daisy Seed), read by `datasheet verify` and `doctor` without `--pdf`; `doctor` then names the file to save for each datasheet that can't be downloaded.
 - [ ] Ship the datasheet-to-part agent skill with each release (`gerberus skill install`), so an agent working in a board's own repo adds parts the same checked way.
 - [ ] Waivers: a `waivers.toml` next to the schematic accepts a finding with a reason, who, and when. Waived findings still show, marked waived; a waiver that no longer matches anything is flagged. *(Copies: Siemens Xpedition waivers)*
 

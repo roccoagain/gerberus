@@ -22,6 +22,8 @@ pub enum Level {
     Warning,
     Unknown,
     Pass,
+    /// Something to add, from `doctor`.
+    Todo,
 }
 
 impl Level {
@@ -31,6 +33,7 @@ impl Level {
             Level::Warning => "warning",
             Level::Unknown => "unknown",
             Level::Pass => "pass",
+            Level::Todo => "todo",
         }
     }
 
@@ -40,6 +43,7 @@ impl Level {
             Level::Warning => YELLOW,
             Level::Unknown => CYAN,
             Level::Pass => GREEN,
+            Level::Todo => BLUE,
         }
     }
 }
@@ -137,7 +141,7 @@ impl Show {
     /// Whether a finding at `level` is listed.
     pub fn lists(&self, level: Level) -> bool {
         match level {
-            Level::Error | Level::Warning => true,
+            Level::Error | Level::Warning | Level::Todo => true,
             Level::Unknown => self.unknown,
             Level::Pass => self.passes,
         }

@@ -14,6 +14,7 @@ const USAGE: &str = "usage:
   gerberus loads <design> [--inputs FILE] [--parts DIR]...
   gerberus stress <design> [--inputs FILE] [--parts DIR]... [--runs N] [--seed N] [--netlist FILE] [REPORT]
   gerberus check <design> [--inputs FILE] [--parts DIR]... [REPORT]
+  gerberus doctor <design> [--inputs FILE] [--parts DIR]... [--json] [--color WHEN]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
   gerberus part show <MPN> [--parts DIR]...
@@ -56,6 +57,11 @@ breakdown and stand-off, capacitor voltage and resistor power, undriven inputs a
 headroom, and parts with nothing to check against. Each fault case in the inputs is then checked against
 absolute maximum ratings, TVS breakdown and capacitor ratings. FAILs cite the numbers, their datasheet pages and how each
 net got its range (with --verbose). It exits with status 1 when any error FAILs.
+
+`doctor` lists what to add so `check` can settle its UNKNOWN results, most useful first: a part file for each
+part number that has none (with the symbol's datasheet link), what plugs into each connector pin inputs.toml
+doesn't describe (or inputs.toml itself), and limits a part file is missing. Each says how many unknown results
+wait on it. --json prints the list as JSON.
 
 `bom` looks up every BOM line by its LCSC part number: stock for --boards boards (default 10), LCSC's listing
 status, and similar parts from other makers. Answers are cached in --cache (default ~/.cache/gerberus/lcsc) for
@@ -114,6 +120,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "loads" => loads(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "stress" => stress(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
+        [cmd, path, rest @ ..] if cmd == "doctor" => doctor(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "si" => si(Path::new(path), rest),
         [cmd, sub, rest @ ..] if cmd == "datasheet" => datasheet(sub, rest),
@@ -303,6 +310,8 @@ struct Options {
     explain: Vec<String>,
     /// `--fault`, for `voltages`: a fault case to work out instead of normal operation.
     fault: Option<String>,
+    /// Don't print the note about a missing inputs.toml: `doctor` lists it as a thing to add.
+    quiet: bool,
 }
 
 /// Reads `--parts` and whichever of `--pcb`, `--inputs` and `--explain` the command takes.
@@ -330,6 +339,7 @@ fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, Stri
         inputs,
         explain,
         fault,
+        quiet: false,
     })
 }
 
@@ -372,14 +382,16 @@ fn analyse(
             ),
             None => "no net is named GND, 0V or VSS, so not even ground is known".into(),
         };
-        eprintln!(
-            "note: no {} found, so nothing is known about what plugs into the connectors: {ground}, every net \
+        if !o.quiet {
+            eprintln!(
+                "note: no {} found, so nothing is known about what plugs into the connectors: {ground}, every net \
              only a connector reaches is UNKNOWN, and reverse-polarity, esd, fault cases and `stress` are \
              skipped.\n\
              help: write an inputs.toml next to the schematic giving each connector pin's voltage range (see \
              \"Board inputs\" in parts/README.md)",
-            inputs_path.display()
-        );
+                inputs_path.display()
+            );
+        }
         inputs
     } else {
         let inputs = BoardInputs::load(&inputs_path)?;
@@ -419,6 +431,25 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
         print!("{}", gerberus::rules::render(&design, &v, &report, &show));
     }
     Ok(report.errors() == 0)
+}
+
+fn doctor(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let (show, rest) = Show::parse(rest)?;
+    let json = rest.iter().any(|a| a == "--json");
+    let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
+    let mut o = options(path, &rest, &["--inputs"])?;
+    o.quiet = true;
+    let (design, lib, inputs, v) = analyse(path, &o)?;
+    let policy = gerberus::policy::Policy::builtin()?;
+    let report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
+    let setup = gerberus::doctor::setup(path, o.inputs.as_deref());
+    let d = gerberus::doctor::diagnose(&design, &lib, &setup, &report, &v);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&d).map_err(|e| e.to_string())?);
+    } else {
+        print!("{}", gerberus::doctor::render(&d, &show));
+    }
+    Ok(true)
 }
 
 fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
