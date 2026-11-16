@@ -124,7 +124,8 @@ fn mid_wire_needs_a_junction() {
     assert_eq!(net(&d, "R1", "1").pins, net(&d, "R2", "1").pins);
 }
 
-/// A label on the middle of a single wire names it, and on the crossing of two wires it joins both. Checked
+/// A label on the middle of a single wire names it (unless a pin or flag sits at its point), and on the crossing
+/// of two wires it joins both. Checked
 /// against `kicad-cli sch export netlist` (KiCad 10.0.8); the audio board rev 2 from B1narySolutions/amp-hardware
 /// puts its ESD diodes' labels mid-wire this way.
 #[test]
@@ -136,6 +137,27 @@ fn labels_join_every_wire_they_sit_on() {
     ];
     let d = load(&one);
     assert_eq!(net(&d, "R1", "1").name, "/L");
+
+    // With a pin at the label's point, KiCad gives the label to the pin and leaves the wire alone.
+    let pin_there = [
+        sym("Device:R", "R1", 80.0, 50.0),
+        sym("Device:R", "R2", 60.0, 42.38),
+        wire((40.0, 46.19), (80.0, 46.19)),
+        "(label \"L\" (at 60 46.19 0))".into(),
+    ];
+    let d = load(&pin_there);
+    assert_eq!(net(&d, "R2", "2").name, "/L");
+    assert_eq!(net(&d, "R1", "1").name, "unconnected-(R1-Pad1)");
+
+    // So does a no-connect flag.
+    let flagged = [
+        sym("Device:R", "R1", 80.0, 50.0),
+        wire((40.0, 46.19), (80.0, 46.19)),
+        "(label \"L\" (at 60 46.19 0))".into(),
+        "(no_connect (at 60 46.19))".into(),
+    ];
+    let d = load(&flagged);
+    assert_eq!(net(&d, "R1", "1").name, "unconnected-(R1-Pad1)");
 
     let two = [
         sym("Device:R", "R1", 80.0, 50.0),
