@@ -194,6 +194,7 @@ fn do_not_connect_pin_on_a_net_is_an_error() {
             name: "DNC".into(),
             kind: PinKind::NoConnect,
             no_connect: false,
+            stack: None,
             net: gnd,
         },
     );

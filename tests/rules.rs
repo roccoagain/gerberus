@@ -9,7 +9,7 @@ use gerberus::kicad;
 use gerberus::limits::Library;
 use gerberus::policy::Policy;
 use gerberus::rules::{RULES, Report, Severity, Verdict, check, render};
-use gerberus::voltage::{Voltages, compute};
+use gerberus::voltage::{Span, Voltages, compute};
 
 fn root(rel: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)
@@ -324,6 +324,7 @@ fn pin(number: &str, kind: PinKind, net: usize) -> Pin {
         name: String::new(),
         kind,
         no_connect: false,
+        stack: None,
         net,
     }
 }
@@ -903,4 +904,57 @@ fn ferrite_beads_pass_a_rail_through() {
         "{:#?}",
         v.nets[quieter]
     );
+}
+
+/// A stacked power pin (KiCad 10 `[3,9]`) left on a net nothing drives is one unpowered pin, not a part that may
+/// supply its own rail because two of its pins share the net.
+#[test]
+fn an_open_stacked_power_pin_fails_once() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let open = new_net(&mut d, "/OPEN");
+    let v33 = net(&d, "+3V3");
+    let stacked = |number: &str, net| Pin {
+        stack: Some("3".into()),
+        ..pin(number, PinKind::PowerIn, net)
+    };
+    add(
+        &mut d,
+        "U6",
+        "Logic:Stacked",
+        "X",
+        None,
+        vec![stacked("3", open), stacked("9", open), pin("1", PinKind::PowerIn, v33)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r
+        .by_rule("unpowered")
+        .filter(|f| f.reference == "U6" && f.message.contains("/OPEN"))
+        .collect();
+    assert!(f.len() == 1 && f[0].verdict == Verdict::Fail, "{f:#?}");
+}
+
+/// A connector on a rail fed through a ferrite bead can bring in anything, as on any driven net.
+#[test]
+fn a_connector_after_a_bead_is_unknown() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let (v33, gnd) = (net(&d, "+3V3"), net(&d, "GND"));
+    let ext = new_net(&mut d, "/3V3_EXT");
+    add(
+        &mut d,
+        "FB97",
+        "Device:FerriteBead",
+        "600R",
+        None,
+        vec![pin("1", PinKind::Passive, v33), pin("2", PinKind::Passive, ext)],
+    );
+    add(
+        &mut d,
+        "J97",
+        "Connector:Conn_01x02",
+        "OUT",
+        None,
+        vec![pin("1", PinKind::Passive, ext), pin("2", PinKind::Passive, gnd)],
+    );
+    let (v, _) = run_on(&d, &inputs);
+    assert_eq!(v.nets[ext].span, Span::unknown(), "{:#?}", v.nets[ext]);
 }

@@ -157,6 +157,8 @@ struct PlacedPin {
     /// Another pin on the same unit has this pin's name but a different number, split by whether that
     /// other pin is a no-connect type pin. KiCad then adds `-Pad<n>` to names built from this pin.
     name_repeated: (bool, bool),
+    /// For one pad of a stacked pin, the stack's first number.
+    stack: Option<String>,
 }
 
 /// One group of connected items on one sheet instance.
@@ -405,6 +407,7 @@ impl Builder {
                     kind: PinKind::from_kicad(&lp.kind),
                     no_connect: false,
                     name_repeated: (repeated(false), repeated(true)),
+                    stack: lp.stack.clone(),
                 };
                 let at = sym.place(lp.at);
                 let item = if is_part {
@@ -831,7 +834,14 @@ impl Builder {
             let pin_items = pins.len();
             pins.sort_by(|a, b| (&a.reference, &a.number).cmp(&(&b.reference, &b.number)));
             pins.dedup_by(|a, b| a.reference == b.reference && a.number == b.number);
-            let name = net_name(&drivers, &pins, pin_items);
+            // A stacked pin is one pin to KiCad, named after the stack's first number.
+            let named: Vec<PlacedPin> = pins
+                .iter()
+                .filter(|p| p.stack.as_ref().is_none_or(|s| *s == p.number))
+                .cloned()
+                .collect();
+            let stacked = pins.len() - named.len();
+            let name = net_name(&drivers, &named, pin_items - stacked);
             let index = nets.len();
             for p in &pins {
                 if let Some(c) = self.components.get_mut(&p.reference) {
@@ -840,6 +850,7 @@ impl Builder {
                         name: p.name.clone(),
                         kind: p.kind,
                         no_connect: p.no_connect,
+                        stack: p.stack.clone(),
                         net: index,
                     });
                     entry.no_connect |= p.no_connect;

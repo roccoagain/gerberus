@@ -284,6 +284,7 @@ fn add_part(d: &mut Design, reference: &str, lib_id: &str, a: &str, b: &str) {
                 name: String::new(),
                 kind: PinKind::Passive,
                 no_connect: false,
+                stack: None,
                 net: i,
             },
         );

@@ -68,6 +68,8 @@ pub struct LibPin {
     pub hidden: bool,
     /// Connection point in library coordinates, in mm, Y up as written in the file.
     pub at: (f64, f64),
+    /// For one number of a stacked pin, the stack's first number.
+    pub stack: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -282,8 +284,11 @@ fn read_lib_symbol(s: &Sexp) -> LibSymbol {
             let Some((x, y, _)) = at_of(p) else { continue };
             let number = p.child("number").and_then(|n| n.arg(1)).unwrap_or_default();
             // A KiCad 10 stacked pin (`[3,9,10,13]`, `[1-4]`) is one pin per number at the same point.
-            for number in stacked_numbers(number) {
+            let numbers = stacked_numbers(number);
+            let stack = (numbers.len() > 1).then(|| numbers[0].clone());
+            for number in numbers {
                 pins.push(LibPin {
+                    stack: stack.clone(),
                     unit: unit_no,
                     body_style,
                     number,

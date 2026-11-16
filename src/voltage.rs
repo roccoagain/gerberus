@@ -372,7 +372,17 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
                     .map(|&(_, f)| out[f].as_ref().map_or(Driver::Floating, |o| o.driver))
                     .min_by_key(|d| *d as u8)
                     .unwrap_or(Driver::Floating);
-                nv.floor = list.iter().any(|&(_, f)| out[f].as_ref().is_some_and(|o| o.floor));
+                // As for a plan's net: a connector pin here can bring in anything.
+                for pin in open_connectors(design, lib, inputs, t) {
+                    nv.span = Span::unknown();
+                    nv.why.push(Why {
+                        text: format!(
+                            "UNKNOWN: {pin} is a connector pin with no range in inputs.toml, so whatever is \
+                             plugged in there can push this net anywhere"
+                        ),
+                        ..Default::default()
+                    });
+                }
             }
             out[t] = nv;
             progress = true;

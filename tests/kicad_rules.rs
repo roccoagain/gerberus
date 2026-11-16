@@ -36,6 +36,10 @@ const LIBS: &str = r#"(lib_symbols
     (symbol "STACK_1_1"
       (pin input line (at -5.08 0 0) (length 2.54) (name "IN") (number "1"))
       (pin power_in line (at 0 -5.08 90) (length 2.54) (name "GND") (number "[3,9-10]"))))
+  (symbol "Test:STACK2"
+    (symbol "STACK2_1_1"
+      (pin power_in line (at 0 -5.08 90) (length 2.54) (name "GND") (number "[3,9-10]"))
+      (pin power_in line (at 0 5.08 270) (length 2.54) (name "GND") (number "5"))))
   (symbol "Test:JP"
     (duplicate_pin_numbers_are_jumpers yes)
     (jumper_pin_groups ("2" "3"))
@@ -184,6 +188,14 @@ fn stacked_pins_put_every_pad_on_the_net() {
         assert_eq!(net(&d, "U1", pad).name, "Net-(U1-GND)");
     }
     assert_eq!(net(&d, "R1", "1").name, "Net-(U1-GND)");
+
+    // Left open, the stack is still one pin: KiCad names the net after its first number.
+    let d = load(&[sym("Test:STACK", "U1", 50.0, 50.0)]);
+    assert_eq!(net(&d, "U1", "9").name, "unconnected-(U1-GND-Pad3)");
+    // So with the name repeated on another pin: the pad is the stack's first, not the lowest string (checked with
+    // kicad-cli 10).
+    let d = load(&[sym("Test:STACK2", "U1", 50.0, 50.0)]);
+    assert_eq!(net(&d, "U1", "10").name, "unconnected-(U1-GND-Pad3)");
 }
 
 /// Names KiCad builds from pins: `-Pad<n>` for repeated pin names, the pad form when a pin is named after its
