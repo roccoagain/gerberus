@@ -1,0 +1,23 @@
+{
+  "fetched": 1794817761,
+  "listing": {
+    "code": "C529330",
+    "mpn": "STM32G030F6P6TR",
+    "manufacturer": "ST",
+    "stock": 4394,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "TSSOP-20",
+    "similar": [
+      {
+        "code": "C724040",
+        "mpn": "STM32G030F6P6",
+        "manufacturer": "ST",
+        "stock": 516,
+        "status": "normal",
+        "package": "TSSOP-20",
+        "description": "ARM Cortex-M0+ 32 Bit 64MHz TSSOP-20 Microcontrollers RoHS"
+      }
+    ]
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "fetched": 1794817741,
+  "listing": {
+    "code": "C669078",
+    "mpn": "OT201616MJBA4SL",
+    "manufacturer": "YXC Crystal Oscillators",
+    "stock": 3252,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SMD2016-4P",
+    "similar": [
+      {
+        "code": "C7434949",
+        "mpn": "OT7EL89CJI-111YLC-16M",
+        "manufacturer": "YXC Crystal Oscillators",
+        "stock": 5255,
+        "status": "normal",
+        "package": "SMD2016-4P",
+        "description": "Oscillator 16MHz ±10ppm CMOS 1.8V~3.3V SMD2016-4P"
+      },
+      {
+        "code": "C54973519",
+        "mpn": "O57EL89CJO-WUNYLC-16M",
+        "manufacturer": "YXC Crystal Oscillators",
+        "stock": 490,
+        "status": "normal",
+        "package": "SMD2016-4P",
+        "description": "±15ppm 16MHz SMD2016-4P Oscillators RoHS"
+      }
+    ]
+  }
+}

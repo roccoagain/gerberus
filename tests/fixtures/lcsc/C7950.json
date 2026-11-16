@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817765,
+  "listing": {
+    "code": "C7950",
+    "mpn": "LM358DR2G",
+    "manufacturer": "onsemi",
+    "stock": 390110,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "SOIC-8",
+    "similar": [
+      {
+        "code": "C18723607",
+        "mpn": "LM358BDTR(XBLW)",
+        "manufacturer": "XBLW",
+        "stock": 3070,
+        "status": "normal",
+        "package": "SOP-8",
+        "description": "40mA 2 5mV 90dB 45nA 500uA 1MHz SOP-8 Instrumentation, Op Amps, Buffer Amps RoHS"
+      },
+      {
+        "code": "C18723608",
+        "mpn": "LM358DTR(XBLW)",
+        "manufacturer": "XBLW",
+        "stock": 45220,
+        "status": "normal",
+        "package": "SOP-8",
+        "description": "40mA 2 5mV 600V/ms 90dB 45nA 500uA SOP-8 Instrumentation, Op Amps, Buffer Amps RoHS"
+      },
+      {
+        "code": "C2683482",
+        "mpn": "LM358D",
+        "manufacturer": "IDCHIP",
+        "stock": 117520,
+        "status": "normal",
+        "package": "SOP-8",
+        "description": "Standard (General Purpose) Amplifier 2 Circuit SOP-8"
+      },
+      {
+        "code": "C2834448",
+        "mpn": "HT17358ARZ",
+        "manufacturer": "HTCSEMI",
+        "stock": 385,
+        "status": "normal",
+        "package": "SOP-8",
+        "description": "20mA 2 9mV 250nA 65dB 2mA SOP-8 Instrumentation, Op Amps, Buffer Amps"
+      },
+      {
+        "code": "C2834456",
+        "mpn": "HT358ARZ",
+        "manufacturer": "HTCSEMI",
+        "stock": 425,
+        "status": "normal",
+        "package": "SOP-8",
+        "description": "60mA 2 7mV 500nA 65dB 2mA SOP-8 Instrumentation, Op Amps, Buffer Amps"
+      }
+    ]
+  }
+}

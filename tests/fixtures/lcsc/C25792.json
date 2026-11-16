@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817739,
+  "listing": {
+    "code": "C25792",
+    "mpn": "0402WGF4702TCE",
+    "manufacturer": "UNI-ROYAL",
+    "stock": 3434300,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0402",
+    "similar": [
+      {
+        "code": "C2759783",
+        "mpn": "CQ02WGF4702TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 72700,
+        "status": "normal",
+        "package": "0402",
+        "description": "47kΩ ±1% 62.5mW 0402 Thick Film Resistor AEC-Q200"
+      },
+      {
+        "code": "C407731",
+        "mpn": "0402WGD4702TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 9500,
+        "status": "normal",
+        "package": "0402",
+        "description": "47kΩ ±0.5% 62.5mW 0402 Thick Film Resistor"
+      },
+      {
+        "code": "C2772469",
+        "mpn": "ES02WGF4702TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "62.5mW 47kΩ 50V Thick Film Resistor ±100ppm/℃ ±1% 0402 Chip Resistor - Surface Mount"
+      },
+      {
+        "code": "C2773924",
+        "mpn": "HP02WAF4702TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "100mW 47kΩ 50V Thick Film Resistor ±100ppm/℃ ±1% 0402 Chip Resistor - Surface Mount"
+      },
+      {
+        "code": "C2784619",
+        "mpn": "PF02WGF4702TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "62.5mW 47kΩ 50V Thick Film Resistor ±100ppm/℃ ±1% 0402 Chip Resistor - Surface Mount"
+      }
+    ]
+  }
+}

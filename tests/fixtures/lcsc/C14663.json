@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817759,
+  "listing": {
+    "code": "C14663",
+    "mpn": "CC0603KRX7R9BB104",
+    "manufacturer": "YAGEO",
+    "stock": 90200,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0603",
+    "similar": [
+      {
+        "code": "C161854",
+        "mpn": "VJ0603Y104KXACW1BC",
+        "manufacturer": "VISHAY",
+        "stock": 7660,
+        "status": "normal",
+        "package": "0603",
+        "description": "100nF ±10% 50V Ceramic Capacitor X7R 0603"
+      },
+      {
+        "code": "C22402045",
+        "mpn": "C0603C104K5RALTU",
+        "manufacturer": "KEMET",
+        "stock": 90,
+        "status": "normal",
+        "package": "0603",
+        "description": "100nF X7R ±10% 50V 0603 Ceramic Capacitors"
+      },
+      {
+        "code": "C314282",
+        "mpn": "0603B104K500CT",
+        "manufacturer": "Walsin",
+        "stock": 593600,
+        "status": "normal",
+        "package": "0603",
+        "description": "100nF ±10% 50V Ceramic Capacitor X7R 0603"
+      },
+      {
+        "code": "C2172077",
+        "mpn": "C0603G104K5RACT500",
+        "manufacturer": "KEMET",
+        "stock": 538,
+        "status": "normal",
+        "package": "0603",
+        "description": "100nF X7R ±10% 50V 0603 Ceramic Capacitors RoHS"
+      },
+      {
+        "code": "C22442500",
+        "mpn": "C0603G104K5RACTU",
+        "manufacturer": "KEMET",
+        "stock": 21,
+        "status": "normal",
+        "package": "0603",
+        "description": "100nF X7R ±10% 50V 0603 Ceramic Capacitors RoHS"
+      }
+    ]
+  }
+}

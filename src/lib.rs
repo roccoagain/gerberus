@@ -1,5 +1,6 @@
 //! Gerberus checks a PCB design for electrical bugs before it is ordered.
 
+pub mod bom;
 pub mod design;
 pub mod inputs;
 pub mod kicad;

@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817741,
+  "listing": {
+    "code": "C5446",
+    "mpn": "XC6206P332MR-G",
+    "manufacturer": "TOREX",
+    "stock": 143285,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "SOT-23-3L",
+    "similar": [
+      {
+        "code": "C154771",
+        "mpn": "AP2138N-3.3TRG1",
+        "manufacturer": "DIODES",
+        "stock": 3685,
+        "status": "normal",
+        "package": "SOT-23-3",
+        "description": "Linear Voltage Regulator IC Positive Fixed 1 Output 250mA SOT-23-3"
+      },
+      {
+        "code": "C183880",
+        "mpn": "LN1121P332MR-G",
+        "manufacturer": "NATLINEAR",
+        "stock": 10,
+        "status": "normal",
+        "package": "SOT-23-3L",
+        "description": "Linear Voltage Regulator IC Positive Fixed 1 Output 250mA SOT-23-3L"
+      },
+      {
+        "code": "C383803",
+        "mpn": "S-1206B33-M3T1U",
+        "manufacturer": "ABLIC",
+        "stock": 315,
+        "status": "normal",
+        "package": "SOT-23-3",
+        "description": "Linear Voltage Regulator IC Positive Fixed 1 Output 250mA SOT-23-3"
+      },
+      {
+        "code": "C94700",
+        "mpn": "BL8064CB3TR33",
+        "manufacturer": "BL",
+        "stock": 42860,
+        "status": "normal",
+        "package": "SOT-23",
+        "description": "3.3V Positive Fixed SOT-23 Voltage Regulators - Linear, Low Drop Out (LDO) Regulators"
+      },
+      {
+        "code": "C5152714",
+        "mpn": "SGM2034-3.3YN3G/TR",
+        "manufacturer": "SGMICRO",
+        "stock": 3494,
+        "status": "normal",
+        "package": "SOT-23-3",
+        "description": "3.3V Positive Fixed SOT-23-3 Voltage Regulators - Linear, Low Drop Out (LDO) Regulators"
+      }
+    ]
+  }
+}
