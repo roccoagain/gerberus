@@ -768,6 +768,7 @@ fn words(line: &str) -> Vec<(usize, usize, String)> {
 fn header(line: &str, own: &[String]) -> Option<Vec<(f64, Col)>> {
     let mut cols = Vec::new();
     let mut values = 0;
+    let mut value_spans: Vec<(usize, usize)> = Vec::new();
     for (s, e, w) in words(line) {
         let w = w.trim_matches(|c: char| !c.is_alphanumeric()).to_ascii_uppercase();
         let col = match w.as_str() {
@@ -782,10 +783,20 @@ fn header(line: &str, own: &[String]) -> Option<Vec<(f64, Col)>> {
         };
         if matches!(col, Col::Min | Col::Typ | Col::Max | Col::Value) {
             values += 1;
+            value_spans.push((s, e));
         }
         cols.push(((s + e) as f64 / 2.0, col));
     }
-    let ok = values >= 2 || (values == 1 && cols.iter().any(|(_, c)| *c == Col::Unit));
+    // Table columns stand apart. Value words that only ever follow each other with a single space are a
+    // title, such as "ESD maximum ratings" above the rows of a limiting values table.
+    let apart = value_spans.windows(2).any(|w| w[1].0 >= w[0].1 + 2);
+    // One value column is enough beside a UNIT column, or under a table's own PARAMETER or SYMBOL heading
+    // ("Parameter  Conditions  Value").
+    let labelled = words(line).iter().any(|(_, _, w)| {
+        let w = w.trim_matches(|c: char| !c.is_alphanumeric()).to_ascii_uppercase();
+        matches!(w.as_str(), "PARAMETER" | "PARAMETERS" | "SYMBOL")
+    });
+    let ok = (values >= 2 && apart) || (values == 1 && (cols.iter().any(|(_, c)| *c == Col::Unit) || labelled));
     // A header is mostly header words; a sentence that happens to contain "max" is not one.
     let others = cols.iter().filter(|(_, c)| *c == Col::Other).count();
     (ok && others <= 10).then_some(cols)
@@ -968,9 +979,22 @@ fn parse_end(text: &str) -> Result<DerivedEnd, String> {
     let text = text.trim();
     let first = text.chars().next().ok_or("an empty end")?;
     if first.is_ascii_alphabetic() && !text.starts_with("sqrt") {
-        let split = text.find(['+', '-']).unwrap_or(text.len());
+        // A pin name can carry a sign of its own (`V+`, `V-`), so an offset after one is set off by spaces:
+        // `V+ + 0.5`. Otherwise the first sign starts the offset: `VDD+0.3`.
+        let spaced = [" + ", " - "]
+            .iter()
+            .filter_map(|op| text.rfind(op).map(|i| i + 1))
+            .max();
+        let mut split = spaced.unwrap_or_else(|| text.find(['+', '-']).unwrap_or(text.len()));
+        // With no offset after it, a trailing sign is part of the name: `V+`.
+        if spaced.is_none() && text[split..].trim_start_matches(['+', '-']).trim().is_empty() {
+            split = text.len();
+        }
         let pin = text[..split].trim();
-        if pin.is_empty() || !pin.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        let signed_name = spaced.is_some() || split == text.len();
+        let name_char =
+            |c: char| c.is_ascii_alphanumeric() || c == '_' || (signed_name && matches!(c, '+' | '-' | '–'));
+        if pin.is_empty() || !pin.chars().all(name_char) {
             return Err(format!("{text:?} isn't a pin plus a number"));
         }
         let rest = text[split..].replace(' ', "");
@@ -1347,7 +1371,13 @@ fn judge_relative_one(claim: &Claim, pin: &str, plus: f64, lines: &[&str], n: us
             continue;
         }
         let rest = &line[from..];
+        // TI prints a pin in brackets when it carries a sign: `(V+) + 0.5`.
         let trimmed = rest.trim_start();
+        let trimmed = if line[..s].ends_with('(') {
+            trimmed.strip_prefix(')').map_or(trimmed, str::trim_start)
+        } else {
+            trimmed
+        };
         let found_plus = if plus == 0.0 {
             !trimmed.starts_with('+')
         } else if let Some(r) = trimmed.strip_prefix('+') {

@@ -157,6 +157,8 @@ struct PlacedPin {
     /// Another pin on the same unit has this pin's name but a different number, split by whether that
     /// other pin is a no-connect type pin. KiCad then adds `-Pad<n>` to names built from this pin.
     name_repeated: (bool, bool),
+    /// For one pad of a stacked pin, the stack's first number.
+    stack: Option<String>,
 }
 
 /// One group of connected items on one sheet instance.
@@ -392,6 +394,8 @@ impl Builder {
                     lib_pins.iter().any(|o| {
                         shown_name(&o.name) == shown_name(&lp.name)
                             && o.number != lp.number
+                            // The numbers of one stacked pin share its point; KiCad names it as one pin.
+                            && o.at != lp.at
                             && (o.kind == "no_connect") == nc
                     })
                 };
@@ -403,6 +407,7 @@ impl Builder {
                     kind: PinKind::from_kicad(&lp.kind),
                     no_connect: false,
                     name_repeated: (repeated(false), repeated(true)),
+                    stack: lp.stack.clone(),
                 };
                 let at = sym.place(lp.at);
                 let item = if is_part {
@@ -499,7 +504,10 @@ impl Builder {
         }
         // Like KiCad, items join only where their connection points coincide (a line's points are its two
         // ends), and a wire never joins a bus. The exceptions: a junction joins every line passing through it,
-        // and a label joins the lines passing through it when there are at least two.
+        // and so does a label when two or more lines pass through it (`connection_graph.cpp`). A label in the
+        // middle of a single line also names that line, unless a pin, power symbol or no-connect flag sits at
+        // its point: then the label goes to that item instead. That last rule isn't in `connection_graph.cpp`;
+        // it was found by testing `kicad-cli sch export netlist` (KiCad 10.0.8).
         for nodes in wire_points.values().chain(bus_points.values()) {
             for w in nodes.windows(2) {
                 uf.union(w[0], w[1]);
@@ -513,7 +521,12 @@ impl Builder {
                     .collect(),
                 _ => continue,
             };
-            if matches!(item, Item::Label(..)) && through.len() < 2 {
+            if matches!(item, Item::Label(..))
+                && through.len() == 1
+                && items.iter().any(|(q, other)| {
+                    q == p && matches!(other, Item::Pin(..) | Item::PowerSymbol(..) | Item::NoConnect)
+                })
+            {
                 continue;
             }
             for li in through {
@@ -821,7 +834,14 @@ impl Builder {
             let pin_items = pins.len();
             pins.sort_by(|a, b| (&a.reference, &a.number).cmp(&(&b.reference, &b.number)));
             pins.dedup_by(|a, b| a.reference == b.reference && a.number == b.number);
-            let name = net_name(&drivers, &pins, pin_items);
+            // A stacked pin is one pin to KiCad, named after the stack's first number.
+            let named: Vec<PlacedPin> = pins
+                .iter()
+                .filter(|p| p.stack.as_ref().is_none_or(|s| *s == p.number))
+                .cloned()
+                .collect();
+            let stacked = pins.len() - named.len();
+            let name = net_name(&drivers, &named, pin_items - stacked);
             let index = nets.len();
             for p in &pins {
                 if let Some(c) = self.components.get_mut(&p.reference) {
@@ -830,6 +850,7 @@ impl Builder {
                         name: p.name.clone(),
                         kind: p.kind,
                         no_connect: p.no_connect,
+                        stack: p.stack.clone(),
                         net: index,
                     });
                     entry.no_connect |= p.no_connect;

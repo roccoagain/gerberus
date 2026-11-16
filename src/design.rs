@@ -38,6 +38,8 @@ pub struct Pin {
     pub no_connect: bool,
     /// Index into [`Design::nets`].
     pub net: usize,
+    /// For one pad of a KiCad 10 stacked pin (`[3,9,10]`), the stack's first number: the pads are one pin.
+    pub stack: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

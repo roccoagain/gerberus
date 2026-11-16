@@ -152,6 +152,56 @@ fn relative_bounds_are_found_in_their_column() {
     assert_eq!(check_claim(&slash, ABS_MAX).status, Status::Confirmed);
 }
 
+/// TI prints a pin with a sign in brackets: `(V+) + 0.5`.
+#[test]
+fn bracketed_pin_names_are_found() {
+    let page = "
+8.1 Absolute Maximum Ratings
+                                                                    MIN                   MAX        UNIT
+    Supply voltage [(V+) – (V–)]                                      0                       6         V
+    Signal input pins          Common-mode                   (V–) – 0.5            (V+) + 0.5           V
+";
+    let c = Claim {
+        value: Claimed::Pin {
+            pin: "V+".into(),
+            plus: 0.5,
+        },
+        ..claim(0.0, Role::Max, Unit::Volt, &["+IN", "V–"])
+    };
+    assert_eq!(
+        check_claim(&c, page).status,
+        Status::Confirmed,
+        "{:?}",
+        check_claim(&c, page)
+    );
+}
+
+/// A title such as "ESD maximum ratings" above some rows is not a column header: the rows' kV stays in the
+/// UNIT column of the table's real header.
+#[test]
+fn a_title_is_not_a_header() {
+    let page = "
+Table 5. Limiting values
+Symbol                 Parameter                             Conditions                                                     Min            Max                Unit
+Tj                     junction temperature                                                                                 -              150                °C
+ESD maximum ratings
+VESD                   electrostatic discharge               IEC 61000-4-2 (contact discharge)                  [2] [3]     -              30                 kV
+";
+    let o = check_claim(&claim(30000.0, Role::Max, Unit::Volt, &["IEC"]), page);
+    assert_eq!(o.status, Status::Confirmed, "{o:?}");
+}
+
+/// One value column under a PARAMETER heading is a header: "Parameter  Conditions  Value".
+#[test]
+fn a_single_value_column_under_parameter_is_a_header() {
+    let page = "
+ Parameter                                                Conditions                                            Value
+ DC supply voltage                                                                                              -0.3 V – 6.0 V
+";
+    let o = check_claim(&claim(6.0, Role::Max, Unit::Volt, &["supply"]), page);
+    assert_eq!(o.status, Status::Confirmed, "{o:?}");
+}
+
 #[test]
 fn tilde_cells_say_which_end_is_which() {
     let page = "
@@ -262,6 +312,31 @@ fn derived_texts_parse() {
         }
     );
     assert_eq!(d.explanation, "why");
+    // Pin names with a sign of their own (an op-amp's V+ and V–), with the offset set off by spaces.
+    let d = parse_derived("-0.5 .. V+ + 0.5; why").unwrap();
+    assert_eq!(
+        d.max,
+        DerivedEnd::Pin {
+            pin: "V+".into(),
+            plus: 0.5
+        }
+    );
+    let d = parse_derived("0 .. V+; why").unwrap();
+    assert_eq!(
+        d.max,
+        DerivedEnd::Pin {
+            pin: "V+".into(),
+            plus: 0.0
+        }
+    );
+    let d = parse_derived("0 .. VDD+0.3; why").unwrap();
+    assert_eq!(
+        d.max,
+        DerivedEnd::Pin {
+            pin: "VDD".into(),
+            plus: 0.3
+        }
+    );
     assert!(parse_derived("1 .. 2").is_err());
     assert!(parse_derived("1 .. (2; why").is_err());
     assert!(parse_derived("1 .. 2 x 3; why").is_err());
