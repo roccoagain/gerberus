@@ -2,6 +2,9 @@ mpn = "STM32F042G6U6TR"
 manufacturer = "STMicroelectronics"
 description = "Arm Cortex-M0 MCU, 32 KB flash, USB and CAN, UFQFPN-28"
 class = "ic"
+temperature = { min = -40, max = 85, page = 47, note = "TA for the suffix 6 version at maximum power dissipation; up to 105 C at low power dissipation as long as TJ stays at or below TJmax" }
+theta_ja = { value = 118, page = 111, note = "Table 74, UFQFPN28 4 x 4 mm" }
+tj_max = { value = 105, page = 47, note = "TJ junction temperature range, suffix 6 version (Table 21); the absolute maximum TJ is 150 C (p46)" }
 
 [datasheet]
 title = "STM32F042x4 STM32F042x6 ARM-based 32-bit MCU, up to 32 KB Flash, crystal-less USB FS 2.0, CAN, 9 timers, ADC & comm. interfaces, 2.0 - 3.6 V"
@@ -101,3 +104,11 @@ model = "cdm"
 volts = 500
 page = 71
 note = "Table 47, ANSI/ESD STM5.3.1, all pins"
+
+[[supply]]
+pins = ["VDD", "VDDIO2"]
+current = { min = 0, max = 0.0246, page = 50, note = "Table 26 IDD, Run mode from Flash, HSI48 at 48 MHz, all peripherals enabled (USB disabled), VDD = 3.6 V, max at TA = 105 C: the highest Run-mode figure in the table" }
+
+[[supply]]
+pins = ["VDDA"]
+current = { min = 0, max = 0.000344, page = 52, note = "Table 27 IDDA, Run or Sleep mode, HSI48 at 48 MHz, VDDA = 3.6 V, max at TA = 105 C" }

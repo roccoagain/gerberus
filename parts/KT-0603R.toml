@@ -24,3 +24,10 @@ pins = ["A"]
 to = "K"
 abs_max = { min = { unknown = "the datasheet does not rate reverse current" }, max = 0.025, page = 3, note = "DC forward current IF; 60 mA peak at 1/10 duty, 0.1 ms" }
 recommended = { unknown = "the datasheet has only an absolute maximum ratings table" }
+
+[[drive]]
+kind = "forward"
+pin = "A"
+to = "K"
+current = 0.020
+range = { min = 1.8, max = 2.4, page = 3, note = "VF at IF = 20 mA" }

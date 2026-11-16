@@ -2,6 +2,7 @@ mpn = "MT6835GT-STD-R"
 manufacturer = "MagnTek"
 description = "21-bit magnetic angle encoder, SPI / ABZ / UVW / PWM, TSSOP-16"
 class = "ic"
+temperature = { min = -40, max = 125, page = 5, note = "operating temperature (工作温度)" }
 
 [datasheet]
 title = "MT6835 21-bit high-resolution, high-accuracy magnetic angle encoder IC (Chinese)"
@@ -50,3 +51,7 @@ model = "cdm"
 volts = 1500
 page = 5
 note = "静电防护能力（元件充电模式）, AEC-Q100-011"
+
+[[supply]]
+pins = ["VDD"]
+current = { min = 0, max = 0.028, page = 6, note = "Idd chip operating current (芯片工作电流), VDD 4.5 to 5.5 V, -40 to 125 C" }

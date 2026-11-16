@@ -2,6 +2,8 @@ mpn = "B5819WS"
 manufacturer = "Jiangsu Changjing Electronics (CJ)"
 description = "40 V 1 A Schottky barrier diode, SOD-323"
 class = "diode"
+theta_ja = { value = 400, page = 1, note = "RθJA thermal resistance junction to ambient" }
+tj_max = { value = 125, page = 1, note = "TJ junction temperature, maximum ratings" }
 
 [datasheet]
 title = "SOD-323 Plastic-Encapsulate Diodes, B5817WS-B5819WS Schottky Barrier Diode"

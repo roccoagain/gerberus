@@ -2,6 +2,9 @@ mpn = "STM32G0B1KBT6TR"
 manufacturer = "STMicroelectronics"
 description = "Arm Cortex-M0+ MCU, 128 KB flash, FDCAN and USB, LQFP-32"
 class = "ic"
+temperature = { min = -40, max = 85, page = 68, note = "TA, suffix 6, Table 24 general operating conditions" }
+theta_ja = { value = 59, page = 155, note = "Table 95, LQFP32 7 x 7 mm, junction to ambient" }
+tj_max = { value = 105, page = 68, note = "TJ junction temperature, suffix 6; the absolute maximum TJ is 150 C (p67)" }
 
 [datasheet]
 title = "STM32G0B1xB/xC/xE Arm Cortex-M0+ 32-bit MCU, up to 512KB Flash, 144KB RAM, 6x USART, timers, ADC, DAC, comm. I/Fs, 1.7-3.6V"
@@ -87,3 +90,7 @@ model = "cdm"
 volts = 250
 page = 92
 note = "Table 52, ANSI/ESDA/JEDEC JS-002, class C2a"
+
+[[supply]]
+pins = ["VDD/VDDA"]
+current = { min = 0, max = 0.02046, page = 72, derived = "0 .. (9.7 + (0.5 + 3.1 + 2.9 + 3.0 + 2.7 + 1.6 + 2.8 + 0.5 + 31 + 120) * 64 / 1000) / 1000; IDD(Run) max 9.7 mA (Table 28, Range 1, 64 MHz from Flash, die at 130 C, VDD = 3.6 V, peripherals disabled) plus every peripheral enabled at 64 MHz: IOPORT, GPIOA to GPIOF, bus matrix, all AHB and all APB peripherals from Table 36 (p78, Range 1, typical uA/MHz, the only figures given)", note = "the datasheet gives no maximum with peripherals enabled, so their typical share is added to the peripherals-disabled maximum" }

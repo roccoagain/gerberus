@@ -16,7 +16,7 @@ use crate::policy::Policy;
 use crate::voltage::{Driver, Hold, Span, Voltages, resistance_range};
 
 /// The rules, in report order: name and what it checks.
-pub const RULES: [(&str, &str); 12] = [
+pub const RULES: [(&str, &str); 14] = [
     ("abs-max", "every pin stays inside its absolute maximum ratings"),
     (
         "recommended",
@@ -40,6 +40,14 @@ pub const RULES: [(&str, &str); 12] = [
     (
         "regulator-headroom",
         "every regulator's supply stays high enough for it to hold its output",
+    ),
+    (
+        "junction-temperature",
+        "every part's junction stays below its maximum, and policy.toml's margin below it, at the hottest ambient",
+    ),
+    (
+        "forward-current",
+        "the current through each series diode and LED stays inside its rating and policy.toml's derating",
     ),
     ("unchecked", "every fitted part and pin has limits to check against"),
     (
@@ -196,6 +204,9 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
     regulator_headroom(design, volts, &mut r);
 
     crate::protection::esd(design, lib, policy, inputs, &mut r.findings);
+    let th = crate::thermal::compute(design, lib, inputs, volts);
+    crate::thermal::junction(design, lib, policy, inputs, &th, &mut r.findings);
+    crate::thermal::forward_current(design, lib, policy, &th, &mut r.findings);
 
     // Fault cases, including each supply connected backwards. A finding that reads only nets the fault doesn't
     // change says nothing new, so it is left out.

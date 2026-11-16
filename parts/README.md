@@ -101,7 +101,17 @@ kind = "forward"       # a diode conducting from `pin` (anode) to `to` (cathode)
 pin = "A"
 to = "K"
 range = { min = { unknown = "only a maximum is given" }, max = 0.6, page = 1, note = "at IF = 1 A" }
+
+[[drive]]
+kind = "forward"       # an LED: `current` is the IF its VF range is measured at
+pin = "A"
+to = "K"
+current = 0.020
+range = { min = 1.8, max = 2.4, page = 3, note = "VF at IF = 20 mA" }
 ```
+
+An LED's VF minimum holds only at and above `current`. Below it the LED drops less, so a series resistor's
+current is then bounded with VF taken as 0 V.
 
 A resistor, capacitor or inductor can give its tolerance, temperature coefficient and rated temperature range as
 top-level keys, before the first table:
@@ -111,6 +121,27 @@ tolerance = { value = 0.01, page = 2, note = "7th code F = ±1 %" }
 tcr = { ppm = 100, page = 6 }
 temperature = { min = -55, max = 155, page = 5 }
 ```
+
+### Power and temperature
+
+Any part can give its rated ambient range, its thermal resistance and junction limit, the most current it draws,
+and (a switching regulator) a guaranteed efficiency, as top-level keys and `[[supply]]` tables:
+
+```toml
+temperature = { min = -40, max = 85, page = 47, note = "TA, suffix 6" }   # operating ambient
+theta_ja = { value = 118, page = 111, note = "UFQFPN28" }                # θJA in °C/W, for this package
+tj_max = { value = 105, page = 47, note = "TJ, suffix 6" }               # recommended TJ max, else absolute
+efficiency = { value = 0.85, page = 7, note = "..." }                   # a guaranteed minimum, 0 to 1
+
+[[supply]]
+pins = ["VDD", "VDDIO2"]                # the pins together draw at most `current.max` amps
+current = { min = 0, max = 0.0246, page = 50, note = "IDD, Run mode, every peripheral on, max" }
+```
+
+`current` takes the datasheet's maximum at the worst operating point the board can reach, never a typical.
+Where a datasheet gives only typical figures (as most switching regulators do for efficiency, in curves),
+leave the key out: the part's dissipation and anything fed through it come out UNKNOWN. A `derived` range can
+add a typical share to a maximum when that is all there is; its note says so.
 
 A part that loads a signal line, such as an ESD diode on a USB line, can give the capacitance its pins add, in pF.
 `gerberus si` adds it to the lines those pins sit on. Give `typ`, `max` or both, as printed; checks use `max`
@@ -183,7 +214,15 @@ class = "capacitor"     # or mpn = "..." for one part, which wins over a class r
 quantity = "voltage"
 factor = 0.8            # use at most 80 % of the rating
 reason = "..."
+
+[junction]
+margin = 20             # keep every junction this many °C below its maximum
+reason = "..."
 ```
+
+`quantity` is `voltage` (capacitors), `power` (resistors) or `current` (diode and LED forward current). These
+shares and the junction margin are the reliability derating: a FAIL against them is a warning, while a FAIL
+against the rating itself is an error.
 
 ### Board inputs
 

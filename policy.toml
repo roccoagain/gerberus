@@ -8,9 +8,35 @@ quantity = "voltage"
 factor = 0.8
 reason = "keep MLCCs at or below 80 % of rated voltage; X5R/X7R lose capacitance under DC bias and margin covers ripple"
 
+# Reliability derating: a part run near its rating is inside it but ages faster. These shares are project
+# judgement in line with common derating guides, not datasheet figures.
+[[derate]]
+class = "resistor"
+quantity = "power"
+factor = 0.5
+reason = "reliability derating: keep resistors at or below half their rated power"
+
+[[derate]]
+class = "diode"
+quantity = "current"
+factor = 0.5
+reason = "reliability derating: keep diodes at or below half their rated forward current"
+
+[[derate]]
+class = "led"
+quantity = "current"
+factor = 0.5
+reason = "reliability derating: keep LEDs at or below half their rated forward current; light output also fades faster when driven hard"
+
 # A pin on an external connector meets ESD when a TVS or ESD diode clamps its net, or when every part on the net is
 # rated to this IEC 61000-4-2 level. Component ratings (HBM, CDM) only cover handling in a factory.
 [esd]
 contact = 8000
 air = 15000
 reason = "IEC 61000-4-2 level 4 (8 kV contact, 15 kV air), the usual target for a connector a person plugs cables into"
+
+# Keep every junction this far below its maximum temperature. A part run near its limit is inside its rating but
+# ages faster; the margin is project judgement, not a datasheet figure.
+[junction]
+margin = 20
+reason = "reliability derating: keep junctions 20 °C below their maximum"

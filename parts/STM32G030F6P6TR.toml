@@ -2,6 +2,9 @@ mpn = "STM32G030F6P6TR"
 manufacturer = "STMicroelectronics"
 description = "Arm Cortex-M0+ MCU, 32 KB flash, TSSOP-20"
 class = "ic"
+temperature = { min = -40, max = 85, page = 41, note = "TA, Table 21 general operating conditions" }
+theta_ja = { value = 88, page = 90, note = "Table 71, TSSOP20 6.4 x 4.4 mm, junction to ambient" }
+tj_max = { value = 105, page = 41, note = "TJ junction temperature, Table 21; the absolute maximum TJ is 150 C" }
 
 [datasheet]
 title = "STM32G030x6/x8 Arm Cortex-M0+ 32-bit MCU, up to 64 KB Flash, 8 KB RAM, 2x USART, timers, ADC, comm. I/Fs, 2.0-3.6V"
@@ -55,3 +58,7 @@ model = "cdm"
 volts = 500
 page = 58
 note = "Table 45, ANSI/ESDA/JEDEC JS-002, class C2a"
+
+[[supply]]
+pins = ["VDD/VDDA"]
+current = { min = 0, max = 0.01119, page = 44, derived = "0 .. (8.3 + (0.5 + 3.1 + 2.9 + 0.9 + 0.7 + 0.5 + 3.2 + 9.8 + 23.5) * 64 / 1000) / 1000; IDD(Run) max 8.3 mA (Table 25, Range 1, 64 MHz from Flash, die at 85 C, VDD = 3.6 V, peripherals disabled) plus every peripheral enabled at 64 MHz: IOPORT, GPIOA to GPIOF, bus matrix, all AHB and all APB peripherals from Table 31 (p48, Range 1, typical uA/MHz, the only figures given)", note = "the datasheet gives no maximum with peripherals enabled, so their typical share is added to the peripherals-disabled maximum" }
