@@ -1,0 +1,16 @@
+mpn = "SWPA252012S100MT"
+manufacturer = "Sunlord"
+description = "10 uH wire-wound power inductor, 2.5 x 2.0 x 1.2 mm"
+
+# No datasheet: LCSC lists none for C37428 and sunlordinc.com is blocked from the cloud environment.
+
+[pins]
+1 = "1"
+2 = "2"
+
+[[limit]]
+quantity = "current"
+pins = ["1"]
+to = "2"
+abs_max = { unknown = "no datasheet was reachable (LCSC has none for C37428; sunlordinc.com is blocked)" }
+recommended = { unknown = "no datasheet was reachable (LCSC has none for C37428; sunlordinc.com is blocked)" }

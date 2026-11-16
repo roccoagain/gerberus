@@ -1,0 +1,25 @@
+mpn = "XC6206P332MR-G"
+manufacturer = "Torex"
+description = "3.3 V 200 mA LDO, SOT-23 (MR)"
+
+[datasheet]
+title = "XC6206 Series Positive Voltage Regulators"
+document = "ETR0305_004b"
+url = "https://www.lcsc.com/datasheet/C5446.pdf"
+
+[pins]
+1 = "VSS"
+2 = "VOUT"
+3 = "VIN"
+
+[[limit]]
+pins = ["VIN"]
+to = "VSS"
+abs_max = { min = { unknown = "the absolute maximum ratings table gives only a maximum for VIN" }, max = 7.0, page = 3 }
+recommended = { min = 1.8, max = 6.0, page = 4, note = "electrical characteristics: input voltage VIN" }
+
+[[limit]]
+pins = ["VOUT"]
+to = "VSS"
+abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 3 }
+recommended = { unknown = "VOUT is the regulated output; no separate operating range is given" }

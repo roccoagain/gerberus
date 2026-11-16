@@ -1,0 +1,33 @@
+mpn = "ME6211C33M5G-N"
+manufacturer = "Microne"
+description = "3.3 V 500 mA LDO with enable, SOT-23-5"
+
+[datasheet]
+title = "ME6211 Series High Speed LDO Regulators, Low ESR Cap"
+document = "V14"
+url = "https://www.lcsc.com/datasheet/C82942.pdf"
+
+[pins]
+1 = "VIN"
+2 = "VSS"
+3 = "CE"
+4 = "NC"
+5 = "VOUT"
+
+[[limit]]
+pins = ["VIN"]
+to = "VSS"
+abs_max = { min = { unknown = "the absolute maximum ratings table gives only a maximum for VIN" }, max = 6.5, page = 5 }
+recommended = { min = 2, max = 6.0, page = 1, note = "features list: operating voltage range" }
+
+[[limit]]
+pins = ["CE"]
+to = "VSS"
+abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 5 }
+recommended = { unknown = "no CE operating range is given; only VCEH min 1.0 V and VCEL max 0.5 V (page 6)" }
+
+[[limit]]
+pins = ["VOUT"]
+to = "VSS"
+abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 5 }
+recommended = { unknown = "VOUT is the regulated output; no separate operating range is given" }

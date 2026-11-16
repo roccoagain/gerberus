@@ -1,0 +1,18 @@
+mpn = "CL05B104KO5NNNC"
+manufacturer = "Samsung Electro-Mechanics"
+description = "100 nF 16 V X7R MLCC, 0402"
+
+[datasheet]
+title = "Samsung Electro-Mechanics MLCC catalogue"
+document = "November 2015"
+url = "https://www.lcsc.com/datasheet/C1525.pdf"
+
+[pins]
+1 = "1"
+2 = "2"
+
+[[limit]]
+pins = ["1"]
+to = "2"
+abs_max = { unknown = "the datasheet gives a rated voltage and a short withstanding-voltage test, not an absolute maximum" }
+recommended = { min = -16, max = 16, page = 4, note = "CL05B104KO5NNNC0" }

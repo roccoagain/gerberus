@@ -1,0 +1,42 @@
+mpn = "TCAN330GDCNR"
+manufacturer = "Texas Instruments"
+description = "3.3 V CAN FD transceiver with shutdown and silent mode, SOT-23-8 (DCN)"
+
+[datasheet]
+title = "TCAN33x 3.3V CAN Transceivers with CAN FD (Flexible Data Rate)"
+document = "SLLSEQ7F, revised May 2025"
+url = "https://www.ti.com/lit/ds/symlink/tcan330.pdf"
+
+[pins]
+1 = "TXD"
+2 = "GND"
+3 = "VCC"
+4 = "RXD"
+5 = "SHDN"
+6 = "CANL"
+7 = "CANH"
+8 = "S"
+
+[[limit]]
+pins = ["VCC"]
+to = "GND"
+abs_max = { min = -0.3, max = 5, page = 5 }
+recommended = { min = 3, max = 3.6, page = 5 }
+
+[[limit]]
+pins = ["CANH", "CANL"]
+to = "GND"
+abs_max = { min = -14, max = 14, page = 5 }
+recommended = { min = -12, max = 12, page = 8, note = "receiver common-mode range VCM, normal and silent modes" }
+
+[[limit]]
+pins = ["TXD", "SHDN", "S"]
+to = "GND"
+abs_max = { min = -0.3, max = 5, page = 5 }
+recommended = { unknown = "the recommended operating conditions table lists no logic input range; only VIH min 2 V and VIL max 0.8 V (page 8)" }
+
+[[limit]]
+pins = ["RXD"]
+to = "GND"
+abs_max = { min = -0.3, max = 5, page = 5 }
+recommended = { unknown = "RXD is an output; the recommended operating conditions table lists only its output current" }

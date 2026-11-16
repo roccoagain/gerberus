@@ -1,0 +1,17 @@
+board = "sniffer"
+
+[[input]]
+name = "VIN"
+pin = "J1.1"
+to = "J1.4"
+min = 3.6
+max = 5.5
+source = "hardware/sniffer/DESIGN.md, J1 row: 1 VIN (3.6–5.5 V)"
+
+[[input]]
+name = "UART RX (host to board)"
+pin = "J1.3"
+to = "J1.4"
+min = 0
+max = 3.3
+source = "hardware/sniffer/DESIGN.md: whether PA3 tolerates 5 V is not verified, so treat the UART as 3.3 V only"

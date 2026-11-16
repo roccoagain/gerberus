@@ -1,0 +1,18 @@
+mpn = "GRM21BR61H106KE43L"
+manufacturer = "Murata"
+description = "10 uF 50 V X5R MLCC, 0805"
+
+[datasheet]
+title = "GRM21BR61H106KE43 reference sheet"
+document = "GRM21BR61H106KE43-01A"
+url = "https://www.lcsc.com/datasheet/C440198.pdf"
+
+[pins]
+1 = "1"
+2 = "2"
+
+[[limit]]
+pins = ["1"]
+to = "2"
+abs_max = { unknown = "the datasheet gives a rated voltage and a short withstanding-voltage test, not an absolute maximum" }
+recommended = { min = -50, max = 50, page = 1, note = "GRM21BR61H106KE43L0" }

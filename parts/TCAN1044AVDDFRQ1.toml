@@ -1,0 +1,54 @@
+mpn = "TCAN1044AVDDFRQ1"
+manufacturer = "Texas Instruments"
+description = "Automotive fault-protected CAN FD transceiver with VIO level shifter, SOT-23-8 (DDF)"
+
+[datasheet]
+title = "TCAN1044A-Q1 Automotive Fault-Protected CAN FD Transceiver with Standby mode"
+document = "SLLSFJ3D, revised October 2024 (covers TCAN1044AV-Q1)"
+url = "https://www.ti.com/lit/ds/symlink/tcan1044a-q1.pdf"
+
+[pins]
+1 = "TXD"
+2 = "GND"
+3 = "VCC"
+4 = "RXD"
+5 = "VIO"
+6 = "CANL"
+7 = "CANH"
+8 = "STB"
+
+[[limit]]
+pins = ["VCC"]
+to = "GND"
+abs_max = { min = -0.3, max = 6, page = 4 }
+recommended = { min = 4.5, max = 5.5, page = 4 }
+
+[[limit]]
+pins = ["VIO"]
+to = "GND"
+abs_max = { min = -0.3, max = 6, page = 4 }
+recommended = { min = 1.7, max = 5.5, page = 4 }
+
+[[limit]]
+pins = ["CANH", "CANL"]
+to = "GND"
+abs_max = { min = -58, max = 58, page = 4 }
+recommended = { min = -12, max = 12, page = 7, note = "receiver common-mode range VCM" }
+
+[[limit]]
+pins = ["CANH"]
+to = "CANL"
+abs_max = { min = -45, max = 45, page = 4 }
+recommended = { unknown = "the datasheet gives no recommended differential bus voltage range" }
+
+[[limit]]
+pins = ["TXD", "STB"]
+to = "GND"
+abs_max = { min = -0.3, max = 6, page = 4 }
+recommended = { unknown = "the recommended operating conditions table lists no logic input range; only VIH min 0.7 VIO and VIL max 0.3 VIO (page 7)" }
+
+[[limit]]
+pins = ["RXD"]
+to = "GND"
+abs_max = { min = -0.3, max = 6, page = 4 }
+recommended = { unknown = "RXD is an output; the recommended operating conditions table lists only its output current" }

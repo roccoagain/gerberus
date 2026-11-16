@@ -1,0 +1,46 @@
+mpn = "TPS560430YFDBVR"
+manufacturer = "Texas Instruments"
+description = "4 V to 36 V, 600 mA synchronous buck, 2.1 MHz forced PWM, adjustable, SOT-23-6"
+
+[datasheet]
+title = "TPS560430 SIMPLE SWITCHER 4-V to 36-V, 600-mA Synchronous Step-Down Converter"
+document = "SLVSE22B, revised June 2018"
+url = "https://www.ti.com/lit/ds/symlink/tps560430.pdf"
+
+[pins]
+1 = "CB"
+2 = "GND"
+3 = "FB"
+4 = "EN"
+5 = "VIN"
+6 = "SW"
+
+[[limit]]
+pins = ["VIN"]
+to = "GND"
+abs_max = { min = -0.3, max = 38, page = 4 }
+recommended = { min = 4, max = 36, page = 4 }
+
+[[limit]]
+pins = ["EN"]
+to = "GND"
+abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 4 }
+recommended = { min = 0, max = { pin = "VIN" }, page = 4 }
+
+[[limit]]
+pins = ["FB"]
+to = "GND"
+abs_max = { min = -0.3, max = 5.5, page = 4 }
+recommended = { min = 0, max = 4.5, page = 4 }
+
+[[limit]]
+pins = ["SW"]
+to = "GND"
+abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 4, note = "–3.5 V to 38 V for transients under 10 ns" }
+recommended = { unknown = "the recommended operating conditions table lists no SW range; SW is the switch node" }
+
+[[limit]]
+pins = ["CB"]
+to = "SW"
+abs_max = { min = -0.3, max = 5.5, page = 4 }
+recommended = { unknown = "the recommended operating conditions table lists no CB-to-SW range" }

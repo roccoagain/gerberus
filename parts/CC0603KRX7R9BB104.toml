@@ -1,0 +1,18 @@
+mpn = "CC0603KRX7R9BB104"
+manufacturer = "Yageo"
+description = "100 nF 50 V X7R MLCC, 0603"
+
+[datasheet]
+title = "Yageo Surface-Mount Ceramic Multilayer Capacitors, General Purpose and High Cap., X7R 6.3 V to 250 V"
+document = "no revision printed"
+url = "https://www.lcsc.com/datasheet/C14663.pdf"
+
+[pins]
+1 = "1"
+2 = "2"
+
+[[limit]]
+pins = ["1"]
+to = "2"
+abs_max = { unknown = "the datasheet gives a rated voltage and a short withstanding-voltage test, not an absolute maximum" }
+recommended = { min = -50, max = 50, page = 2, note = "CC0603KRX7R9BB1040" }

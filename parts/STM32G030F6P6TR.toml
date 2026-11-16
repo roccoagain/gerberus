@@ -1,0 +1,44 @@
+mpn = "STM32G030F6P6TR"
+manufacturer = "STMicroelectronics"
+description = "Arm Cortex-M0+ MCU, 32 KB flash, TSSOP-20"
+
+[datasheet]
+title = "STM32G030x6/x8 Arm Cortex-M0+ 32-bit MCU, up to 64 KB Flash, 8 KB RAM, 2x USART, timers, ADC, comm. I/Fs, 2.0-3.6V"
+document = "DS12991 Rev 3"
+url = "https://www.lcsc.com/datasheet/C529330.pdf"
+
+# TSSOP20 column of Table 12 (pages 30 to 34). Several pads bond more than one GPIO; every I/O on this
+# package, NRST included, has an FT_xx structure.
+[pins]
+1 = "PB7/PB8"
+2 = "PB9/PC14"
+3 = "PC15"
+4 = "VDD/VDDA"
+5 = "VSS/VSSA"
+6 = "NRST"
+7 = "PA0"
+8 = "PA1"
+9 = "PA2"
+10 = "PA3"
+11 = "PA4"
+12 = "PA5"
+13 = "PA6"
+14 = "PA7"
+15 = "PA8/PB0/PB1/PB2"
+16 = "PA11/PA9"
+17 = "PA12/PA10"
+18 = "PA13"
+19 = "PA14-BOOT0/PA15"
+20 = "PB3/PB4/PB5/PB6"
+
+[[limit]]
+pins = ["VDD/VDDA"]
+to = "VSS/VSSA"
+abs_max = { min = -0.3, max = 4.0, page = 40 }
+recommended = { min = 2.0, max = 3.6, page = 41 }
+
+[[limit]]
+pins = ["PB7/PB8", "PB9/PC14", "PC15", "NRST", "PA0", "PA1", "PA2", "PA3", "PA4", "PA5", "PA6", "PA7", "PA8/PB0/PB1/PB2", "PA11/PA9", "PA12/PA10", "PA13", "PA14-BOOT0/PA15", "PB3/PB4/PB5/PB6"]
+to = "VSS/VSSA"
+abs_max = { min = -0.3, max = { pin = "VDD/VDDA", plus = 4.0 }, page = 40, note = "FT_xx pins; above 4 V the internal pull-up and pull-down must be disabled" }
+recommended = { min = -0.3, max = { pin = "VDD/VDDA", plus = 3.6, at_most = 5.5 }, page = 41, note = "pull-up and pull-down must be disabled above VDD + 0.3 V" }

@@ -1,0 +1,18 @@
+mpn = "0402CG101J500NT"
+manufacturer = "Fenghua (FH)"
+description = "100 pF 50 V C0G MLCC, 0402"
+
+[datasheet]
+title = "Fenghua general type MLCC"
+document = "no revision printed"
+url = "https://www.lcsc.com/datasheet/C1546.pdf"
+
+[pins]
+1 = "1"
+2 = "2"
+
+[[limit]]
+pins = ["1"]
+to = "2"
+abs_max = { unknown = "the datasheet gives a rated voltage and a short withstanding-voltage test, not an absolute maximum" }
+recommended = { min = -50, max = 50, page = 4, note = "0402CG101J500NT0" }

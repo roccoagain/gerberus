@@ -1,0 +1,25 @@
+mpn = "B5819W SL"
+manufacturer = "Jiangsu Changjing Electronics (CJ)"
+description = "40 V 1 A Schottky barrier diode, SOD-123"
+
+[datasheet]
+title = "SOD-123 Plastic-Encapsulate Diodes, B5817W-B5819W Schottky Barrier Diode"
+document = "no revision printed"
+url = "https://www.lcsc.com/datasheet/C8598.pdf"
+
+[pins]
+1 = "K"
+2 = "A"
+
+[[limit]]
+pins = ["K"]
+to = "A"
+abs_max = { min = { unknown = "forward bias is limited by current, not voltage" }, max = 40, page = 1, note = "VRRM, VRWM and VR" }
+recommended = { unknown = "the datasheet has only a maximum ratings table" }
+
+[[limit]]
+quantity = "current"
+pins = ["A"]
+to = "K"
+abs_max = { min = { unknown = "reverse current is set by the reverse voltage and is not rated" }, max = 1, page = 1, note = "IO average rectified current; IFRM 1.5 A repetitive peak, IFSM 9 A for 8.3 ms" }
+recommended = { unknown = "the datasheet has only a maximum ratings table" }
