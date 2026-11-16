@@ -25,7 +25,7 @@ url = "https://www.ti.com/lit/ds/symlink/tps560430.pdf"
 5 = "VIN"
 
 [[variant]]                         # optional: another part number with the same limits (another package)
-mpn = "TPS560430YFDDCR"             # hypothetical; gives its own pin map, or reuses [pins] without one
+mpn = "OTHER-PACKAGE-MPN"           # placeholder; gives its own pin map, or reuses [pins] without one
 pins = { 1 = "CB", 2 = "GND", 3 = "FB", 4 = "EN", 5 = "VIN", 6 = "SW" }
 
 [[limit]]
