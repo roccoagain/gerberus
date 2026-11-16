@@ -254,11 +254,58 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
         }
     }
 
-    // 3. Groups of the remaining nets, joined by resistors, inductors, LEDs and jumpers.
-    let strong: Vec<bool> = (0..n).map(|i| fixed[i] || plans.contains_key(&i)).collect();
+    // 3. Nets fed through a ferrite bead from a driven net: a bead is a DC short (well under an ohm), so the net
+    //    takes the driven net's range. Beads only: an inductor may be a switcher's, with a switch node on one side.
+    let mut strong: Vec<bool> = (0..n).map(|i| fixed[i] || plans.contains_key(&i)).collect();
+    let mut beads: BTreeMap<usize, Vec<(&str, usize)>> = BTreeMap::new();
+    loop {
+        let mut grew = false;
+        for (r, c) in &design.components {
+            if c.dnp || !is_bead(c) {
+                continue;
+            }
+            let nets: Vec<usize> = c.pins.values().map(|p| p.net).collect();
+            if let [a, b] = nets[..] {
+                for (from, to) in [(a, b), (b, a)] {
+                    if strong[from] && !strong[to] && !beads.contains_key(&to) {
+                        beads.entry(to).or_default().push((r.as_str(), from));
+                    }
+                }
+            }
+        }
+        // A net reached through several beads takes them all, so add them in one pass before marking.
+        for (r, c) in &design.components {
+            if c.dnp || !is_bead(c) {
+                continue;
+            }
+            let nets: Vec<usize> = c.pins.values().map(|p| p.net).collect();
+            if let [a, b] = nets[..] {
+                for (from, to) in [(a, b), (b, a)] {
+                    if strong[from]
+                        && let Some(list) = beads.get_mut(&to)
+                        && !strong[to]
+                        && !list.iter().any(|&(x, f)| x == r.as_str() && f == from)
+                    {
+                        list.push((r.as_str(), from));
+                    }
+                }
+            }
+        }
+        for &t in beads.keys() {
+            if !strong[t] {
+                strong[t] = true;
+                grew = true;
+            }
+        }
+        if !grew {
+            break;
+        }
+    }
+
+    // 4. Groups of the remaining nets, joined by resistors, inductors, LEDs and jumpers.
     let groups = build_groups(design, lib, inputs, &strong);
 
-    // 4. Resolve whatever has everything it reads, until nothing changes.
+    // 5. Resolve whatever has everything it reads, until nothing changes.
     let mut regulators = vec![];
     let mut done_groups = vec![false; groups.len()];
     loop {
@@ -301,6 +348,35 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
             out[t] = nv;
             progress = true;
         }
+        for (&t, list) in &beads {
+            if out[t].is_some() || !list.iter().all(|&(_, f)| out[f].is_some()) {
+                continue;
+            }
+            let mut nv: Option<NetVoltage> = None;
+            for &(r, f) in list {
+                let from = out[f].as_ref().expect("checked above");
+                merge(
+                    &mut nv,
+                    from.span,
+                    Why {
+                        text: format!("through ferrite bead {r} from {}, a DC short", design.nets[f].name),
+                        from: vec![f],
+                        bounded: true,
+                        low_floor: from.floor,
+                    },
+                );
+            }
+            if let Some(nv) = nv.as_mut() {
+                nv.driver = list
+                    .iter()
+                    .map(|&(_, f)| out[f].as_ref().map_or(Driver::Floating, |o| o.driver))
+                    .min_by_key(|d| *d as u8)
+                    .unwrap_or(Driver::Floating);
+                nv.floor = list.iter().any(|&(_, f)| out[f].as_ref().is_some_and(|o| o.floor));
+            }
+            out[t] = nv;
+            progress = true;
+        }
         for (gi, g) in groups.iter().enumerate() {
             if done_groups[gi] || !g.deps().iter().all(|&d| out[d].is_some()) {
                 continue;
@@ -317,7 +393,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
         }
     }
 
-    // 5. Anything left reads a net that, in turn, reads it.
+    // 6. Anything left reads a net that, in turn, reads it.
     let stuck = |deps: &[usize], out: &[Option<NetVoltage>]| -> String {
         let names: BTreeSet<&str> = deps
             .iter()
@@ -338,6 +414,12 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
     for (&t, ps) in &plans {
         if out[t].is_none() {
             let deps: Vec<usize> = ps.iter().flat_map(|p| p.deps.clone()).collect();
+            late.push((t, unknown(stuck(&deps, &out), vec![])));
+        }
+    }
+    for (&t, list) in &beads {
+        if out[t].is_none() {
+            let deps: Vec<usize> = list.iter().map(|&(_, f)| f).collect();
             late.push((t, unknown(stuck(&deps, &out), vec![])));
         }
     }
@@ -500,12 +582,23 @@ fn is_capacitor(lib: &Library, c: &Component) -> bool {
     c.lib_id.starts_with("Device:C") || class_of(lib, c) == Some(Class::Capacitor)
 }
 
-/// A two-pin part a net's voltage passes through, for the fallback range: resistors, inductors (and so LEDs,
-/// `Device:L*`), and jumpers, which may be closed.
+/// A ferrite bead, by its symbol (`Device:FerriteBead*`, `Device:Ferrite*`) or its reference (`FB1`).
+fn is_bead(c: &Component) -> bool {
+    let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
+    c.pins.len() == 2 && (c.lib_id.starts_with("Device:Ferrite") || letters == "FB")
+}
+
+/// An inductor or ferrite bead by its symbol (`Device:L*`, `Device:FerriteBead*`, `Device:Ferrite*`).
+fn is_inductor_symbol(c: &Component) -> bool {
+    c.lib_id.starts_with("Device:L") || c.lib_id.starts_with("Device:Ferrite")
+}
+
+/// A two-pin part a net's voltage passes through, for the fallback range: resistors, inductors and ferrite
+/// beads (and so LEDs, `Device:L*`), and jumpers, which may be closed.
 fn is_link(lib: &Library, c: &Component) -> bool {
     c.pins.len() == 2
         && (c.lib_id.starts_with("Device:R")
-            || c.lib_id.starts_with("Device:L")
+            || is_inductor_symbol(c)
             || c.lib_id.starts_with("Jumper:")
             || matches!(class_of(lib, c), Some(Class::Resistor | Class::Inductor | Class::Led)))
 }
@@ -1303,10 +1396,7 @@ fn build_groups(design: &Design, lib: &Library, inputs: &BoardInputs, strong: &[
                     if c.dnp {
                         continue;
                     }
-                    if is_capacitor(lib, c)
-                        || c.lib_id.starts_with("Device:L")
-                        || class_of(lib, c) == Some(Class::Inductor)
-                    {
+                    if is_capacitor(lib, c) || is_inductor_symbol(c) || class_of(lib, c) == Some(Class::Inductor) {
                         reactive = true;
                     }
                     let Some(pin) = c.pins.get(pnum) else { continue };

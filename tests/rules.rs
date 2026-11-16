@@ -862,3 +862,45 @@ fn esd_shelters_undescribed_parts_behind_a_clamp() {
     let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J1.1")).collect();
     assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
 }
+
+/// A rail fed through a ferrite bead takes the driven rail's range: a bead is a DC short. The amp board's +5V
+/// comes from +5V_RAW through FB101 (`Device:FerriteBead`, no part file), and was UNKNOWN.
+#[test]
+fn ferrite_beads_pass_a_rail_through() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let (v33, gnd) = (net(&d, "+3V3"), net(&d, "GND"));
+    let quiet = new_net(&mut d, "/3V3_QUIET");
+    let quieter = new_net(&mut d, "/3V3_QUIETER");
+    add(
+        &mut d,
+        "FB98",
+        "Device:FerriteBead",
+        "600R",
+        None,
+        vec![pin("1", PinKind::Passive, v33), pin("2", PinKind::Passive, quiet)],
+    );
+    add(
+        &mut d,
+        "L98",
+        "Device:FerriteBead_Small",
+        "600R",
+        None,
+        vec![pin("1", PinKind::Passive, quiet), pin("2", PinKind::Passive, quieter)],
+    );
+    add(
+        &mut d,
+        "C98",
+        "Device:C",
+        "1uF 16V",
+        None,
+        vec![pin("1", PinKind::Passive, quieter), pin("2", PinKind::Passive, gnd)],
+    );
+    let (v, _) = run_on(&d, &inputs);
+    assert_eq!(v.nets[quiet].span, v.nets[v33].span, "{:#?}", v.nets[quiet]);
+    assert_eq!(v.nets[quieter].span, v.nets[v33].span, "{:#?}", v.nets[quieter]);
+    assert!(
+        v.nets[quieter].why[0].text.contains("ferrite bead L98"),
+        "{:#?}",
+        v.nets[quieter]
+    );
+}

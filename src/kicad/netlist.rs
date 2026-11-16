@@ -392,6 +392,8 @@ impl Builder {
                     lib_pins.iter().any(|o| {
                         shown_name(&o.name) == shown_name(&lp.name)
                             && o.number != lp.number
+                            // The numbers of one stacked pin share its point; KiCad names it as one pin.
+                            && o.at != lp.at
                             && (o.kind == "no_connect") == nc
                     })
                 };

@@ -32,6 +32,10 @@ const LIBS: &str = r#"(lib_symbols
       (pin output line (at 5.08 0 180) (length 2.54) (name "OUT") (number "1")))
     (symbol "DUAL_2_1"
       (pin output line (at 5.08 0 180) (length 2.54) (name "OUT") (number "7"))))
+  (symbol "Test:STACK"
+    (symbol "STACK_1_1"
+      (pin input line (at -5.08 0 0) (length 2.54) (name "IN") (number "1"))
+      (pin power_in line (at 0 -5.08 90) (length 2.54) (name "GND") (number "[3,9-10]"))))
   (symbol "Test:JP"
     (duplicate_pin_numbers_are_jumpers yes)
     (jumper_pin_groups ("2" "3"))
@@ -169,6 +173,17 @@ fn labels_join_every_wire_they_sit_on() {
     let d = load(&two);
     assert_eq!(net(&d, "R1", "1").name, "/L");
     assert_eq!(net(&d, "R2", "1").name, "/L");
+}
+
+/// KiCad 10 stacks pads under one pin as `[3,9-10]`: every pad is on the pin's net, and the net is named after
+/// the pin once, without a `-Pad` suffix (checked against `kicad-cli` on the amp board from amp-hardware).
+#[test]
+fn stacked_pins_put_every_pad_on_the_net() {
+    let d = load(&[sym("Test:STACK", "U1", 50.0, 50.0), sym("Device:R", "R1", 50.0, 58.89)]);
+    for pad in ["3", "9", "10"] {
+        assert_eq!(net(&d, "U1", pad).name, "Net-(U1-GND)");
+    }
+    assert_eq!(net(&d, "R1", "1").name, "Net-(U1-GND)");
 }
 
 /// Names KiCad builds from pins: `-Pad<n>` for repeated pin names, the pad form when a pin is named after its
