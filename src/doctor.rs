@@ -81,7 +81,8 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
     let mut unknown = 0;
     let mut settled = 0;
     for (i, f) in report.findings.iter().enumerate() {
-        if f.verdict != Verdict::Unknown {
+        // `check` counts summary findings (reverse polarity) apart from the rest, so they aren't counted here.
+        if f.verdict != Verdict::Unknown || crate::rules::SUMMARY_RULES.contains(&f.rule) {
             continue;
         }
         unknown += 1;
@@ -121,20 +122,16 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
                 keys.insert(k);
                 continue;
             }
+            // A transistor's channel isn't modelled, so a part file for it wouldn't settle what its pins do to
+            // a net.
+            let cant_model = text.contains("on a part gerberus can't model");
             for r in references_in(text, design) {
-                if unchecked(&r) {
+                if unchecked(&r) && !(cant_model && is_transistor(&design.components[&r])) {
                     keys.insert(Key::Part(mpn(&r)));
                 }
             }
-            if let Some((r, p)) = undescribed_pin(text)
+            if let Some((r, p)) = power_output(text)
                 && !unchecked(r)
-                && (text.contains(" is a power output")
-                    || design
-                        .components
-                        .get(r)
-                        .and_then(|c| lib.part_for(c))
-                        .is_some_and(|part| part.class == crate::limits::Class::Ic)
-                        && !is_transistor(&design.components[r]))
             {
                 let k = Key::Drive(r.to_string());
                 pins.entry(k.clone()).or_default().insert(format!("{r}.{p}"));
@@ -191,12 +188,23 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
                         )],
                         (None, true) => vec![format!("{r} has no part file to say what its power outputs give")],
                     },
-                    help: if fitted {
-                        format!("give {m}'s part file a [[drive]] for the pin (see \"What a part drives\" in parts/README.md)")
-                    } else {
-                        "if it is a module plugged in by hand, give the net it supplies an [[input]] in inputs.toml; \
-                         otherwise give its part file a [[drive]] (see \"What a part drives\" in parts/README.md)"
-                            .into()
+                    help: match (&file, fitted) {
+                        (Some(f), _) if f.ends_with("(built in)") => format!(
+                            "the shared library's file has no [[drive]] there: copy it next to the schematic with \
+                             `gerberus part show {m} > {}` and add one for the pin (see \"What a part drives\" in \
+                             parts/README.md)",
+                            setup.parts.join(file_name(&m)).display()
+                        ),
+                        (Some(_), _) => format!(
+                            "give {m}'s part file a [[drive]] for the pin (see \"What a part drives\" in parts/README.md)"
+                        ),
+                        (None, false) => "if it is a module plugged in by hand, give the net it supplies an [[input]] in \
+                                          inputs.toml; otherwise write a part file for it with a [[drive]] for the pin \
+                                          (see \"What a part drives\" in parts/README.md)"
+                            .into(),
+                        (None, true) => "write a part file for it with a [[drive]] for the pin (see \"What a part \
+                                         drives\" in parts/README.md)"
+                            .into(),
                     },
                 });
             }
@@ -231,26 +239,43 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
             }
         }
     }
-    if setup.inputs_missing && !connectors.is_empty() {
+    if setup.inputs_missing {
         let found: BTreeSet<usize> = connectors.iter().flat_map(|(_, _, f)| f.iter().copied()).collect();
         let all: Vec<String> = connectors.iter().flat_map(|(_, p, _)| p.iter().cloned()).collect();
         items.push(Item {
             rule: "inputs",
-            title: format!("write {}: {}", setup.inputs.display(), waiting(found.len())),
+            title: if found.is_empty() {
+                format!(
+                    "write {}: reverse polarity, ESD and fault cases aren't checked without it",
+                    setup.inputs.display()
+                )
+            } else {
+                format!("write {}: {}", setup.inputs.display(), waiting(found.len()))
+            },
             unknown: found.len(),
             references: connectors.iter().map(|(r, _, _)| r.clone()).collect(),
             mpn: None,
             pins: all.clone(),
             datasheet: None,
             file: setup.inputs.display().to_string(),
-            notes: vec![
-                format!("nothing says what plugs into {}", list(&all, "or")),
-                "without it, ground is the only voltage known, and reverse polarity, ESD and fault cases aren't \
-                 checked, so more results wait on it than these"
-                    .into(),
-            ],
+            notes: {
+                let mut notes = vec![];
+                if !all.is_empty() {
+                    notes.push(format!("nothing says what plugs into {}", list(&all, "or")));
+                }
+                if all.is_empty() {
+                    notes.push("without it, ground is the only voltage known".into());
+                } else {
+                    notes.push(
+                        "without it, ground is the only voltage known, and reverse polarity, ESD and fault cases \
+                         aren't checked, so more results wait on it than these"
+                            .into(),
+                    );
+                }
+                notes
+            },
             help: "give each connector pin's voltage range as an [[input]], or an [[undriven]] entry if nothing \
-                   outside drives it (see \"Board inputs\" in parts/README.md)"
+                   outside drives it (see \"Board inputs\" and \"Net voltages\" in parts/README.md)"
                 .into(),
         });
     } else {
@@ -278,7 +303,7 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
                 file: setup.inputs.display().to_string(),
                 notes,
                 help: "add an [[input]] for each pin with its voltage range, or an [[undriven]] entry if nothing \
-                       outside drives it (see \"Board inputs\" in parts/README.md)"
+                       outside drives it (see \"Board inputs\" and \"Net voltages\" in parts/README.md)"
                     .into(),
             });
         }
@@ -423,13 +448,9 @@ fn waiting(n: usize) -> String {
     )
 }
 
-/// `A1`, `38` from `UNKNOWN: A1.38 is a power output, and no part file says what it drives`, or from `UNKNOWN:
-/// U1.1 is a Passive pin on a part gerberus can't model`.
-fn undescribed_pin(text: &str) -> Option<(&str, &str)> {
-    let end = text.find(" is a power output, and no part file says").or_else(|| {
-        text.find(" pin on a part gerberus can't model")
-            .and_then(|e| text[..e].rfind(" is a "))
-    })?;
+/// `A1`, `38` from `UNKNOWN: A1.38 is a power output, and no part file says what it drives`.
+fn power_output(text: &str) -> Option<(&str, &str)> {
+    let end = text.find(" is a power output, and no part file says")?;
     text[..end].rsplit(' ').next()?.split_once('.')
 }
 
@@ -450,7 +471,7 @@ pub fn render(doctor: &Doctor, show: &Show) -> String {
             level: Level::Todo,
             rule: item.rule.to_string(),
             headline: item.title.clone(),
-            location: Some(item.references.join(", ")),
+            location: (!item.references.is_empty()).then(|| item.references.join(", ")),
             notes: item.notes.clone(),
             help: Some(item.help.clone()),
             details: vec![],
@@ -467,8 +488,8 @@ pub fn render(doctor: &Doctor, show: &Show) -> String {
                 "check knows every range and limit it needs".to_string()
             } else {
                 format!(
-                    "the {} left wait on limits their datasheets don't give or on circuits gerberus can't model \
-                     yet; `gerberus check --unknown` lists them",
+                    "the {} left wait on things doctor doesn't trace yet: limits or thermal data the part \
+                     files don't give, or circuits gerberus can't model; `gerberus check --unknown` lists them",
                     plural(doctor.unknown, "unknown result")
                 )
             }
@@ -493,8 +514,9 @@ pub fn render(doctor: &Doctor, show: &Show) -> String {
     if left > 0 {
         let _ = writeln!(
             out,
-            "   {} {}: the other {left} wait on limits their datasheets don't give or on circuits gerberus can't \
-             model yet; `gerberus check --unknown` lists them all",
+            "   {} {}: the other {left} wait on things doctor doesn't trace yet: limits or thermal \
+             data the part files don't give, or circuits gerberus can't model; `gerberus check --unknown` lists \
+             them all",
             style.paint("1;34", "="),
             style.paint("1", "note"),
         );

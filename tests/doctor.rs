@@ -88,7 +88,7 @@ fn missing_part_file_is_listed_with_its_references() {
     assert!(d.items.windows(2).all(|w| w[0].unknown >= w[1].unknown));
 }
 
-/// The kitchen sink: a built-in part file with pins it gives no limit for, and an IC pin no [[drive]] describes.
+/// The kitchen sink: a built-in part file with pins it gives no limit for.
 #[test]
 fn kitchen_sink_gaps_in_part_files() {
     let dir = root("tests/fixtures/kitchen-sink");
@@ -99,9 +99,9 @@ fn kitchen_sink_gaps_in_part_files() {
     let pins = d.items.iter().find(|i| i.rule == "pin-limits").expect("pin limits");
     assert_eq!(pins.references, ["L1"]);
     assert_eq!(pins.pins, ["1", "2"]);
-    let drive = d.items.iter().find(|i| i.rule == "drive").expect("drive");
-    assert_eq!(drive.pins, ["U1.1"]);
-    // Transistors aren't told to add a [[drive]]: no drive can describe a MOSFET channel.
+    // U1.1 is TPS560430's bootstrap pin, which gerberus can't model: no [[drive]] kind describes it, so it isn't
+    // listed, and neither is any transistor.
+    assert!(d.items.iter().all(|i| i.rule != "drive"), "{:?}", d.items);
     assert!(
         d.items.iter().all(|i| i.references.iter().all(|r| !r.starts_with('Q'))),
         "{:?}",
@@ -112,7 +112,7 @@ fn kitchen_sink_gaps_in_part_files() {
         text.contains("todo[pin-limits]: give FNR4030S6R8MT a voltage limit for 1 and 2"),
         "{text}"
     );
-    assert!(text.contains("wait on limits their datasheets don't give"), "{text}");
+    assert!(text.contains("wait on things doctor doesn't trace yet"), "{text}");
 }
 
 /// A board whose every unknown waits on nothing a user can add says so.
@@ -125,4 +125,41 @@ fn nothing_to_add() {
     let d = doctor(&design, &lib, &inputs, false);
     assert!(d.items.is_empty(), "{:?}", d.items);
     assert!(render(&d, &Show::everything()).starts_with("ok: nothing to add"));
+}
+
+/// With no inputs.toml, writing one is always listed, even when no unknown traces to a connector pin.
+#[test]
+fn missing_inputs_are_always_listed() {
+    let design = kicad::load(&root("tests/fixtures/hier/root.kicad_sch")).unwrap();
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let inputs = BoardInputs::none("hier", &design);
+    let d = doctor(&design, &lib, &inputs, true);
+    let item = d.items.iter().find(|i| i.rule == "inputs").expect("inputs item");
+    assert!(item.title.contains("aren't checked without it"), "{}", item.title);
+    assert!(!render(&d, &Show::everything()).contains("check knows every range"));
+}
+
+/// The command: JSON on stdout, exit 0, and no "no inputs.toml" note on stderr, since the list has it.
+#[test]
+fn command_prints_json() {
+    let dir = std::env::temp_dir().join(format!("gerberus-doctor-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::copy(
+        root("tests/fixtures/can-encoder/can-encoder.kicad_sch"),
+        dir.join("can-encoder.kicad_sch"),
+    )
+    .unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_gerberus"))
+        .args(["doctor", "can-encoder.kicad_sch", "--json"])
+        .current_dir(&dir)
+        .env("GERBERUS_NO_UPDATE_CHECK", "1")
+        .output()
+        .unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert!(out.status.success(), "{out:?}");
+    assert!(out.stderr.is_empty(), "{}", String::from_utf8_lossy(&out.stderr));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["items"][0]["rule"], "inputs");
+    assert_eq!(v["items"][0]["file"], "inputs.toml");
+    assert!(v["settled"].as_u64().unwrap() <= v["unknown"].as_u64().unwrap());
 }
