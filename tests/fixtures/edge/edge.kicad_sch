@@ -1,0 +1,131 @@
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "79cc4a54-a310-4ff7-9e37-49410445d41c")
+	(paper "A4")
+	(title_block
+		(title "")
+		(date "")
+		(rev "1")
+	)
+	(lib_symbols
+	
+		(symbol "Device:R"
+			(pin_numbers
+				(hide yes))
+			(pin_names
+				(offset 0))
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "R"
+				(at 2.032 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27))))
+			(property "Value" "R"
+				(at 0 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27))))
+			(property "Footprint" ""
+				(at -1.778 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27))))
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27))))
+			(property "Description" "Resistor"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27))))
+			(property "ki_keywords" "R res resistor"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27))))
+			(property "ki_fp_filters" "R_*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27))))
+			(symbol "R_0_1"
+				(rectangle
+					(start -1.016 -2.54)
+					(end 1.016 2.54)
+					(stroke
+						(width 0.254)
+						(type default))
+					(fill
+						(type none))))
+			(symbol "R_1_1"
+				(pin passive line
+					(at 0 3.81 270)
+					(length 1.27)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27))))
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)))))
+				(pin passive line
+					(at 0 -3.81 90)
+					(length 1.27)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27))))
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27))))))
+			(embedded_fonts no))
+	)
+	(sheet (at 100 50) (size 20 10) (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no) (stroke (width 0.1524) (type solid)) (fill (color 0 0 0 0.0000)) (uuid "3053f899-a2fe-4043-96aa-8dd83757983f") (property "Sheetname" "child" (at 100 49.3 0) (effects (font (size 1.27 1.27)))) (property "Sheetfile" "sub/child.kicad_sch" (at 100 60.6 0) (effects (font (size 1.27 1.27)))) (instances (project "edge" (path "/79cc4a54-a310-4ff7-9e37-49410445d41c" (page "2")))))
+	(wire (pts (xy 40.64 60.96) (xy 76.2 60.96)) (stroke (width 0) (type default)) (uuid "d9c2d7c0-723f-4ec2-b175-42c70391a3e3"))
+	(label "W" (at 40.64 60.96 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "09feeaab-7495-4a0f-90ce-e7fb56d92ef1"))
+	(symbol (lib_id "Device:R") (at 63.5 50.8 0) (unit 1) (exclude_from_sim no) (in_bom yes) (in_pos_files yes) (on_board yes) (dnp no) (uuid "78d0272d-911a-4b0f-844b-8fe503711936")
+		(property "Reference" "R2" (at 65.532 50.8 90) (effects (font (size 1.27 1.27))))
+		(property "Value" "1k" (at 63.5 50.8 90) (effects (font (size 1.27 1.27))))
+		(property "Footprint" "" (at 61.722 50.8 90) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "Datasheet" "~" (at 63.5 50.8 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(property "Description" "" (at 63.5 50.8 0) (hide yes) (effects (font (size 1.27 1.27))))
+		(pin "1" (uuid "864d3bb3-dc88-4d04-8902-2a004a26847d")) (pin "2" (uuid "436ab84b-8de3-4146-b8e8-a69650da4958"))
+		(instances (project "edge" (path "/79cc4a54-a310-4ff7-9e37-49410445d41c" (reference "R2") (unit 1)))))
+	(wire (pts (xy 63.5 54.61) (xy 63.5 60.96)) (stroke (width 0) (type default)) (uuid "6babf93a-b3ef-45e6-abc6-be4f513ca42c"))
+	(junction (at 63.5 60.96) (diameter 0) (color 0 0 0 0) (uuid "8dcc0946-d321-4872-8fc8-da5f3426bfa1"))
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(embedded_fonts no)
+)
