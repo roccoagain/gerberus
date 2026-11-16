@@ -984,14 +984,57 @@ fn ac_coupled_inputs() {
         None,
         vec![pin("1", PinKind::Passive, v33), pin("2", PinKind::Passive, inp)],
     );
+    // A lone logic input with only a decoupling capacitor to ground is a forgotten pull-up: still a FAIL.
+    let lone = new_net(&mut d, "/LONE");
+    add(
+        &mut d,
+        "U8",
+        "Logic:Buffer",
+        "X",
+        None,
+        vec![pin("1", PinKind::Input, lone), pin("3", PinKind::PowerIn, gnd)],
+    );
+    add(
+        &mut d,
+        "C98",
+        "Device:C",
+        "100nF 50V",
+        None,
+        vec![pin("1", PinKind::Passive, lone), pin("2", PinKind::Passive, gnd)],
+    );
+    // The amplifier's other leg, AC-grounded beside an AC-coupled input: UNKNOWN too.
+    let leg = new_net(&mut d, "/AMP_INN");
+    d.components
+        .get_mut("U9")
+        .unwrap()
+        .pins
+        .insert("4".into(), pin("4", PinKind::Input, leg));
+    d.nets[leg].pins.push(("U9".into(), "4".into()));
+    add(
+        &mut d,
+        "C97",
+        "Device:C",
+        "1uF 50V",
+        None,
+        vec![pin("1", PinKind::Passive, gnd), pin("2", PinKind::Passive, leg)],
+    );
     let (_, r) = run_on(&d, &inputs);
-    let f = r.by_rule("floating-input").find(|f| f.reference == "U9").unwrap();
+    let u9 = |r: &Report, net: &str| {
+        r.by_rule("floating-input")
+            .find(|f| f.reference == "U9" && f.message.contains(&format!("is on {net},")))
+            .unwrap()
+            .clone()
+    };
+    let f = u9(&r, "/AMP_IN");
     assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
     assert!(
         f.message.contains("AC-coupled") && f.message.contains("biases"),
         "{}",
         f.message
     );
+    assert_eq!(u9(&r, "/AMP_INN").verdict, Verdict::Unknown);
+    let f = r.by_rule("floating-input").find(|f| f.reference == "U8").unwrap();
+    assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
 
     let dir = std::env::temp_dir().join(format!("gerberus-ac-coupled-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -1006,6 +1049,7 @@ class = "ic"
 1 = "IN"
 2 = "VDD"
 3 = "GND"
+4 = "INN"
 
 [[drive]]
 kind = "biases"
@@ -1022,11 +1066,46 @@ range = { unknown = "the datasheet says the input is biased internally, not to w
     let policy = Policy::load(&root("policy.toml")).unwrap();
     let v = compute(&d, &lib, &inputs);
     let r = check(&d, &lib, &policy, &inputs, &v);
-    let f = r.by_rule("floating-input").find(|f| f.reference == "U9").unwrap();
+    let f = u9(&r, "/AMP_IN");
     assert_eq!(f.verdict, Verdict::Pass, "{}", f.message);
     assert!(
         v.nets[inp].why.iter().any(|w| w.text.contains("biases its input")),
         "{:?}",
         v.nets[inp].why
     );
+
+    // A resistor to a rail on the biased input overrides the bias: the net is worked out from the resistor.
+    add(
+        &mut d,
+        "R99",
+        "Device:R",
+        "10k",
+        None,
+        vec![pin("1", PinKind::Passive, v33), pin("2", PinKind::Passive, inp)],
+    );
+    let v = compute(&d, &lib, &inputs);
+    assert!(
+        !v.nets[inp].why.iter().any(|w| w.text.contains("biases")),
+        "{:?}",
+        v.nets[inp].why
+    );
+    assert_eq!(v.nets[inp].span, v.nets[v33].span);
+}
+
+/// With no inputs.toml, a net named GND is taken as 0 V and nothing else is assumed.
+#[test]
+fn no_inputs_assumes_only_ground() {
+    let (d, _) = board("can-encoder", "can-encoder.kicad_sch");
+    let inputs = BoardInputs::none("can-encoder", &d);
+    assert_eq!(inputs.inputs.len(), 1);
+    assert!(inputs.reversible().is_empty());
+    let (v, r) = run_on(&d, &inputs);
+    assert_eq!(v.nets[net(&d, "GND")].span, Span::exact(0.0));
+    assert!(
+        v.nets[net(&d, "+3V3")].span.max.is_none(),
+        "{:?}",
+        v.nets[net(&d, "+3V3")]
+    );
+    assert!(fails(&r).is_empty(), "{:?}", fails(&r));
+    assert_eq!(r.by_rule("esd").count(), 0);
 }

@@ -31,7 +31,8 @@ Point Gerberus at a new board and get useful answers in minutes. Every `UNKNOWN`
 - [ ] Output readable like rustc's: each finding with the parts and nets involved, the numbers compared, and a `help:` line naming the fix.
 - [ ] Part families: one file covers a whole series by decoding its part number exactly (Yageo RC, UniRoyal 0402WGF, Samsung CL, Murata GRM, KEMET C-series ceramics). Within one series the size gives power and working voltage, and the voltage code gives a capacitor's rating, each cited to the series datasheet. The 28 resistors on rev 2 are one Yageo family.
 - [ ] Bulk library: JLCPCB basic parts first, then the most-used extended parts, each through `datasheet verify` and a blind second reading. Track what share of the test boards' parts are covered.
-- [x] Test points and net ties are skipped instead of `UNCHECKED`. (Mounting holes, fiducials and logos left out of the BOM are already skipped.)
+- [x] Test points are skipped instead of `UNCHECKED`. (Mounting holes, fiducials and logos left out of the BOM are already skipped.)
+- [ ] Net ties join their two nets in the voltage engine and in `stress`, instead of staying `UNCHECKED`.
 - [ ] Modules and dev boards (Daisy Seed, ESP32 and STM32 modules, Raspberry Pi Pico) as parts with their header pinout and limits.
 - [ ] A `[[variant]]` the datasheet doesn't list (PESD5V0S1BAF), allowed only with a source from the maker that it is the same part.
 - [ ] `gerberus part new <mpn> [--pdf FILE]`: writes a part file into the project's `parts/` folder from the schematic (pins from the symbol, class from the reference, every value `{ unknown = "not read yet" }`), ready to fill in and `datasheet verify`.

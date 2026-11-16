@@ -88,6 +88,21 @@ pub struct Net {
 }
 
 impl Design {
+    /// The fitted parts other than `reference` on `net`: what `reference`'s pin there connects to.
+    pub fn others_on(&self, reference: &str, net: usize) -> impl Iterator<Item = (&str, &Component, &str)> {
+        self.nets[net].pins.iter().filter_map(move |(r, p)| {
+            let c = self.components.get(r)?;
+            (r != reference && !c.dnp).then_some((r.as_str(), c, p.as_str()))
+        })
+    }
+
+    /// Whether `reference`'s pin on `net` is reached only through capacitors: there is at least one fitted
+    /// part besides `reference` on it, and every one is a capacitor.
+    pub fn only_capacitors_on(&self, reference: &str, net: usize) -> bool {
+        let mut others = self.others_on(reference, net).peekable();
+        others.peek().is_some() && others.all(|(r, c, _)| is_capacitor(r, c))
+    }
+
     pub fn net(&self, name: &str) -> Option<&Net> {
         self.nets.iter().find(|n| n.name == name)
     }
@@ -97,4 +112,12 @@ impl Design {
         let p = self.components.get(reference)?.pins.get(pin)?;
         self.nets.get(p.net)
     }
+}
+
+/// A capacitor, by its symbol (`Device:C…`) or its reference (`C12`).
+pub fn is_capacitor(reference: &str, c: &Component) -> bool {
+    c.lib_id.starts_with("Device:C")
+        || reference
+            .strip_prefix('C')
+            .is_some_and(|n| n.starts_with(|ch: char| ch.is_ascii_digit()))
 }

@@ -110,7 +110,7 @@ cites the numbers, their datasheet pages and how each net got its range. The rul
 | `tvs-standoff` | a rail rises above a TVS diode's stand-off voltage | warning |
 | `cap-voltage` | a capacitor sees more than its rated voltage (error), or more than `policy.toml` allows (warning) | error / warning |
 | `resistor-power` | a resistor's worst-case V²/R is over its rating (error) or the policy's share of it (warning) | error / warning |
-| `floating-input` | an input pin is on a net nothing drives (UNKNOWN when only open-drain or tri-state outputs, connectors or unmodelled parts reach it, or when it is AC-coupled through a capacitor into a part with no part file, which may bias it itself) | error |
+| `floating-input` | an input pin is on a net nothing drives (UNKNOWN when only open-drain or tri-state outputs, connectors or unmodelled parts reach it, or when it is AC-coupled through capacitors into a part with no part file, which may bias it itself) | error |
 | `unpowered` | a power pin is on a net nothing supplies (UNKNOWN when two or more pins of one part with no part file are tied on it with only passives: it may supply the net itself, like a charge pump's output) | error |
 | `regulator-headroom` | a regulator's supply can fall below what its datasheet output range needs | warning |
 | `esd` | an external connector pin's net has no TVS or ESD clamp, and a part on it (directly, or through one series resistor, inductor or diode with no clamp behind it) has no system-level ESD rating to `policy.toml`'s level | warning |

@@ -321,24 +321,40 @@ fn coverage_reports_unchecked_parts() {
     assert_eq!(unchecked, ["JP1"]);
 }
 
-/// Test points and net ties are bare copper: nothing to check, so they aren't counted as unchecked. A part file
-/// still wins.
+/// Test points are bare pads: nothing to check, so they aren't counted as unchecked. Net ties join two nets,
+/// which nothing follows yet, so they stay unchecked.
 #[test]
-fn test_points_and_net_ties_have_nothing_to_check() {
+fn test_points_have_nothing_to_check() {
     use gerberus::limits::non_electrical;
-    let part = |lib_id: &str| Component {
-        lib_id: lib_id.into(),
-        ..Default::default()
+    let part = |lib_id: &str, pins: usize| {
+        let mut c = Component {
+            lib_id: lib_id.into(),
+            ..Default::default()
+        };
+        for n in 1..=pins {
+            c.pins.insert(
+                n.to_string(),
+                Pin {
+                    number: n.to_string(),
+                    name: String::new(),
+                    kind: PinKind::Passive,
+                    no_connect: false,
+                    stack: None,
+                    net: 0,
+                },
+            );
+        }
+        c
     };
-    assert_eq!(non_electrical("TP1", &part("Seed3:TP_HP_DET")), Some("test point"));
+    assert_eq!(non_electrical("TP1", &part("Seed3:TP_HP_DET", 1)), Some("test point"));
     assert_eq!(
-        non_electrical("X3", &part("Connector:TestPoint_Probe")),
+        non_electrical("X3", &part("Connector:TestPoint_Probe", 1)),
         Some("test point")
     );
-    assert_eq!(non_electrical("NT1", &part("Device:NetTie_2")), Some("net tie"));
-    assert_eq!(non_electrical("R1", &part("Device:NetTie_3")), Some("net tie"));
-    assert_eq!(non_electrical("T1", &part("Device:Transformer_1P_1S")), None);
-    assert_eq!(non_electrical("JP1", &part("Jumper:SolderJumper_2_Open")), None);
+    // A `TP` reference on a part with more pins isn't taken on trust.
+    assert_eq!(non_electrical("TP2", &part("Custom:Thing", 3)), None);
+    assert_eq!(non_electrical("NT1", &part("Device:NetTie_2", 2)), None);
+    assert_eq!(non_electrical("JP1", &part("Jumper:SolderJumper_2_Open", 2)), None);
 }
 
 fn scratch_dir(name: &str) -> PathBuf {

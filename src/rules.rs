@@ -1177,21 +1177,24 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                             .and_then(|c2| c2.pins.get(p2))
                             .is_some_and(|p2| p2.kind == PinKind::Passive)
                 });
-            // An input reached only through capacitors is AC-coupled, or AC-grounded (a differential amplifier's
-            // unused input). Many amplifiers and codecs bias such an input themselves; without a part file,
-            // nothing says whether this one does.
+            // An input reached only through a capacitor from a signal is AC-coupled. So is one AC-grounded through
+            // a capacitor to a rail, when another input of the same part is AC-coupled (the other leg of a
+            // differential input). Many amplifiers and codecs bias such inputs themselves; without a part file,
+            // nothing says whether this one does. A lone input with only a decoupling capacitor stays a FAIL.
             let ac_coupled = lib.part_for(c).is_none()
                 && pin.kind == PinKind::Input
-                && design.nets[pin.net].pins.iter().any(|(r2, _)| r2 != reference)
-                && design.nets[pin.net]
-                    .pins
-                    .iter()
-                    .all(|(r2, _)| r2 == reference || design.components.get(r2).is_some_and(|c2| is_capacitor(r2, c2)));
+                && design.only_capacitors_on(reference, pin.net)
+                && (coupled_to_signal(design, volts, reference, pin.net)
+                    || c.pins.values().any(|q| {
+                        q.kind == PinKind::Input
+                            && q.net != pin.net
+                            && coupled_to_signal(design, volts, reference, q.net)
+                    }));
             let (vd, msg) = match nv.driver {
                 Driver::Floating if ac_coupled => (
                     Verdict::Unknown,
                     format!(
-                        "{reference}.{name} is on {net}, which only capacitors reach (AC-coupled). {reference} \
+                        "{reference}.{name} is on {net}, which only capacitors reach: it is AC-coupled. {reference} \
                          has no part file, so nothing says whether it biases this input itself; if its datasheet \
                          says it does, give it a `biases` drive"
                     ),
@@ -1236,12 +1239,18 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
     }
 }
 
-/// A capacitor, by its symbol (`Device:C…`) or its reference (`C12`).
-fn is_capacitor(reference: &str, c: &Component) -> bool {
-    c.lib_id.starts_with("Device:C")
-        || reference
-            .strip_prefix('C')
-            .is_some_and(|n| n.starts_with(|ch: char| ch.is_ascii_digit()))
+/// Whether `net` (reached only through capacitors from `reference`) has a capacitor carrying a signal in: its
+/// far side is on a driven net that isn't a fixed 0 V rail.
+fn coupled_to_signal(design: &Design, volts: &Voltages, reference: &str, net: usize) -> bool {
+    design.only_capacitors_on(reference, net)
+        && design.others_on(reference, net).any(|(_, c2, p2)| {
+            c2.pins.values().any(|q| {
+                q.number != p2
+                    && q.net != net
+                    && volts.nets[q.net].driver != Driver::Floating
+                    && volts.nets[q.net].span != Span::exact(0.0)
+            })
+        })
 }
 
 fn regulator_headroom(design: &Design, volts: &Voltages, r: &mut Report) {

@@ -5,7 +5,8 @@
 //! - a diode's forward drop (`[[drive]] kind = "forward"`),
 //! - a regulator's output or feedback pin (`kind = "regulates"`), through a two-resistor divider when the
 //!   feedback pin has one, using each resistor's tolerance from its part file,
-//! - a switch node (`kind = "switches"`).
+//! - a switch node (`kind = "switches"`),
+//! - an input the part biases itself, when only capacitors reach it (`kind = "biases"`).
 //!
 //! A net none of those reach gets the range of everything that can pull it: nets it reaches through
 //! resistors, inductors, LEDs and jumpers, and IC output pins, which reach at most their part's highest supply.
@@ -342,7 +343,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
                 let (span, why) = p.eval(design, &out, &mut regulators);
                 merge(&mut nv, span, why);
             }
-            // A part's own input bias is a high-resistance pull, which anything else on the net overrides.
+            // A part's own input bias is a high-resistance pull.
             if let Some(nv) = nv.as_mut()
                 && ps.iter().all(|p| p.drive.kind == DriveKind::Biases)
             {
@@ -757,6 +758,9 @@ fn plan_drive<'a>(
             Some(k) if k != pin => vec![plan(k, vec![pin], How::Forward { anode: pin })],
             _ => vec![],
         },
+        // A part's own input bias is a high-resistance pull that anything else on the net overrides, so it only
+        // sets an input reached through capacitors alone.
+        DriveKind::Biases if !design.only_capacitors_on(reference, pin) => vec![],
         DriveKind::Switches | DriveKind::Biases => match (supply, to) {
             (Some(s), Some(g)) => vec![plan(pin, vec![s, g], How::Switches { supply: s, ground: g })],
             _ => vec![plan(pin, vec![], How::Fails(missing(drive)))],
