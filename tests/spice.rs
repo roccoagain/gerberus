@@ -389,7 +389,7 @@ fn stress_command() {
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&text.stdout);
-    assert!(text.contains("PASS") && text.contains("1 runs"), "{text}");
+    assert!(text.contains("pass[hot-plug]") && text.contains("1 runs"), "{text}");
     let bad = std::process::Command::new(env!("CARGO_BIN_EXE_gerberus"))
         .arg("stress")
         .arg(dir.join("sniffer.kicad_sch"))

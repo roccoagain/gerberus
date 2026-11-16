@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use gerberus::diag::Show;
 use gerberus::kicad::pcb::{Layout, PlacedFootprint, PlacedPad, Point, StackLayer, Track, Zone};
 use gerberus::limits::Library;
 use gerberus::rules::{Severity, Verdict};
@@ -111,14 +112,19 @@ fn verdict(r: &Report, rule: &str, needle: &str) -> Verdict {
     r.findings
         .iter()
         .find(|f| f.rule == rule && f.message.contains(needle))
-        .unwrap_or_else(|| panic!("no {rule} finding mentioning {needle}:\n{}", si::render(r, true)))
+        .unwrap_or_else(|| {
+            panic!(
+                "no {rule} finding mentioning {needle}:\n{}",
+                si::render(r, &Show::everything())
+            )
+        })
         .verdict
 }
 
 #[test]
 fn a_clean_pair_passes() {
     let r = check(&board(vec![]));
-    assert_eq!(r.errors(), 0, "{}", si::render(&r, true));
+    assert_eq!(r.errors(), 0, "{}", si::render(&r, &Show::everything()));
     assert_eq!(verdict(&r, "usb-capacitance", "USB_D+"), Verdict::Pass);
 }
 
@@ -163,7 +169,7 @@ fn overlapping_zones_of_one_net_are_solid_copper() {
     let mut l = board(vec![]);
     l.zones.push(zone((15.0, -5.0), (25.0, 5.0)));
     let r = check(&l);
-    assert_eq!(r.errors(), 0, "{}", si::render(&r, true));
+    assert_eq!(r.errors(), 0, "{}", si::render(&r, &Show::everything()));
     assert!(
         r.findings
             .iter()
@@ -177,7 +183,11 @@ fn a_pair_with_no_connector_is_shown_as_untraced() {
     let mut l = board(vec![]);
     l.footprints[1].reference = "U2".into();
     let r = check(&l);
-    let text = si::render(&r, false);
+    let unknown = Show {
+        unknown: true,
+        ..Show::default()
+    };
+    let text = si::render(&r, &unknown);
     assert!(
         text.contains("USB: not traced") && text.contains("no connector pad"),
         "{text}"
@@ -198,7 +208,7 @@ fn a_header_tapped_near_the_phy_is_a_stub_not_the_far_end() {
         ],
     ));
     let r = check(&l);
-    assert_eq!(r.pairs[0].to, "J1.A6", "{}", si::render(&r, true));
+    assert_eq!(r.pairs[0].to, "J1.A6", "{}", si::render(&r, &Show::everything()));
     // The 3 mm tap is reported as a stub (a warning: under TUSB1210's 200 mil, but TI's guide allows none).
     let stub = r
         .findings

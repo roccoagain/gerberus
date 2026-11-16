@@ -44,11 +44,23 @@ gerberus check sniffer.kicad_sch
 (No git? On the [GitHub page](https://github.com/roccoagain/gerberus) click **Code → Download ZIP**, unzip it, and
 `cd` into `gerberus-main/tests/fixtures/sniffer` instead.)
 
-It lists every FAIL and UNKNOWN, then a count of errors, warnings, unknowns and passes (`--all` lists the passes
-too). A FAIL is an **error** when the part can be damaged or the board won't work, and a **warning** when it's a
-risk worth a look. It gives the numbers it compared and the datasheet page they came from. UNKNOWN means Gerberus
-couldn't decide, usually because a part has no part file yet; it never counts as a pass. The sniffer has 2 errors
-(its supply connected backwards damages the regulator) and warnings for headers with no ESD protection.
+It prints each problem it found, then a count:
+
+```text
+error[abs-max]: U1.CE reaches -5.5 V, past the minimum of -0.3 V
+  --> U1.CE (+5V), in fault "VIN reversed"
+   = note: worst case -5.5 to -3.6 V
+   = note: ME6211C33M5G-N V14 p5
+   = help: add a divider, clamp or series resistor, or choose a part rated higher
+...
+error: 2 errors, 7 warnings, 29 unknown, 96 passed
+```
+
+An **error** means a part can be damaged or the board won't work; a **warning** is a risk worth a look. Each one
+gives the numbers it compared, the datasheet page they came from, and a fix. **Unknown** means Gerberus couldn't
+decide, usually because a part has no part file yet; it never counts as a pass. Add `--unknown` to list those,
+`--all` to list the passes too, and `--verbose` to see how each net got its voltage range. The sniffer's 2 errors
+are its supply connected backwards, which damages the regulator; its warnings are headers with no ESD protection.
 
 On your own board, point it at the root schematic (`.kicad_sch`) or the Altium project (`.PrjPcb`). `check`
 needs an `inputs.toml` next to the schematic that says what voltages arrive on each connector pin (for example, 3.6

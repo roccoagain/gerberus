@@ -33,7 +33,7 @@ other nets, so a pass means the layout leaves the eye open, not that a real cabl
 line with no capacitance in `parts/` are listed as not modelled.
 
 `--plots DIR` writes an eye diagram and a TDR plot (the impedance the driver sees along each line) for each pair
-as SVG. `--json` prints the report as JSON, and `--all` lists passes as well as failures. The command exits with
+as SVG. `--json` prints the report as JSON, `--unknown` lists UNKNOWNs and `--all` lists passes as well. The command exits with
 status 1 when any rule fails with an error.
 
 The test board `tests/fixtures/usb-si-testbed` (from [roccoagain/hardware](https://github.com/roccoagain/hardware))

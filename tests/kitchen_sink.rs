@@ -331,3 +331,71 @@ fn bom_finds_the_wrong_lcsc_number_and_empty_stock() {
     );
     assert!(line("J5").findings.iter().all(|f| f.severity == bom::Severity::Info));
 }
+
+/// The terminal report reads like rustc's: a headline per FAIL with where it is, its numbers and sources as
+/// notes and a suggested fix, errors before warnings, UNKNOWNs and passes counted but not listed, and the long
+/// explanations of each net only with --verbose. The JSON keeps every field as it was.
+#[test]
+fn the_report_reads_like_rustc() {
+    use gerberus::diag::Show;
+    let lib = library();
+    let inputs = BoardInputs::load(&fixture("inputs.toml")).unwrap();
+    let v = compute(design(), &lib, &inputs);
+    let r = report();
+    let text = rules::render(design(), &v, r, &Show::default());
+    assert!(text.starts_with(
+        "error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V\n  --> U6.PA4 (/mcu/VSENSE)\n   = note: worst \
+         case 0 to 26 V\n   = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx\n   = help: "
+    ));
+    for want in [
+        "error[abs-max]: U5.CANH reaches 26 V, past the maximum of 14 V\n  --> U5.CANH (/CANH), in fault \"VIN \
+         shorted onto CANH\"",
+        "error[cap-voltage]: C2.1: 26 V across it, past its 25 V rating\n",
+        "error[junction-temperature]: U7 dissipates 371.4 mW, so its junction reaches 114 °C at 70 °C ambient, \
+         above its 105 °C maximum\n",
+        "warning[regulator-headroom]: U3 may not hold /power/+3V3A: /power/VAUX can fall to 3 V",
+        "and 9 more like these (--verbose lists them)",
+        "error: 18 errors, 9 warnings, 110 unknown, 402 passed\n   = note: 110 unknown and 402 passed not shown; \
+         --unknown or --all lists them\n",
+    ] {
+        assert!(text.contains(want), "missing {want:?} in\n{text}");
+    }
+    // Every error comes before the first warning, and nothing else is listed.
+    let last_error = text.rfind("\nerror[").unwrap();
+    assert!(last_error < text.find("\nwarning[").unwrap());
+    assert!(!text.contains("unknown[") && !text.contains("pass["));
+    // The 18 errors and the reverse-polarity summary, which the totals leave out.
+    assert_eq!(text.matches("error[").count(), 19);
+    // How +VDC gets to 26 V, and the GND reference list, only with --verbose.
+    assert!(!text.contains("the reference of input"));
+    let verbose = rules::render(
+        design(),
+        &v,
+        r,
+        &Show {
+            verbose: true,
+            ..Show::default()
+        },
+    );
+    assert!(verbose.contains("   = note: how /mcu/VSENSE gets 0 to 26 V:\n       /mcu/VSENSE: 0 to 26 V\n"));
+    assert!(verbose.contains("the reference of input VIN (J1.4)"));
+    let all = rules::render(design(), &v, r, &Show::everything());
+    assert_eq!(all.matches("\nunknown[").count(), 110);
+    // Passes include the reverse-polarity summaries, which the totals leave out.
+    let passes = r.findings.iter().filter(|f| f.verdict == Verdict::Pass).count();
+    assert_eq!((passes, all.matches("\npass[").count()), (403, 403));
+    // No colour unless asked for.
+    assert!(!text.contains('\x1b'));
+
+    let json: serde_json::Value = serde_json::to_value(r).unwrap();
+    let keys: std::collections::BTreeSet<&str> = json["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|f| f.as_object().unwrap().keys().map(String::as_str))
+        .collect();
+    assert_eq!(
+        keys.into_iter().collect::<Vec<_>>(),
+        ["case", "message", "reference", "rule", "severity", "verdict"]
+    );
+}

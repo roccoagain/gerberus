@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use gerberus::diag::{Diagnostic, Level, Show};
 use gerberus::inputs::BoardInputs;
 use gerberus::limits::{Coverage, Library, coverage};
 use gerberus::pinout;
@@ -8,18 +9,23 @@ use gerberus::pinout;
 const USAGE: &str = "usage:
   gerberus netlist <design>
   gerberus parts <design> [--parts DIR]...
-  gerberus pinout <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--parts DIR]...
+  gerberus pinout <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--parts DIR]... [--verbose] [--color WHEN]
   gerberus voltages <design> [--inputs FILE] [--parts DIR]... [--fault CASE] [--explain NET]...
   gerberus loads <design> [--inputs FILE] [--parts DIR]...
-  gerberus stress <design> [--inputs FILE] [--parts DIR]... [--runs N] [--seed N] [--netlist FILE] [--all] [--json]
-  gerberus check <design> [--inputs FILE] [--parts DIR]... [--all] [--json]
+  gerberus stress <design> [--inputs FILE] [--parts DIR]... [--runs N] [--seed N] [--netlist FILE] [REPORT]
+  gerberus check <design> [--inputs FILE] [--parts DIR]... [REPORT]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
-  gerberus si <board.kicad_pcb> [--parts DIR]... [--all] [--json] [--plots DIR]
+  gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
   gerberus update
   gerberus --version
+
+REPORT is any of --unknown, --all, --verbose (-v), --color auto|always|never and --json. Reports list errors
+then warnings, rustc-style. --unknown also lists UNKNOWNs, --all lists UNKNOWNs and passes, and --verbose adds the
+long explanations (how each net got its range). Colour is on for a terminal unless NO_COLOR is set. --json prints
+the findings as JSON instead.
 
 <design> is a KiCad root .kicad_sch, an Altium .PrjPcb project, or a single Altium .SchDoc. `pinout` reads
 KiCad designs only, since it compares against the KiCad board.
@@ -48,8 +54,7 @@ netlist. It needs ngspice installed, and exits with status 1 when an absolute ma
 breakdown and stand-off, capacitor voltage and resistor power, undriven inputs and power pins, regulator
 headroom, and parts with nothing to check against. Each fault case in the inputs is then checked against
 absolute maximum ratings, TVS breakdown and capacitor ratings. FAILs cite the numbers, their datasheet pages and how each
-net got its range. --all also lists passes; --json prints the findings as JSON. It exits with status 1 when
-any error FAILs.
+net got its range (with --verbose). It exits with status 1 when any error FAILs.
 
 `bom` looks up every BOM line by its LCSC part number: stock for --boards boards (default 10), LCSC's listing
 status, and similar parts from other makers. Answers are cached in --cache (default ~/.cache/gerberus/lcsc) for
@@ -330,13 +335,9 @@ fn analyse(
 }
 
 fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let all = rest.iter().any(|a| a == "--all");
+    let (show, rest) = Show::parse(rest)?;
     let json = rest.iter().any(|a| a == "--json");
-    let rest: Vec<String> = rest
-        .iter()
-        .filter(|a| *a != "--all" && *a != "--json")
-        .cloned()
-        .collect();
+    let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
     let o = options(path, &rest, &["--inputs"])?;
     let (design, lib, inputs, v) = analyse(path, &o)?;
     let policy = gerberus::policy::Policy::builtin()?;
@@ -344,13 +345,13 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
     if json {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
-        print!("{}", gerberus::rules::render(&design, &v, &report, all));
+        print!("{}", gerberus::rules::render(&design, &v, &report, &show));
     }
     Ok(report.errors() == 0)
 }
 
 fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let mut all = false;
+    let (show, rest) = Show::parse(rest)?;
     let mut json = false;
     let mut runs = None;
     let mut seed = 1;
@@ -359,7 +360,6 @@ fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
     let mut it = rest.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--all" => all = true,
             "--json" => json = true,
             "--runs" => {
                 runs = Some(
@@ -400,7 +400,7 @@ fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
         print!("{}", gerberus::spice::describe(&design, &sweep));
-        print!("{}", gerberus::rules::render(&design, &v, &report, all));
+        print!("{}", gerberus::rules::render(&design, &v, &report, &show));
     }
     Ok(report.errors() == 0)
 }
@@ -539,7 +539,8 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
 
 /// Returns whether the board passed (no errors).
 fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let opts = options(path, rest, &["--pcb"])?;
+    let (show, rest) = Show::parse(rest)?;
+    let opts = options(path, &rest, &["--pcb"])?;
     let lib = load_library(&opts.dirs)?;
     let design = gerberus::kicad::load(path)?;
     let pcb = opts
@@ -551,13 +552,24 @@ fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
         None => println!("board: none found next to the schematic, so footprints are not checked"),
     }
     let report = pinout::check(&design, footprints.as_deref(), &lib);
-    for f in &report.findings {
+    println!();
+    let mut out = String::new();
+    let mut sorted: Vec<&pinout::Finding> = report.findings.iter().collect();
+    sorted.sort_by_key(|f| f.severity);
+    for f in sorted {
+        let level = match f.severity {
+            pinout::Severity::Error => Level::Error,
+            pinout::Severity::Warning => Level::Warning,
+        };
+        let mut d = Diagnostic::from_message(level, "pinout", &[&f.reference], &f.message);
         let mpn = design.components.get(&f.reference).map(gerberus::limits::component_mpn);
-        match mpn {
-            Some(m) if !m.is_empty() => println!("{} ({m}): {}: {}", f.reference, f.severity, f.message),
-            _ => println!("{}: {}: {}", f.reference, f.severity, f.message),
-        }
+        d.location = Some(match mpn {
+            Some(m) if !m.is_empty() => format!("{} ({m})", f.reference),
+            _ => f.reference.clone(),
+        });
+        d.render(&mut out, show.style, show.verbose, show.columns());
     }
+    print!("{out}");
     let (mut all, mut fp_only, mut sheet_only, mut none) = (0, 0, 0, 0);
     let mut no_sheet: Vec<&str> = Vec::new();
     for (r, c) in &report.coverage {
@@ -571,14 +583,36 @@ fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
             no_sheet.push(r);
         }
     }
+    let style = show.style;
+    let (word, color) = match (report.errors(), report.warnings()) {
+        (0, 0) => ("ok", "1;32"),
+        (0, _) => ("warning", "1;33"),
+        _ => ("error", "1;31"),
+    };
     println!(
-        "{}, {}. Compared: {all} parts with symbol, footprint and datasheet; {fp_only} symbol and \
-         footprint only; {sheet_only} symbol and datasheet only; {none} not compared",
-        count(report.errors(), "error"),
-        count(report.warnings(), "warning")
+        "{}{} {}",
+        style.paint(color, word),
+        style.paint("1", ":"),
+        style.paint(
+            "1",
+            &format!(
+                "{}, {}",
+                count(report.errors(), "error"),
+                count(report.warnings(), "warning")
+            )
+        )
+    );
+    let eq = style.paint("1;34", "=");
+    let note = style.paint("1", "note");
+    println!(
+        "   {eq} {note}: compared {all} parts with symbol, footprint and datasheet; {fp_only} symbol and \
+         footprint only; {sheet_only} symbol and datasheet only; {none} not compared"
     );
     if !no_sheet.is_empty() {
-        println!("no part file, so no datasheet pinout: {}", no_sheet.join(" "));
+        println!(
+            "   {eq} {note}: no part file, so no datasheet pinout: {}",
+            no_sheet.join(" ")
+        );
     }
     for w in &design.warnings {
         eprintln!("warning: {w}");
@@ -587,18 +621,18 @@ fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
 }
 
 fn count(n: usize, what: &str) -> String {
-    format!("{n} {what}{}", if n == 1 { "" } else { "s" })
+    gerberus::diag::plural(n, what)
 }
 
 fn si(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let all = rest.iter().any(|a| a == "--all");
+    let (show, rest) = Show::parse(rest)?;
     let json = rest.iter().any(|a| a == "--json");
     let mut plots = None;
     let mut others = Vec::new();
     let mut it = rest.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--all" | "--json" => {}
+            "--json" => {}
             "--plots" => plots = Some(PathBuf::from(it.next().ok_or("--plots needs a folder")?)),
             _ => others.push(a.clone()),
         }
@@ -627,7 +661,7 @@ fn si(path: &Path, rest: &[String]) -> Result<bool, String> {
     if json {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
-        print!("{}", gerberus::si::render(&report, all));
+        print!("{}", gerberus::si::render(&report, &show));
     }
     Ok(report.errors() == 0)
 }

@@ -10,6 +10,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use gerberus::diag::Show;
 use gerberus::kicad::pcb::load_layout;
 use gerberus::limits::Library;
 use gerberus::rules::{Severity, Verdict};
@@ -63,7 +64,7 @@ fn the_good_port_passes_and_the_bad_port_fails_every_rule_it_breaks() {
     );
 
     // Port 1: nothing fails, and the eye clears the mask.
-    assert!(failures(r, "USB1").is_empty(), "{}", si::render(r, false));
+    assert!(failures(r, "USB1").is_empty(), "{}", si::render(r, &Show::default()));
     let good = &r.pairs[0];
     assert_eq!(good.name, "USB1");
     // The long coupled runs sit on 90 Ω; the short pieces where the pair fans out to pads don't count.
@@ -91,7 +92,11 @@ fn the_good_port_passes_and_the_bad_port_fails_every_rule_it_breaks() {
         "usb-capacitance",
         "usb-eye",
     ] {
-        assert!(bad.contains(&rule), "{rule} should fail: {}", si::render(r, false));
+        assert!(
+            bad.contains(&rule),
+            "{rule} should fail: {}",
+            si::render(r, &Show::default())
+        );
     }
     let worst = &r.pairs[1];
     assert!(
@@ -130,7 +135,7 @@ fn the_tdr_reads_each_ports_impedance() {
 #[test]
 fn the_report_and_plots_describe_both_ports() {
     let r = report();
-    let text = si::render(r, true);
+    let text = si::render(r, &Show::everything());
     assert!(text.contains("USB1") && text.contains("USB2"), "{text}");
     for pair in &r.pairs {
         let eye = si::svg::eye(pair).unwrap();
