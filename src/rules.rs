@@ -91,11 +91,17 @@ pub struct Finding {
     /// Nets whose ranges the finding read, so a report can explain them.
     #[serde(skip)]
     pub nets: Vec<usize>,
+    /// The fault case the finding comes from, or none for normal operation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub case: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Report {
     pub findings: Vec<Finding>,
+    /// Each fault case's net voltages, which its findings' `nets` index into.
+    #[serde(skip)]
+    pub cases: Vec<(String, Voltages)>,
 }
 
 impl Report {
@@ -128,10 +134,100 @@ impl Report {
     }
 }
 
-/// Runs every rule on a design.
+/// The rules a fault case runs: only damage. A fault is checked against absolute maximum ratings, TVS breakdown
+/// and capacitor ratings (without derating). Operating ranges don't apply while a fault lasts, and resistor
+/// power isn't checked: a fault drives both ends of a resistor from independent ranges, which overstates the
+/// voltage across it.
+pub const FAULT_RULES: [&str; 3] = ["abs-max", "tvs-breakdown", "cap-voltage"];
+
+/// Runs every rule on a design, then the damage rules on each fault case in `inputs`.
 pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs, volts: &Voltages) -> Report {
     let mut r = Report::default();
     let cov = coverage(design, lib);
+    part_rules(design, lib, policy, inputs, volts, false, &mut r);
+    for (reference, c) in &design.components {
+        if c.dnp || !matches!(cov.get(reference), Some(Coverage::Datasheet { .. })) {
+            continue;
+        }
+        let Lookup::Datasheet(part) = lib.lookup(c) else {
+            continue;
+        };
+        for pin in part.uncovered_pins() {
+            r.findings.push(Finding {
+                rule: "unchecked",
+                verdict: Verdict::Unknown,
+                severity: Severity::Error,
+                reference: reference.clone(),
+                message: format!("{reference}.{pin}: {} has no voltage limit for this pin", part.mpn),
+                nets: vec![],
+                case: None,
+            });
+        }
+    }
+    for (reference, cv) in &cov {
+        if let Coverage::Unchecked { reason } = cv {
+            r.findings.push(Finding {
+                rule: "unchecked",
+                verdict: Verdict::Unknown,
+                severity: Severity::Error,
+                reference: reference.clone(),
+                message: format!("{reference}: nothing to check its pins against ({reason})"),
+                nets: vec![],
+                case: None,
+            });
+        }
+    }
+    undriven_pins(design, lib, volts, &mut r);
+    regulator_headroom(design, volts, &mut r);
+
+    // Fault cases. A finding that reads only nets the fault doesn't change says nothing new, so it is left out.
+    for fault in inputs.faults() {
+        let case_inputs = inputs.case(design, fault);
+        let cv = crate::voltage::compute(design, lib, &case_inputs);
+        let mut fr = Report::default();
+        part_rules(design, lib, &Policy::default(), &case_inputs, &cv, true, &mut fr);
+        for mut f in fr.findings {
+            if f.nets.iter().all(|&n| cv.nets[n].span == volts.nets[n].span) {
+                continue;
+            }
+            f.message = format!("fault \"{fault}\": {}", f.message);
+            f.case = Some(fault.to_string());
+            r.findings.push(f);
+        }
+        r.cases.push((fault.to_string(), cv));
+    }
+
+    r.findings.sort_by(|a, b| {
+        (
+            a.verdict,
+            a.severity,
+            rule_index(a.rule),
+            &a.case,
+            &a.reference,
+            &a.message,
+        )
+            .cmp(&(
+                b.verdict,
+                b.severity,
+                rule_index(b.rule),
+                &b.case,
+                &b.reference,
+                &b.message,
+            ))
+    });
+    r
+}
+
+/// The rules that compare each part's limits with its nets. `fault` keeps only [`FAULT_RULES`].
+fn part_rules(
+    design: &Design,
+    lib: &Library,
+    policy: &Policy,
+    inputs: &BoardInputs,
+    volts: &Voltages,
+    fault: bool,
+    r: &mut Report,
+) {
     for (reference, c) in &design.components {
         if c.dnp {
             continue;
@@ -151,48 +247,15 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
         };
         for limit in &part.limits {
             match limit.quantity {
-                Quantity::Voltage => voltage_rules(&ctx, policy, limit, &mut r),
-                Quantity::Power if part.class == Class::Resistor => resistor_power(&ctx, policy, limit, &mut r),
+                Quantity::Voltage => voltage_rules(&ctx, policy, limit, r),
+                Quantity::Power if part.class == Class::Resistor => resistor_power(&ctx, policy, limit, r),
                 _ => {}
             }
         }
-        if matches!(cov.get(reference), Some(Coverage::Datasheet { .. })) {
-            for pin in part.uncovered_pins() {
-                r.findings.push(Finding {
-                    rule: "unchecked",
-                    verdict: Verdict::Unknown,
-                    severity: Severity::Error,
-                    reference: reference.clone(),
-                    message: format!("{reference}.{pin}: {} has no voltage limit for this pin", part.mpn),
-                    nets: vec![],
-                });
-            }
-        }
     }
-    for (reference, cv) in &cov {
-        if let Coverage::Unchecked { reason } = cv {
-            r.findings.push(Finding {
-                rule: "unchecked",
-                verdict: Verdict::Unknown,
-                severity: Severity::Error,
-                reference: reference.clone(),
-                message: format!("{reference}: nothing to check its pins against ({reason})"),
-                nets: vec![],
-            });
-        }
+    if fault {
+        r.findings.retain(|f| FAULT_RULES.contains(&f.rule));
     }
-    undriven_pins(design, lib, volts, &mut r);
-    regulator_headroom(design, volts, &mut r);
-    r.findings.sort_by(|a, b| {
-        (a.verdict, a.severity, rule_index(a.rule), &a.reference, &a.message).cmp(&(
-            b.verdict,
-            b.severity,
-            rule_index(b.rule),
-            &b.reference,
-            &b.message,
-        ))
-    });
-    r
 }
 
 fn rule_index(rule: &str) -> usize {
@@ -227,14 +290,86 @@ impl Ctx<'_> {
 
     /// `V(a) − V(b)` at its worst. Two pins on one net are always 0 V apart.
     fn diff(&self, a: usize, b: usize) -> Span {
+        self.diff_why(a, b).0
+    }
+
+    /// `V(a) − V(b)` at its worst, and what narrowed it below the two ranges' extremes, for messages.
+    ///
+    /// Two things can: a `[[differential]]` in inputs.toml, and a net of passive parts (see
+    /// [`crate::voltage::NetVoltage::between`]), which at every moment sits between the nets around it.
+    fn diff_why(&self, a: usize, b: usize) -> (Span, Vec<String>) {
+        let mut notes = vec![];
+        let s = self.diff_depth(a, b, 0, &mut notes);
+        notes.dedup();
+        (s, notes)
+    }
+
+    fn diff_depth(&self, a: usize, b: usize, depth: usize, notes: &mut Vec<String>) -> Span {
         if a == b {
             return Span::exact(0.0);
         }
         let (x, y) = (self.span(a), self.span(b));
-        Span {
+        let mut s = Span {
             min: x.min.zip(y.max).map(|(p, q)| p - q),
             max: x.max.zip(y.min).map(|(p, q)| p - q),
+        };
+        let net = |p: &crate::inputs::PinRef| Some(self.design.components.get(&p.reference)?.pins.get(&p.pin)?.net);
+        for d in &self.inputs.differential {
+            let (Some(p), Some(t)) = (net(&d.pin), net(&d.to)) else {
+                continue;
+            };
+            let c = if (p, t) == (a, b) {
+                Span::new(d.min, d.max)
+            } else if (p, t) == (b, a) {
+                Span::new(-d.max, -d.min)
+            } else {
+                continue;
+            };
+            let narrowed = intersect(s, c);
+            if narrowed != s {
+                notes.push(format!(
+                    "{} − {} kept to {} to {} V by inputs.toml ({})",
+                    self.net_name(p),
+                    self.net_name(t),
+                    d.min,
+                    d.max,
+                    d.source
+                ));
+            }
+            s = narrowed;
         }
+        if depth < 4 {
+            for (side, n) in [(false, a), (true, b)] {
+                let around = &self.volts.nets[n].between;
+                if around.is_empty() {
+                    continue;
+                }
+                let mut sub = vec![];
+                let hull = around
+                    .iter()
+                    .map(|&m| {
+                        if side {
+                            self.diff_depth(a, m, depth + 1, &mut sub)
+                        } else {
+                            self.diff_depth(m, b, depth + 1, &mut sub)
+                        }
+                    })
+                    .reduce(Span::union)
+                    .unwrap_or(s);
+                let narrowed = intersect(s, hull);
+                if narrowed != s {
+                    let names: Vec<&str> = around.iter().map(|&m| self.net_name(m)).collect();
+                    notes.push(format!(
+                        "{} only connects through passive parts to {}, so it stays between them",
+                        self.net_name(n),
+                        names.join(" and ")
+                    ));
+                    notes.extend(sub);
+                }
+                s = narrowed;
+            }
+        }
+        s
     }
 
     /// Where a pin is and what it sees, for messages: `U1.VIN (+5V)`.
@@ -277,7 +412,20 @@ impl Ctx<'_> {
             reference: self.reference.to_string(),
             message,
             nets,
+            case: None,
         }
+    }
+}
+
+/// Both bounds at once. An unknown end of one side leaves the other side's end.
+fn intersect(a: Span, b: Span) -> Span {
+    let pick = |p: Option<f64>, q: Option<f64>, f: fn(f64, f64) -> f64| match (p, q) {
+        (Some(p), Some(q)) => Some(f(p, q)),
+        (p, q) => p.or(q),
+    };
+    Span {
+        min: pick(a.min, b.min, f64::max),
+        max: pick(a.max, b.max, f64::min),
     }
 }
 
@@ -827,11 +975,16 @@ fn resistor_power(ctx: &Ctx, policy: &Policy, limit: &Limit, r: &mut Report) {
         ));
         return;
     };
-    let diff = ctx.diff(a, b);
+    let (diff, notes) = ctx.diff_why(a, b);
     let across = magnitude(diff);
     let on_floor = magnitude_floor(diff, (ctx.volts.nets[a].floor, ctx.volts.nets[b].floor));
+    let notes = if notes.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", notes.join("; "))
+    };
     let head = format!(
-        "{} ({} to {}): {} across it",
+        "{} ({} to {}): {} across it{notes}",
         ctx.reference,
         ctx.net_name(a),
         ctx.net_name(b),
@@ -955,6 +1108,7 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                 reference: reference.clone(),
                 message: msg,
                 nets: vec![pin.net],
+                case: None,
             });
         }
     }
@@ -979,6 +1133,7 @@ fn regulator_headroom(design: &Design, volts: &Voltages, r: &mut Report) {
             reference: reg.reference.clone(),
             message: format!("{} ({}) sets {out}: {text}", reg.reference, reg.mpn),
             nets: vec![reg.supply],
+            case: None,
         });
     }
 }
@@ -997,6 +1152,11 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, all: bool) -> 
         };
         out += &format!("{label:<13} {:<18} {}\n", f.rule, f.message);
         if f.verdict == Verdict::Fail {
+            let volts = f
+                .case
+                .as_ref()
+                .and_then(|c| report.cases.iter().find(|(name, _)| name == c))
+                .map_or(volts, |(_, v)| v);
             let mut seen = BTreeSet::new();
             for &n in &f.nets {
                 if seen.insert(n) && volts.nets[n].span != Span::exact(0.0) {

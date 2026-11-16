@@ -11,8 +11,86 @@ min = 7
 max = 25.2
 source = "hardware/can-encoder/DESIGN.md: the C610s run from the 24 V battery bus (6S, up to 25.2 V)"
 
+# The CAN bus: other nodes and this board's own transceiver drive it, and their grounds can sit apart from this
+# board's. J2 is wired in parallel with J1, so J1 covers both.
+[[input]]
+name = "CANH"
+pin = "J1.2"
+to = "J1.4"
+min = -2
+max = 7
+source = "TI SLLA270 (January 2008) p6, 4.2 Cables: the ISO 11898 standard's -2 V to 7 V common-mode range of tolerable ground offset"
+
+[[input]]
+name = "CANL"
+pin = "J1.3"
+to = "J1.4"
+min = -2
+max = 7
+source = "TI SLLA270 (January 2008) p6, 4.2 Cables: the ISO 11898 standard's -2 V to 7 V common-mode range of tolerable ground offset"
+
+# CANH and CANL move together: whatever the common-mode voltage, the drivers set the difference between them.
+[[differential]]
+pin = "J1.2"
+to = "J1.3"
+min = -0.12
+max = 3
+source = "TCAN330 SLLSEQ7F p7: VOD(D) 1.6 to 3 V at 50 to 65 ohm (a bus terminated at both ends) and VOD(R) -120 to 12 mV at 60 ohm. Assumes every node's driver, the C610s' too, stays inside the same ISO 11898-2 limits"
+
+# Fault cases. Each is checked on its own, against absolute maximum ratings, TVS breakdown and capacitor ratings,
+# with its inputs in place of the normal ones on the same nets. A miswired or damaged cable puts VBUS (the VBUS
+# input's range) on a bus line.
+[[input]]
+name = "CANH shorted to VBUS"
+fault = "VBUS shorted onto CANH"
+pin = "J1.2"
+to = "J1.4"
+min = 7
+max = 25.2
+source = "hardware/can-encoder/rev1-archive/DESIGN.md, CAN pins vs VBUS miswiring: a cable that shorts VBUS onto CANH/CANL would damage the TCAN330"
+
+[[input]]
+name = "CANL shorted to VBUS"
+fault = "VBUS shorted onto CANL"
+pin = "J1.3"
+to = "J1.4"
+min = 7
+max = 25.2
+source = "hardware/can-encoder/rev1-archive/DESIGN.md, CAN pins vs VBUS miswiring: a cable that shorts VBUS onto CANH/CANL would damage the TCAN330"
+
+# The debug probe drives SWDIO, SWCLK and NRST when it is plugged in, at up to the target voltage it senses on
+# J3.1. TC2030 pinout from hardware/can-encoder/rev1-archive/DESIGN.md: 1 VCC, 2 SWDIO, 3 NRST, 4 SWCLK, 5 GND.
+
+[[input]]
+name = "SWDIO (debug probe)"
+pin = "J3.2"
+to = "J3.5"
+min = 0
+max = { pin = "J3.1" }
+source = "hardware/sniffer/DESIGN.md, J2 row: program with an ST-Link or J-Link. Assumes the probe's outputs follow the target voltage it senses on VCC (VTref) rather than a fixed 3.3 V; not checked against a probe manual"
+
+[[input]]
+name = "NRST (debug probe)"
+pin = "J3.3"
+to = "J3.5"
+min = 0
+max = { pin = "J3.1" }
+source = "hardware/sniffer/DESIGN.md, J2 row: program with an ST-Link or J-Link. Assumes the probe's outputs follow the target voltage it senses on VCC (VTref) rather than a fixed 3.3 V; not checked against a probe manual"
+
+[[input]]
+name = "SWCLK (debug probe)"
+pin = "J3.4"
+to = "J3.5"
+min = 0
+max = { pin = "J3.1" }
+source = "hardware/sniffer/DESIGN.md, J2 row: program with an ST-Link or J-Link. Assumes the probe's outputs follow the target voltage it senses on VCC (VTref) rather than a fixed 3.3 V; not checked against a probe manual"
+
 # Connector pins nothing outside drives. Every other connector pin with no input makes its net UNKNOWN.
 
 [[undriven]]
 pin = "J3.1"
 source = "hardware/can-encoder/rev1-archive/DESIGN.md, J3 row: same pinout as the sniffer, 1 VCC. Assumes the probe senses the target voltage on VCC (VTref) and doesn't power the board through it"
+
+[[undriven]]
+pin = "J3.6"
+source = "hardware/can-encoder/rev1-archive/DESIGN.md, J3 row: 6 SWO (unused); the probe only listens on SWO"
