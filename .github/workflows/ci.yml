@@ -14,7 +14,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Only cancel superseded PR runs; every commit on main keeps its result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -68,9 +69,11 @@ jobs:
         run: |
           msrv=$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)
           rustup toolchain install "$msrv" --profile minimal
-          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+          # Overrides rust-toolchain.toml for every later step, rust-cache included, so the pinned toolchain is
+          # never installed here and the cache key follows the MSRV.
+          echo "RUSTUP_TOOLCHAIN=$msrv" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
-      - run: cargo "+$MSRV" check --all-targets --locked
+      - run: cargo check --all-targets --locked
 
   deny:
     name: cargo-deny
