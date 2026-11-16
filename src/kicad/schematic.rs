@@ -68,6 +68,8 @@ pub struct LibPin {
     pub hidden: bool,
     /// Connection point in library coordinates, in mm, Y up as written in the file.
     pub at: (f64, f64),
+    /// For one number of a stacked pin, the stack's first number.
+    pub stack: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -280,15 +282,22 @@ fn read_lib_symbol(s: &Sexp) -> LibSymbol {
         let unit_no = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
         for p in unit.children("pin") {
             let Some((x, y, _)) = at_of(p) else { continue };
-            pins.push(LibPin {
-                unit: unit_no,
-                body_style,
-                number: p.child("number").and_then(|n| n.arg(1)).unwrap_or_default().to_string(),
-                name: p.child("name").and_then(|n| n.arg(1)).unwrap_or_default().to_string(),
-                kind: p.arg(1).unwrap_or("unspecified").to_string(),
-                hidden: p.flag("hide").unwrap_or(false),
-                at: (x, y),
-            });
+            let number = p.child("number").and_then(|n| n.arg(1)).unwrap_or_default();
+            // A KiCad 10 stacked pin (`[3,9,10,13]`, `[1-4]`) is one pin per number at the same point.
+            let numbers = stacked_numbers(number);
+            let stack = (numbers.len() > 1).then(|| numbers[0].clone());
+            for number in numbers {
+                pins.push(LibPin {
+                    stack: stack.clone(),
+                    unit: unit_no,
+                    body_style,
+                    number,
+                    name: p.child("name").and_then(|n| n.arg(1)).unwrap_or_default().to_string(),
+                    kind: p.arg(1).unwrap_or("unspecified").to_string(),
+                    hidden: p.flag("hide").unwrap_or(false),
+                    at: (x, y),
+                });
+            }
         }
     }
     LibSymbol {
@@ -350,6 +359,31 @@ fn read_symbol(s: &Sexp) -> SymbolInstance {
     }
 }
 
+/// The pad numbers of a pin: KiCad 10 writes a stacked pin as `[3,9,10,13]` or `[1-4]` (ranges of plain
+/// numbers, or of numbers with the same letter prefix, `[A1-A3]`). Anything else is one number, as written.
+pub fn stacked_numbers(number: &str) -> Vec<String> {
+    let Some(inner) = number.strip_prefix('[').and_then(|n| n.strip_suffix(']')) else {
+        return vec![number.to_string()];
+    };
+    let mut out = Vec::new();
+    for part in inner.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let range = part.split_once('-').and_then(|(a, b)| {
+            let split = |t: &str| {
+                let digits = t.trim_start_matches(|c: char| !c.is_ascii_digit());
+                let prefix = &t[..t.len() - digits.len()];
+                digits.parse::<u32>().ok().map(|n| (prefix.to_string(), n))
+            };
+            let ((pa, a), (pb, b)) = (split(a.trim())?, split(b.trim())?);
+            (pa == pb && a <= b && b - a < 1000).then(|| (a..=b).map(|n| format!("{pa}{n}")).collect::<Vec<_>>())
+        });
+        match range {
+            Some(numbers) => out.extend(numbers),
+            None => out.push(part.to_string()),
+        }
+    }
+    if out.is_empty() { vec![number.to_string()] } else { out }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,5 +414,18 @@ mod tests {
         // (at 100 50 90) (mirror x) gives the transform (0, 1, 1, 0).
         assert_eq!(sym(90, Some('x')).place((0.0, -3.81)), (to_iu(103.81), to_iu(50.0)));
         assert_eq!(sym(270, Some('y')).place((5.08, 0.0)), (to_iu(100.0), to_iu(55.08)));
+    }
+
+    #[test]
+    fn expands_stacked_pin_numbers() {
+        assert_eq!(stacked_numbers("3"), ["3"]);
+        assert_eq!(stacked_numbers("[3,9,10,13]"), ["3", "9", "10", "13"]);
+        assert_eq!(stacked_numbers("[15, 16]"), ["15", "16"]);
+        assert_eq!(stacked_numbers("[1-4]"), ["1", "2", "3", "4"]);
+        assert_eq!(stacked_numbers("[A1-A3,B2]"), ["A1", "A2", "A3", "B2"]);
+        // Mismatched prefixes and backwards ranges are kept as written.
+        assert_eq!(stacked_numbers("[A1-B3]"), ["A1-B3"]);
+        assert_eq!(stacked_numbers("[4-1]"), ["4-1"]);
+        assert_eq!(stacked_numbers("[]"), ["[]"]);
     }
 }

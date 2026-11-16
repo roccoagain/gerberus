@@ -1115,7 +1115,8 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
             continue;
         }
         for pin in c.pins.values() {
-            if pin.no_connect {
+            // A stacked pin's pads are one pin: report it once, under its first number.
+            if pin.no_connect || pin.stack.as_ref().is_some_and(|s| *s != pin.number) {
                 continue;
             }
             let rule = match pin.kind {
@@ -1140,7 +1141,10 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                 .pins
                 .iter()
                 .filter(|(r2, _)| r2 == reference)
-                .count();
+                .filter_map(|(_, p2)| c.pins.get(p2))
+                .map(|p2| p2.stack.as_ref().unwrap_or(&p2.number))
+                .collect::<BTreeSet<_>>()
+                .len();
             let powered_elsewhere = c.pins.values().any(|q| {
                 q.kind == PinKind::PowerIn
                     && q.net != pin.net

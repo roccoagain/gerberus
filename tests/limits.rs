@@ -276,6 +276,7 @@ fn capacitor(value: &str, voltage: Option<&str>) -> Component {
                 name: String::new(),
                 kind: PinKind::Passive,
                 no_connect: false,
+                stack: None,
                 net: 0,
             },
         );
