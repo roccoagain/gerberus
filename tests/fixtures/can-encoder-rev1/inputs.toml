@@ -1,0 +1,12 @@
+board = "can-encoder rev 1"
+
+# Rev 1's own DESIGN.md assumed VBUS of 7–18 V. The bus it was built for is the 24 V 6S battery bus (up to
+# 25.2 V), which is what this file describes: rev 2's DESIGN.md says the SMAJ18A "would have conducted and
+# burned at 24 V". J2 is wired in parallel with J1, so J1 covers both.
+[[input]]
+name = "VBUS"
+pin = "J1.1"
+to = "J1.4"
+min = 7
+max = 25.2
+source = "hardware/can-encoder/DESIGN.md: the C610s run from the 24 V battery bus (6S, up to 25.2 V)"

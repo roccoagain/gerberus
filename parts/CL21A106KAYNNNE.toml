@@ -1,0 +1,19 @@
+mpn = "CL21A106KAYNNNE"
+manufacturer = "Samsung Electro-Mechanics"
+description = "10 uF 25 V X5R MLCC, 0805"
+class = "capacitor"
+
+[datasheet]
+title = "Samsung Electro-Mechanics MLCC catalogue"
+document = "November 2015"
+url = "https://www.lcsc.com/datasheet/C15850.pdf"
+
+[pins]
+1 = "1"
+2 = "2"
+
+[[limit]]
+pins = ["1"]
+to = "2"
+abs_max = { unknown = "the datasheet gives a rated voltage and a short withstanding-voltage test, not an absolute maximum" }
+recommended = { min = -25, max = 25, page = 4, note = "CL21A106KAYNNNE0" }

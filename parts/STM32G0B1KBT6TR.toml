@@ -1,0 +1,77 @@
+mpn = "STM32G0B1KBT6TR"
+manufacturer = "STMicroelectronics"
+description = "Arm Cortex-M0+ MCU, 128 KB flash, FDCAN and USB, LQFP-32"
+class = "ic"
+
+[datasheet]
+title = "STM32G0B1xB/xC/xE Arm Cortex-M0+ 32-bit MCU, up to 512KB Flash, 144KB RAM, 6x USART, timers, ADC, DAC, comm. I/Fs, 1.7-3.6V"
+document = "DS13560 Rev 3"
+url = "https://www.lcsc.com/datasheet/C7021416.pdf"
+
+# "LQFP32 / UFQFPN32 - GP" column of Table 12 (pages 47 to 55).
+[pins]
+1 = "PB9"
+2 = "PC14-OSC32_IN"
+3 = "PC15-OSC32_OUT"
+4 = "VDD/VDDA"
+5 = "VSS/VSSA"
+6 = "PF2-NRST"
+7 = "PA0"
+8 = "PA1"
+9 = "PA2"
+10 = "PA3"
+11 = "PA4"
+12 = "PA5"
+13 = "PA6"
+14 = "PA7"
+15 = "PB0"
+16 = "PB1"
+17 = "PB2"
+18 = "PA8"
+19 = "PA9"
+20 = "PC6"
+21 = "PA10"
+22 = "PA11 [PA9]"
+23 = "PA12 [PA10]"
+24 = "PA13"
+25 = "PA14-BOOT0"
+26 = "PA15"
+27 = "PB3"
+28 = "PB4"
+29 = "PB5"
+30 = "PB6"
+31 = "PB7"
+32 = "PB8"
+
+[[limit]]
+pins = ["VDD/VDDA"]
+to = "VSS/VSSA"
+abs_max = { min = -0.3, max = 4.0, page = 66 }
+recommended = { min = 1.7, max = 3.6, page = 67, note = "1.62 V minimum on VDDA for ADC and COMP, 1.8 V for the DAC (page 68)" }
+
+# FT_xx pins other than FT_c.
+[[limit]]
+pins = ["PB9", "PC14-OSC32_IN", "PC15-OSC32_OUT", "PA0", "PA1", "PA2", "PA3", "PA6", "PA7", "PB0", "PB1", "PB2", "PA9", "PC6", "PA10", "PA11 [PA9]", "PA12 [PA10]", "PA13", "PA14-BOOT0", "PA15", "PB3", "PB4", "PB5", "PB6", "PB7", "PB8"]
+to = "VSS/VSSA"
+abs_max = { min = -0.3, max = { pin = "VDD/VDDA", plus = 4.0 }, page = 66, note = "above 4 V the internal pull-up and pull-down must be disabled" }
+recommended = { min = -0.3, max = { pin = "VDD/VDDA", plus = 3.6, at_most = 5.5 }, page = 68, note = "pull-up and pull-down must be disabled above VDD + 0.3 V" }
+
+# PA8 is FT_fcs: USB Type-C PD capable.
+[[limit]]
+pins = ["PA8"]
+to = "VSS/VSSA"
+abs_max = { min = -0.3, max = 5.5, page = 66, note = "FT_c pin" }
+recommended = { min = -0.3, max = 5.0, page = 68, note = "FT_c pin" }
+
+# PA4 and PA5 are TT_a / TT_ea: not 5 V tolerant.
+[[limit]]
+pins = ["PA4", "PA5"]
+to = "VSS/VSSA"
+abs_max = { min = -0.3, max = 4.0, page = 66, note = "any pin other than FT_xx" }
+recommended = { min = -0.3, max = { pin = "VDD/VDDA", plus = 0.3 }, page = 68, note = "TT_xx" }
+
+[[limit]]
+pins = ["PF2-NRST"]
+to = "VSS/VSSA"
+abs_max = { min = -0.3, max = 4.0, page = 66, note = "Table 12 lists no FT structure for this pin, so the any-other-pin row applies" }
+recommended = { min = -0.3, max = { unknown = "Table 24 gives only the generic I/O range, which is above this pin's 4.0 V absolute maximum" }, page = 68 }

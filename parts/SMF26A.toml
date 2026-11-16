@@ -1,0 +1,20 @@
+mpn = "SMF26A"
+manufacturer = "MDD (Microdiode)"
+description = "26 V unidirectional TVS, 200 W, SOD-123FL"
+class = "tvs"
+
+[datasheet]
+title = "SMF5.0(C)A thru SMF440(C)A Transient Voltage Suppressor"
+document = "Rev:2025A5"
+url = "https://www.lcsc.com/datasheet/C123789.pdf"
+
+[pins]
+1 = "K"
+2 = "A"
+
+[[limit]]
+pins = ["K"]
+to = "A"
+abs_max = { unknown = "the maximum ratings table gives only pulse ratings (200 W peak pulse power, 20 A forward surge); there is no DC voltage maximum" }
+recommended = { min = { unknown = "the datasheet gives no forward-bias operating range" }, max = 26, page = 2, note = "reverse stand-off voltage VRWM" }
+breakdown = { min = 28.9, max = 31.9, page = 2, note = "VBR at IT = 1 mA; clamps at 42.1 V at IPP = 4.8 A" }
