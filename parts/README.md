@@ -255,9 +255,11 @@ Not covered: footprint-only parts with no part number (Tag-Connect pads, SWD pad
 - **OT201616MJBA4SL**: LCSC's datasheet for it is the YXC YSO110TR series sheet, which has no absolute maximum
   ratings.
 - The CAN bus inputs assume every node's driver (the C610s' too) stays inside the ISO 11898-2 limits the TI
-  transceiver datasheets give, and the debug probe inputs assume the probe's outputs follow the target voltage
-  rather than a fixed 3.3 V (the sniffer's DESIGN.md names an ST-Link or J-Link). Neither was checked against the
-  probe's or the C610's own documents.
+  transceiver datasheets give, which wasn't checked against the C610's own documents. No
+  particular debug probe is used, so the probe inputs cover one that follows the target voltage and one fixed at
+  3.3 V, assuming none drives above 3.3 V. Two more assumptions aren't checked: the probe only senses the
+  board's VCC pin and doesn't power the board through it, and the board is powered while a probe is connected.
+  A fixed 3.3 V probe on an unpowered board would drive its pins far above VDD + 0.3 V.
 - Resistor power can't FAIL in fault cases: a fault drives the two ends of a resistor from independent ranges,
   which can overstate the voltage across it, so a FAIL there is UNKNOWN.
 - Each CAN wire's range is the ISO common-mode range ± half the differential, which is wider than any one wire

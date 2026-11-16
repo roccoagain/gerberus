@@ -447,21 +447,26 @@ fn can_bus_lines() {
     }
 }
 
-/// The debug probe drives SWDIO, SWCLK and NRST at up to the target voltage it senses, so they follow +3V3.
+/// No particular debug probe is used, so SWDIO, SWCLK and NRST cover both kinds: one that follows the target
+/// voltage it senses, and one fixed at 3.3 V. The fixed one isn't bounded by +3V3, so the pins don't stay below it.
 #[test]
-fn probe_pins_follow_the_target_voltage() {
+fn probe_pins_cover_any_probe() {
     for (dir, sch) in [
         ("can-encoder", "can-encoder.kicad_sch"),
         ("can-encoder-rev1", "can-encoder.kicad_sch"),
         ("sniffer", "sniffer.kicad_sch"),
     ] {
         let (d, v) = run(dir, sch);
-        let rail = span(&d, &v, "+3V3");
+        let rail = span(&d, &v, "+3V3").max.unwrap();
         for net in ["/SWDIO", "/SWCLK", "/NRST"] {
             let s = span(&d, &v, net);
-            assert_eq!((s.min, s.max), (Some(0.0), rail.max), "{dir} {net}");
-            assert!(v.stays_below(net_index(&d, net), net_index(&d, "+3V3")), "{dir} {net}");
-            assert!(text(&v, &d, net).contains("up to the voltage on"), "{dir} {net}");
+            assert_eq!((s.min, s.max), (Some(0.0), Some(rail.max(3.3))), "{dir} {net}");
+            assert!(!v.stays_below(net_index(&d, net), net_index(&d, "+3V3")), "{dir} {net}");
+            let t = text(&v, &d, net);
+            assert!(
+                t.contains("up to the voltage on") && t.contains("fixed at 3.3 V"),
+                "{dir} {net}: {t}"
+            );
         }
     }
 }
