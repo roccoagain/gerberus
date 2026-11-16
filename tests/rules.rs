@@ -55,10 +55,11 @@ fn rev1_tvs_conducts_on_the_bus() {
     for want in ["+12V", "25.2 V", "20 V", "SMAJ18A", "p2"] {
         assert!(f.message.contains(want), "missing {want:?}: {}", f.message);
     }
-    // It is the only error, and the report explains how +12V gets to 25.2 V.
-    assert_eq!(r.errors(), 1, "{:#?}", fails(&r));
+    // The other errors are the termination resistor and the two VBUS-on-the-bus faults, and the report
+    // explains how +12V gets to 25.2 V.
+    assert_eq!(r.errors(), 4, "{:#?}", fails(&r));
     let text = render(&d, &v, &r, false);
-    for want in ["D1 (B5819W SL)", "input VBUS on J1.1", "1 errors"] {
+    for want in ["D1 (B5819W SL)", "input VBUS on J1.1", "4 errors"] {
         assert!(text.contains(want), "missing {want:?} in\n{text}");
     }
     // The stand-off is exceeded too, as a warning.
@@ -69,14 +70,116 @@ fn rev1_tvs_conducts_on_the_bus() {
 }
 
 #[test]
-fn rev2_and_sniffer_have_no_errors() {
-    for (dir, sch) in [
-        ("can-encoder", "can-encoder.kicad_sch"),
-        ("sniffer", "sniffer.kicad_sch"),
-    ] {
-        let (_, _, r) = run(dir, sch);
-        assert_eq!(r.errors(), 0, "{dir}: {:#?}", fails(&r));
+fn rev2_and_sniffer_errors() {
+    // Rev 2's only error is its 0402 termination resistor (below); the sniffer has none.
+    let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
+    assert_eq!(r.errors(), 1, "{:#?}", fails(&r));
+    let (_, _, r) = run("sniffer", "sniffer.kicad_sch");
+    assert_eq!(r.errors(), 0, "{:#?}", fails(&r));
+}
+
+/// The bus's differential voltage reaches 5 V (VOD(DOM) at the 2240 Ω arbitration load) across R4, the 120 Ω
+/// termination, and 5 V over 117.2 Ω is 213.2 mW against the 0402's 62.5 mW. JP1's side of R4 only connects through R4 and JP1,
+/// so it stays between CANH and CANL: whether JP1 is bridged or not, R4 sees at most CANH − CANL.
+#[test]
+fn termination_resistor_sees_the_bus_differential() {
+    for dir in ["can-encoder", "can-encoder-rev1"] {
+        let (_, _, r) = run(dir, "can-encoder.kicad_sch");
+        let f: Vec<_> = r
+            .by_rule("resistor-power")
+            .filter(|f| f.reference == "R4" && f.case.is_none())
+            .collect();
+        assert_eq!(f.len(), 1, "{dir}: {f:?}");
+        assert_eq!((f[0].verdict, f[0].severity), (Verdict::Fail, Severity::Error), "{dir}");
+        for want in [
+            "0 to 5 V across it",
+            "213.2 mW",
+            "62.5 mW",
+            "stays between them",
+            "kept to -0.12 to 5 V",
+        ] {
+            assert!(f[0].message.contains(want), "{dir}: missing {want:?}: {}", f[0].message);
+        }
     }
+}
+
+/// Rev 1's own DESIGN.md says VBUS shorted onto CANH or CANL would damage its TCAN330 (bus pins ±14 V). Rev 2's
+/// TCAN1044AV survives ±58 V. The NUP2105L's 26.2 V breakdown is above the 25.2 V bus, so it doesn't clamp.
+#[test]
+fn vbus_on_the_bus_faults() {
+    let (d, v, r) = run("can-encoder-rev1", "can-encoder.kicad_sch");
+    for (fault, pin) in [
+        ("VBUS shorted onto CANH", "U4.CANH"),
+        ("VBUS shorted onto CANL", "U4.CANL"),
+    ] {
+        let f: Vec<_> = r
+            .findings
+            .iter()
+            .filter(|f| f.case.as_deref() == Some(fault) && f.verdict == Verdict::Fail)
+            .collect();
+        assert_eq!(f.len(), 1, "{fault}: {f:?}");
+        assert_eq!((f[0].rule, f[0].severity), ("abs-max", Severity::Error));
+        for want in [pin, "25.2 V", "14 V", "TCAN330", "p5"] {
+            assert!(f[0].message.contains(want), "missing {want:?}: {}", f[0].message);
+        }
+        assert!(
+            r.findings.iter().any(|f| f.case.as_deref() == Some(fault)
+                && f.rule == "tvs-breakdown"
+                && f.reference == "U5"
+                && f.verdict == Verdict::Pass),
+            "{fault}: the NUP2105L should stay below breakdown"
+        );
+    }
+    // The report explains the fault's net from the fault's own input.
+    let text = render(&d, &v, &r, false);
+    assert!(text.contains("input CANH shorted to VBUS on J1.2"), "{text}");
+
+    let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
+    let faults: Vec<_> = r.findings.iter().filter(|f| f.case.is_some()).collect();
+    assert!(!faults.is_empty());
+    // Everything passes but R4's power: with VBUS on one end it can't be proven either way, as the two ends
+    // needn't move together in a fault.
+    let (r4, rest): (Vec<&&gerberus::rules::Finding>, Vec<_>) = faults
+        .iter()
+        .partition(|f| f.reference == "R4" && f.rule == "resistor-power");
+    assert!(rest.iter().all(|f| f.verdict == Verdict::Pass), "{rest:#?}");
+    assert_eq!(r4.len(), 2, "{r4:#?}");
+    assert!(
+        r4.iter()
+            .all(|f| f.verdict == Verdict::Unknown && f.message.contains("may overstate it"))
+    );
+    assert!(
+        faults
+            .iter()
+            .any(|f| f.reference == "U4" && f.message.contains("7 to 26 V"))
+    );
+    // Only the damage rules run in a fault case, and passives' ratings, which never FAIL there.
+    assert!(faults.iter().all(|f| {
+        gerberus::rules::FAULT_RULES.contains(&f.rule)
+            || (matches!(f.rule, "resistor-power" | "recommended")
+                && (f.reference.starts_with('R') || f.reference.starts_with('J')))
+    }));
+}
+
+/// A fault that only breaks the link between CANH and CANL still reports what reads both.
+#[test]
+fn a_fault_that_only_drops_a_differential_still_reports() {
+    let (d, mut inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let mut unlinked = inputs.inputs.iter().find(|i| i.name == "CANH").unwrap().clone();
+    unlinked.name = "CANH unlinked".into();
+    unlinked.fault = Some("unlinked".into());
+    inputs.inputs.push(unlinked);
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r
+        .findings
+        .iter()
+        .filter(|f| f.case.as_deref() == Some("unlinked"))
+        .collect();
+    assert!(
+        f.iter()
+            .any(|f| f.reference == "U4" && f.message.contains("U4.CANH (/CANH) from U4.CANL (/CANL)")),
+        "{f:#?}"
+    );
 }
 
 /// Rev 2's SMF26A replaced the SMAJ18A: 26 V stays below its 28.9 V breakdown and within its 26 V stand-off.
@@ -94,7 +197,7 @@ fn rev2_tvs_passes() {
 fn known_warnings() {
     // XC6206 ±2 % reaches 3.366 V; the oscillator's supply range ends at 3.3 V (YSO110TR sheet p1).
     let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
-    assert_eq!(fails(&r).len(), 1, "{:#?}", fails(&r));
+    assert_eq!(fails(&r).len(), 2, "{:#?}", fails(&r));
     assert!(
         r.by_rule("recommended")
             .any(|f| f.reference == "Y1" && f.verdict == Verdict::Fail)
@@ -149,7 +252,7 @@ fn every_rule_runs() {
 
 fn with_vbus(max: f64) -> BoardInputs {
     let (_, mut inputs) = board("can-encoder", "can-encoder.kicad_sch");
-    inputs.inputs[0].max = max;
+    inputs.inputs[0].max = max.into();
     inputs
 }
 
@@ -487,4 +590,39 @@ fn floors_carry_through_resistors() {
         "{:#?}",
         fails(&r)
     );
+}
+
+/// A capacitor on a resistor's far end holds that node's old voltage, so the resistor can see the whole step
+/// from its supply: the node isn't kept between the nets around it.
+#[test]
+fn a_capacitor_keeps_a_node_from_tracking_its_pull() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let (vdc, gnd) = (net(&d, "+VDC"), net(&d, "GND"));
+    let node = new_net(&mut d, "/RC");
+    add(
+        &mut d,
+        "R99",
+        "Device:R",
+        "120",
+        Some("0402WGF1200TCE"),
+        vec![pin("1", PinKind::Passive, vdc), pin("2", PinKind::Passive, node)],
+    );
+    let (v, _) = run_on(&d, &inputs);
+    assert_eq!(v.nets[node].between, [vdc], "only R99 pulls it");
+    let (_, r) = run_on(&d, &inputs);
+    let f = r.by_rule("resistor-power").find(|f| f.reference == "R99").unwrap();
+    assert_eq!(f.verdict, Verdict::Pass, "{}", f.message);
+
+    add(
+        &mut d,
+        "C99",
+        "Device:C",
+        "100nF 50V",
+        None,
+        vec![pin("1", PinKind::Passive, node), pin("2", PinKind::Passive, gnd)],
+    );
+    let (v, r) = run_on(&d, &inputs);
+    assert!(v.nets[node].between.is_empty());
+    let f = r.by_rule("resistor-power").find(|f| f.reference == "R99").unwrap();
+    assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
 }

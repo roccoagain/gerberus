@@ -190,6 +190,48 @@ pin = "J3.5"
 source = "hardware/can-encoder/DESIGN.md, J3 row: 5 3V3. Assumes the probe only senses it"
 ```
 
+An input's `max` can follow another pin instead of being a number. A debug probe drives SWDIO, SWCLK and NRST
+at up to the target voltage it senses:
+
+```toml
+[[input]]
+name = "SWDIO (debug probe)"
+pin = "J3.2"
+to = "J3.1"
+min = 0
+max = { pin = "J3.5" }   # the net J3.5 is on; `plus = 0.3` would add 0.3 V
+source = "..."
+```
+
+Two inputs that move together, such as a CAN bus's two lines, can limit the voltage between them. Checks use it
+wherever they compare the two nets, such as a termination resistor across them:
+
+```toml
+[[differential]]
+pin = "J1.2"   # V(J1.2) − V(J1.3) stays in min..max
+to = "J1.3"
+min = -0.12
+max = 3
+source = "..."
+```
+
+A **fault case** is a set of inputs with the same `fault` name. They are left out of normal operation. Each case
+is worked out on its own: its inputs replace the normal inputs on the nets they touch (and any `[[differential]]`
+on those nets), and `gerberus check` runs the damage rules on it: abs max, TVS breakdown, and capacitor ratings
+without derating. Resistor power and other passives' ratings run too, but a FAIL there becomes UNKNOWN. Only one
+fault is assumed at a time. A `[[differential]]`'s pins must both be on nets a normal input drives.
+
+```toml
+[[input]]
+name = "CANH shorted to VBUS"
+fault = "VBUS shorted onto CANH"
+pin = "J1.2"
+to = "J1.4"
+min = 7
+max = 26
+source = "..."
+```
+
 `inputs.toml` can also give `temperature = { min = 0, max = 70, source = "..." }` for the board's ambient.
 
 ## What's here
@@ -212,8 +254,14 @@ Not covered: footprint-only parts with no part number (Tag-Connect pads, SWD pad
 - **MT6701CT**: the datasheet gives only the VDD rating, so its signal pins are unknown.
 - **OT201616MJBA4SL**: LCSC's datasheet for it is the YXC YSO110TR series sheet, which has no absolute maximum
   ratings.
-- The board inputs have no CANH/CANL ranges yet. Normal bus levels and wiring faults (VBUS shorted onto a
-  CAN line) need a sourced range and a way to mark an input as a fault case; both come with the net checks.
+- The CAN bus inputs assume every node's driver (the C610s' too) stays inside the ISO 11898-2 limits the TI
+  transceiver datasheets give, and the debug probe inputs assume the probe's outputs follow the target voltage
+  rather than a fixed 3.3 V (the sniffer's DESIGN.md names an ST-Link or J-Link). Neither was checked against the
+  probe's or the C610's own documents.
+- Resistor power can't FAIL in fault cases: a fault drives the two ends of a resistor from independent ranges,
+  which can overstate the voltage across it, so a FAIL there is UNKNOWN.
+- Each CAN wire's range is the ISO common-mode range ± half the differential, which is wider than any one wire
+  is likely to reach.
 - **AP63200WU-7**: no headroom figure (the datasheet only says the duty cycle approaches 100 % near dropout), so
   rev 1's +3V3 has a 0 V low end. Its VFB range is for CCM; the AP63200 runs PFM at light load.
 - The LDO output ranges (ME6211, XC6206) are specified at 25 °C.

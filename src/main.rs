@@ -9,7 +9,7 @@ const USAGE: &str = "usage:
   gerberus netlist <design>
   gerberus parts <design> [--parts DIR]...
   gerberus pinout <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--parts DIR]...
-  gerberus voltages <design> [--inputs FILE] [--parts DIR]... [--explain NET]...
+  gerberus voltages <design> [--inputs FILE] [--parts DIR]... [--fault CASE] [--explain NET]...
   gerberus check <design> [--inputs FILE] [--parts DIR]... [--all] [--json]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
 
@@ -24,11 +24,13 @@ next to the schematic (same name, .kicad_pcb) unless --pcb names another, and th
 `parts`. It exits with status 1 when it finds a pinout error.
 
 `voltages` works out the worst-case voltage range of every net, starting from the board inputs (`inputs.toml`
-next to the schematic unless --inputs is given). --explain prints the reasoning behind one net.
+next to the schematic unless --inputs is given). --explain prints the reasoning behind one net. --fault works
+them out for one of the fault cases in the inputs instead of normal operation.
 
 `check` runs the voltage rules: every pin against its datasheet limits at its net's worst-case voltage, TVS
 breakdown and stand-off, capacitor voltage and resistor power, undriven inputs and power pins, regulator
-headroom, and parts with nothing to check against. FAILs cite the numbers, their datasheet pages and how each
+headroom, and parts with nothing to check against. Each fault case in the inputs is then checked against
+absolute maximum ratings, TVS breakdown and capacitor ratings. FAILs cite the numbers, their datasheet pages and how each
 net got its range. --all also lists passes; --json prints the findings as JSON. It exits with status 1 when
 any error FAILs.
 
@@ -83,6 +85,8 @@ struct Options {
     /// `--inputs` and `--explain`, for `voltages`.
     inputs: Option<PathBuf>,
     explain: Vec<String>,
+    /// `--fault`, for `voltages`: a fault case to work out instead of normal operation.
+    fault: Option<String>,
 }
 
 /// Reads `--parts` and whichever of `--pcb`, `--inputs` and `--explain` the command takes.
@@ -92,7 +96,7 @@ fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, Stri
     if local.is_dir() {
         dirs.push(local);
     }
-    let (mut pcb, mut inputs, mut explain) = (None, None, vec![]);
+    let (mut pcb, mut inputs, mut explain, mut fault) = (None, None, vec![], None);
     let mut it = rest.iter();
     while let Some(a) = it.next() {
         match (a.as_str(), it.next()) {
@@ -100,6 +104,7 @@ fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, Stri
             ("--pcb", Some(p)) if takes.contains(&"--pcb") => pcb = Some(PathBuf::from(p)),
             ("--inputs", Some(p)) if takes.contains(&"--inputs") => inputs = Some(PathBuf::from(p)),
             ("--explain", Some(n)) if takes.contains(&"--explain") => explain.push(n.clone()),
+            ("--fault", Some(n)) if takes.contains(&"--fault") => fault = Some(n.clone()),
             _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
         }
     }
@@ -108,6 +113,7 @@ fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, Stri
         pcb,
         inputs,
         explain,
+        fault,
     })
 }
 
@@ -139,7 +145,19 @@ fn analyse(
     if !problems.is_empty() {
         return Err(format!("{}: {}", inputs_path.display(), problems.join("; ")));
     }
-    let v = gerberus::voltage::compute(&design, &lib, &inputs);
+    let v = match &o.fault {
+        None => gerberus::voltage::compute(&design, &lib, &inputs),
+        Some(f) if inputs.faults().contains(&f.as_str()) => {
+            gerberus::voltage::compute(&design, &lib, &inputs.case(&design, f))
+        }
+        Some(f) => {
+            return Err(format!(
+                "{}: no fault case {f:?}; the cases are {:?}",
+                inputs_path.display(),
+                inputs.faults()
+            ));
+        }
+    };
     Ok((design, lib, inputs, v))
 }
 
@@ -164,7 +182,7 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
 }
 
 fn voltages(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let o = options(path, rest, &["--inputs", "--explain"])?;
+    let o = options(path, rest, &["--inputs", "--explain", "--fault"])?;
     let (design, _lib, _inputs, v) = analyse(path, &o)?;
     if o.explain.is_empty() {
         for (net, nv) in design.nets.iter().zip(&v.nets) {

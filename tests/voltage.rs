@@ -136,11 +136,16 @@ fn rev1_explanation_names_the_chain() {
     }
 }
 
-/// No CAN bus range is in the inputs yet, so the bus nets stay unknown and say why.
+/// Without a CAN bus range in the inputs, the bus nets stay unknown and say why.
 #[test]
 fn can_bus_is_unknown_without_an_input() {
     for dir in ["can-encoder", "can-encoder-rev1"] {
-        let (d, v) = run(dir, "can-encoder.kicad_sch");
+        let (d, mut inputs) = board(dir, "can-encoder.kicad_sch");
+        inputs
+            .inputs
+            .retain(|i| i.pin.pin != "2" && i.pin.pin != "3" || i.pin.reference != "J1");
+        let lib = Library::load_dir(&root("parts")).unwrap();
+        let v = compute(&d, &lib, &inputs);
         for net in ["/CANH", "/CANL", "Net-(JP1-B)"] {
             let nv = v.by_name(&d, net).unwrap();
             assert_eq!(nv.span, Span::unknown(), "{dir} {net}");
@@ -422,4 +427,68 @@ fn stays_below_needs_bounded_steps() {
         !v.stays_below(net_index(&d, "/CAN_RX"), net_index(&d, "+3V3")),
         "U4 also runs from +5V"
     );
+}
+
+/// The bus lines carry the ISO 11898 common-mode range, and the termination node between R4 and JP1 stays
+/// between them.
+#[test]
+fn can_bus_lines() {
+    for dir in ["can-encoder", "can-encoder-rev1"] {
+        let (d, v) = run(dir, "can-encoder.kicad_sch");
+        for (net, lo, hi) in [("/CANH", -2.06, 9.5), ("/CANL", -4.5, 7.06), ("Net-(JP1-B)", -4.5, 9.5)] {
+            assert!(close(span(&d, &v, net), lo, hi), "{dir} {net}: {}", span(&d, &v, net));
+        }
+        let jp = net_index(&d, "Net-(JP1-B)");
+        let mut around: Vec<&str> = v.nets[jp].between.iter().map(|&n| d.nets[n].name.as_str()).collect();
+        around.sort_unstable();
+        assert_eq!(around, ["/CANH", "/CANL"], "{dir}");
+        // A net with an input isn't a passive node.
+        assert!(v.nets[net_index(&d, "/CANH")].between.is_empty());
+    }
+}
+
+/// The debug probe drives SWDIO, SWCLK and NRST at up to the target voltage it senses, so they follow +3V3.
+#[test]
+fn probe_pins_follow_the_target_voltage() {
+    for (dir, sch) in [
+        ("can-encoder", "can-encoder.kicad_sch"),
+        ("can-encoder-rev1", "can-encoder.kicad_sch"),
+        ("sniffer", "sniffer.kicad_sch"),
+    ] {
+        let (d, v) = run(dir, sch);
+        let rail = span(&d, &v, "+3V3");
+        for net in ["/SWDIO", "/SWCLK", "/NRST"] {
+            let s = span(&d, &v, net);
+            assert_eq!((s.min, s.max), (Some(0.0), rail.max), "{dir} {net}");
+            assert!(v.stays_below(net_index(&d, net), net_index(&d, "+3V3")), "{dir} {net}");
+            assert!(text(&v, &d, net).contains("up to the voltage on"), "{dir} {net}");
+        }
+    }
+}
+
+/// Fault inputs stay out of the normal analysis. A case puts its inputs in place of the normal ones on the same
+/// net, and drops a differential limit on that net.
+#[test]
+fn fault_cases_replace_normal_inputs() {
+    let (d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    assert_eq!(inputs.faults(), ["VBUS shorted onto CANH", "VBUS shorted onto CANL"]);
+    let case = inputs.case(&d, "VBUS shorted onto CANH");
+    let names: Vec<&str> = case.inputs.iter().map(|i| i.name.as_str()).collect();
+    assert!(
+        names.contains(&"CANH shorted to VBUS") && names.contains(&"CANL"),
+        "{names:?}"
+    );
+    assert!(
+        !names.contains(&"CANH") && !names.contains(&"CANL shorted to VBUS"),
+        "{names:?}"
+    );
+    assert!(case.inputs.iter().all(|i| i.fault.is_none()));
+    assert!(case.differential.is_empty());
+    assert!(case.problems(&d).is_empty(), "{:?}", case.problems(&d));
+
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &case);
+    assert!(close(span(&d, &v, "/CANH"), 7.0, 26.0));
+    assert!(close(span(&d, &v, "/CANL"), -4.5, 7.06));
+    assert!(close(span(&d, &v, "Net-(JP1-B)"), -4.5, 26.0));
 }

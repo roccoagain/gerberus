@@ -61,8 +61,25 @@ a TVS's breakdown a magnitude; abs max, recommended and stand-off ranges stay si
 rail's low end as a floor, so a check can pass on it but never fail on it. `--all` lists passes, `--json` prints
 the findings, and the command exits with status 1 when any error FAILs.
 
-On the test boards, rev 1 of the CAN encoder fails `tvs-breakdown`: its SMAJ18A (breakdown from 20 V) sits on a
-bus that reaches 25.2 V. Rev 2 and the sniffer have no errors.
+The voltage across two pins is narrowed by a `[[differential]]` in `inputs.toml` (a CAN bus's CANH − CANL), and
+by nets of passive parts: a net reached only through resistors, LEDs and jumpers, with no capacitor or inductor
+on it, sits between the nets around it, so a termination resistor behind a jumper sees at most the bus's differential voltage.
+
+Fault cases in `inputs.toml` (such as VBUS shorted onto CANH) are each worked out on their own and checked
+against `abs-max`, `tvs-breakdown` and `cap-voltage` (without derating). Resistor power and other passives'
+ratings are checked too, but can only PASS or be UNKNOWN there, since a fault's two ends needn't move together.
+Their findings say which fault they come from; `voltages --fault CASE` shows one case's nets.
+
+On the test boards:
+
+- Rev 1 of the CAN encoder fails `tvs-breakdown`: its SMAJ18A (breakdown from 20 V) sits on a bus that reaches
+  25.2 V. With VBUS shorted onto CANH or CANL, its TCAN330 (bus pins ±14 V) fails `abs-max`, as its own
+  DESIGN.md warned. Rev 2's TCAN1044AV passes both faults.
+- Both revisions fail `resistor-power` on R4, the 0402 120 Ω termination: 5 V of dominant bus differential
+  (the TCAN1044A's widest VOD row, at the 2240 Ω arbitration load) is 213 mW against its 62.5 mW; even the
+  3 V maximum at 50 to 65 Ω is 77 mW. The check is for a bus held dominant; normal traffic is dominant only part
+  of the time.
+- The sniffer has no errors.
 
 ## Pinout check
 
