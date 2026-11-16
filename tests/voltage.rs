@@ -36,12 +36,30 @@ fn close(s: Span, lo: f64, hi: f64) -> bool {
     near(s.min, lo) && near(s.max, hi)
 }
 
-/// `vref * (1 + Rtop / Rbottom)` at the tolerance ends that make it smallest and largest.
-fn divider(vref: (f64, f64), rt: f64, rb: f64, tol: f64) -> (f64, f64) {
+/// `vref * (1 + Rtop / Rbottom)` at the ends that make it smallest and largest, where each resistor can be
+/// off by `dev` (tolerance plus temperature drift).
+fn divider(vref: (f64, f64), rt: f64, rb: f64, dev: f64) -> (f64, f64) {
     (
-        vref.0 * (1.0 + rt * (1.0 - tol) / (rb * (1.0 + tol))),
-        vref.1 * (1.0 + rt * (1.0 + tol) / (rb * (1.0 - tol))),
+        vref.0 * (1.0 + rt * (1.0 - dev) / (rb * (1.0 + dev))),
+        vref.1 * (1.0 + rt * (1.0 + dev) / (rb * (1.0 - dev))),
     )
+}
+
+/// UNI-ROYAL 0402: ±1 % (p2) plus 100 ppm/°C (p6) over the rated -55 to 155 °C (p5), 130 °C from 25 °C.
+const DEV: f64 = 0.01 + 100e-6 * 130.0;
+
+fn net_index(d: &Design, name: &str) -> usize {
+    d.nets.iter().position(|n| n.name == name).unwrap()
+}
+
+fn text(v: &Voltages, d: &Design, net: &str) -> String {
+    v.by_name(d, net)
+        .unwrap()
+        .why
+        .iter()
+        .map(|w| w.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[test]
@@ -51,13 +69,14 @@ fn rev2_rails() {
     assert!(close(span(&d, &v, "GND"), 0.0, 0.0));
     // B5819WS drops at most 0.6 V (p1), and no minimum is given.
     assert!(close(span(&d, &v, "+VDC"), 6.4, 26.0), "{}", span(&d, &v, "+VDC"));
-    let (lo, hi) = divider((0.985, 1.015), 47e3, 12e3, 0.01);
+    let (lo, hi) = divider((0.985, 1.015), 47e3, 12e3, DEV);
     assert!(close(span(&d, &v, "+5V"), lo, hi), "{}", span(&d, &v, "+5V"));
     assert!(close(span(&d, &v, "Net-(U1-FB)"), 0.985, 1.015));
+    // +5V's low end clears the XC6206's VOUT + 1 V headroom (p4), so +3V3 is held.
+    assert!(lo >= 3.366 + 1.0);
     assert!(close(span(&d, &v, "+3V3"), 3.234, 3.366));
-    // The switch node reaches VIN; how far below ground it rings isn't given.
-    let sw = span(&d, &v, "Net-(U1-SW)");
-    assert_eq!((sw.min, sw.max), (None, Some(26.0)));
+    // How far the switch node rings past ground and VIN isn't given.
+    assert_eq!(span(&d, &v, "Net-(U1-SW)"), Span::unknown());
     // Logic nets reach at most the highest supply of the parts driving them.
     assert!(close(span(&d, &v, "/SPI_MISO"), 0.0, 3.366));
     assert!(
@@ -70,8 +89,14 @@ fn rev2_rails() {
 fn rev1_rails() {
     let (d, v) = run("can-encoder-rev1", "can-encoder.kicad_sch");
     assert!(close(span(&d, &v, "+12V"), 6.4, 25.2), "{}", span(&d, &v, "+12V"));
-    let (lo, hi) = divider((0.792, 0.808), 47e3, 15e3, 0.01);
-    assert!(close(span(&d, &v, "+3V3"), lo, hi), "{}", span(&d, &v, "+3V3"));
+    // The AP63200's datasheet gives no headroom figure, so +3V3 isn't assumed to be held at its low end.
+    let (_, hi) = divider((0.792, 0.808), 47e3, 15e3, DEV);
+    assert!(close(span(&d, &v, "+3V3"), 0.0, hi), "{}", span(&d, &v, "+3V3"));
+    assert!(
+        text(&v, &d, "+3V3").contains("gives no headroom"),
+        "{}",
+        text(&v, &d, "+3V3")
+    );
     assert!(close(span(&d, &v, "/LED"), 0.0, hi));
 }
 
@@ -79,8 +104,16 @@ fn rev1_rails() {
 fn sniffer_rails() {
     let (d, v) = run("sniffer", "sniffer.kicad_sch");
     assert!(close(span(&d, &v, "+5V"), 3.6, 5.5));
-    assert!(close(span(&d, &v, "+3V3"), 3.234, 3.366));
+    // The ME6211's output is specified at VIN = VOUT + 1 V (p8), but VIN can be as low as 3.6 V.
+    assert!(close(span(&d, &v, "+3V3"), 0.0, 3.366));
+    assert!(
+        text(&v, &d, "+3V3").contains("below the 4.366 V"),
+        "{}",
+        text(&v, &d, "+3V3")
+    );
     assert!(close(span(&d, &v, "/UART_RX"), 0.0, 3.3));
+    // J1.2 is listed as undriven: only the host's RX listens on it.
+    assert!(close(span(&d, &v, "/UART_TX"), 0.0, 3.366));
     // The LED's anode is reached through R3 from the MCU pin and through the LED from ground.
     assert!(close(span(&d, &v, "Net-(D1-A)"), 0.0, 3.366));
 }
@@ -207,4 +240,146 @@ fn resistor_values() {
     for s in ["", "k", "1.5k7", "abc", "4k7x"] {
         assert_eq!(parse_ohms(s), None, "{s}");
     }
+}
+
+/// A connector pin on a driven net that inputs.toml doesn't describe makes the net UNKNOWN.
+#[test]
+fn connector_on_a_driven_net_is_unknown() {
+    let (d, mut inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    inputs.undriven.clear();
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    assert_eq!(span(&d, &v, "+3V3"), Span::unknown());
+    assert!(
+        text(&v, &d, "+3V3").contains("J3.5 is a connector pin"),
+        "{}",
+        text(&v, &d, "+3V3")
+    );
+    // And so is everything that reads +3V3.
+    assert_eq!(span(&d, &v, "/LED").max, None);
+}
+
+/// Adds a two-pin part between two nets.
+fn add_part(d: &mut Design, reference: &str, lib_id: &str, a: &str, b: &str) {
+    use gerberus::design::{Component, Pin, PinKind};
+    let mut c = Component {
+        reference: reference.into(),
+        value: "X".into(),
+        lib_id: lib_id.into(),
+        in_bom: true,
+        on_board: true,
+        ..Default::default()
+    };
+    for (num, net) in [("1", a), ("2", b)] {
+        let i = net_index(d, net);
+        c.pins.insert(
+            num.into(),
+            Pin {
+                number: num.into(),
+                name: String::new(),
+                kind: PinKind::Passive,
+                no_connect: false,
+                net: i,
+            },
+        );
+        d.nets[i].pins.push((reference.into(), num.into()));
+    }
+    d.components.insert(reference.into(), c);
+}
+
+/// Anything on a feedback net besides the divider and capacitors makes the output UNKNOWN, not a guess.
+#[test]
+fn extra_parts_on_the_feedback_net_are_unknown() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    add_part(&mut d, "D9", "Device:D", "Net-(U1-FB)", "GND");
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    assert_eq!(span(&d, &v, "Net-(U1-FB)"), Span::unknown());
+    assert!(text(&v, &d, "Net-(U1-FB)").contains("D9.1 is on the feedback net"));
+}
+
+/// A part gerberus can't model (a plain diode here) may pull a net anywhere.
+#[test]
+fn unmodelled_passive_pins_make_a_net_unknown() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    add_part(&mut d, "D9", "Device:D", "+5V", "/BOOT0");
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    assert_eq!(span(&d, &v, "/BOOT0"), Span::unknown());
+    assert!(
+        text(&v, &d, "/BOOT0").contains("D9.2 is a Passive pin"),
+        "{}",
+        text(&v, &d, "/BOOT0")
+    );
+}
+
+/// A regulator fed from its own output can't be worked out.
+#[test]
+fn loops_are_unknown() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let out = net_index(&d, "+3V3");
+    d.components.get_mut("U5").unwrap().pins.get_mut("3").unwrap().net = out;
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    assert_eq!(span(&d, &v, "+3V3"), Span::unknown());
+    assert!(
+        text(&v, &d, "+3V3").contains("depend on this net in turn"),
+        "{}",
+        text(&v, &d, "+3V3")
+    );
+}
+
+/// A switch node's range that follows a pin other than its supply has no value for it.
+#[test]
+fn switch_range_needs_its_supply() {
+    use gerberus::limits::{Bound, DriveKind, Range};
+    let (d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let mut lib = Library::load_dir(&root("parts")).unwrap();
+    let sw = lib
+        .parts
+        .get_mut("TPS560430YFDBVR")
+        .unwrap()
+        .drives
+        .iter_mut()
+        .find(|d| d.kind == DriveKind::Switches)
+        .unwrap();
+    sw.range = Range::Known {
+        min: Bound::Value(0.0),
+        max: Bound::Pin {
+            pin: "EN".into(),
+            plus: 0.0,
+            at_most: None,
+        },
+        page: Some(3),
+        note: None,
+    };
+    let v = compute(&d, &lib, &inputs);
+    assert_eq!(
+        span(&d, &v, "Net-(U1-SW)"),
+        Span {
+            min: Some(0.0),
+            max: None
+        }
+    );
+    assert!(text(&v, &d, "Net-(U1-SW)").contains("highest point UNKNOWN"));
+}
+
+/// A board temperature range narrows the resistors' drift.
+#[test]
+fn board_temperature_narrows_divider_drift() {
+    let (d, mut inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    inputs.temperature = Some(toml::from_str("min = 0\nmax = 70\nsource = \"test\"").unwrap());
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    let (lo, hi) = divider((0.985, 1.015), 47e3, 12e3, 0.01 + 100e-6 * 45.0);
+    assert!(close(span(&d, &v, "+5V"), lo, hi), "{}", span(&d, &v, "+5V"));
+}
+
+/// A net read twice in one explanation is spelled out once.
+#[test]
+fn explanations_dont_repeat() {
+    let (d, v) = run("can-encoder", "can-encoder.kicad_sch");
+    let text = v.explain(&d, net_index(&d, "/CAN_RX"));
+    assert!(text.contains("(explained above)"), "{text}");
+    assert_eq!(text.matches("input VBUS on J1.1").count(), 1, "{text}");
 }

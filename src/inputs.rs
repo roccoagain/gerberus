@@ -16,6 +16,28 @@ pub struct BoardInputs {
     pub board: String,
     #[serde(default, rename = "input")]
     pub inputs: Vec<Input>,
+    /// Connector pins the outside world doesn't drive, such as a debug probe's target-voltage sense pin.
+    #[serde(default)]
+    pub undriven: Vec<Undriven>,
+    /// The ambient temperature range the board works in. Without it, parts are taken over their own rated
+    /// range.
+    pub temperature: Option<BoardTemperature>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Undriven {
+    pub pin: PinRef,
+    /// Why nothing outside drives it.
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BoardTemperature {
+    pub min: f64,
+    pub max: f64,
+    pub source: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -96,6 +118,22 @@ impl BoardInputs {
             if i.source.trim().is_empty() {
                 out.push(format!("{}: no source", i.name));
             }
+        }
+        for u in &self.undriven {
+            if design.pin_net(&u.pin.reference, &u.pin.pin).is_none() {
+                out.push(format!("undriven {}: the pin is not in the design", u.pin));
+            }
+            if self.inputs.iter().any(|i| i.pin == u.pin) {
+                out.push(format!("undriven {}: an input also drives it", u.pin));
+            }
+            if u.source.trim().is_empty() {
+                out.push(format!("undriven {}: no source", u.pin));
+            }
+        }
+        if let Some(t) = &self.temperature
+            && (t.min >= t.max || t.min.is_nan() || t.max.is_nan() || t.source.trim().is_empty())
+        {
+            out.push("temperature: needs min below max and a source".into());
         }
         out
     }

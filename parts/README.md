@@ -71,6 +71,8 @@ kind = "regulates"     # a regulator holds `pin` at `range` from `to` (a fixed o
 pin = "FB"
 to = "GND"
 supply = "VIN"         # the pin that powers it; the drive holds only while this pin is in its recommended range
+feedback = true        # the output is the far end of the two-resistor divider on this pin
+headroom = { duty = 0.98, page = 1 }   # supply × duty − volts must reach the output; an LDO gives `volts`
 range = { min = 0.985, max = 1.015, page = 5 }
 
 [[drive]]
@@ -78,7 +80,7 @@ kind = "switches"      # a switch node; its range may follow the supply pin
 pin = "SW"
 to = "GND"
 supply = "VIN"
-range = { min = { unknown = "undershoot below GND isn't given" }, max = { pin = "VIN" }, page = 3 }
+range = { min = { unknown = "undershoot below GND isn't given" }, max = { unknown = "overshoot above VIN isn't given" }, page = 3 }
 
 [[drive]]
 kind = "forward"       # a diode conducting from `pin` (anode) to `to` (cathode) drops `range`
@@ -87,10 +89,13 @@ to = "K"
 range = { min = { unknown = "only a maximum is given" }, max = 0.6, page = 1, note = "at IF = 1 A" }
 ```
 
-A resistor, capacitor or inductor can give its tolerance as a top-level key, before the first table:
+A resistor, capacitor or inductor can give its tolerance, temperature coefficient and rated temperature range as
+top-level keys, before the first table:
 
 ```toml
 tolerance = { value = 0.01, page = 2, note = "7th code F = ±1 %" }
+tcr = { ppm = 100, page = 6 }
+temperature = { min = -55, max = 155, page = 5 }
 ```
 
 A pin no voltage limit mentions (other than `NC`/`DNC`) is reported by `gerberus parts` and must be treated
@@ -155,17 +160,29 @@ source = "hardware/can-encoder/DESIGN.md: input range 7–26 V"
 down to the inputs it comes from. It starts from `inputs.toml` (the `to` pins are 0 V) and follows:
 
 - **Diodes** (`forward`): the cathode is the anode minus the drop. A drop with no minimum is taken as 0 V.
-- **Regulators** (`regulates`): a feedback pin with two resistors on it, one to ground, sets the output net
-  through the divider, using each resistor's value and its part file's `tolerance`. Otherwise the drive sets
-  the pin's own net. The range holds only while the supply net stays inside the supply pin's recommended range
-  and above the output; below that the low end is 0 V, and above the recommended maximum the top end follows
-  the supply. Dropout and load steps aren't modelled.
-- **Switch nodes** (`switches`): up to the supply.
+- **Regulators** (`regulates`): a `feedback` pin sets the output net through its two-resistor divider to
+  ground. Each resistor counts its `tolerance` plus `tcr` drift over the board's temperature range, or its own
+  rated range when `inputs.toml` gives none. Anything else on the feedback net makes the output UNKNOWN.
+  Without `feedback`, the drive sets the pin's own net. The range holds only while the supply stays inside the
+  supply pin's recommended range and meets the `headroom`. Below that, or with no `headroom`, the low end is
+  0 V. Above the recommended maximum, the top end follows the supply. Line and load regulation aren't modelled.
+- **Switch nodes** (`switches`): whatever their range gives; both ends are UNKNOWN on today's parts.
 - **Everything else**: the union of what can pull the net: nets reached through resistors, inductors, LEDs and
-  jumpers (capacitors count as open), and IC output pins, which reach at most their part's highest supply.
+  jumpers (capacitors count as open, TVS diodes as off), and IC output pins, which reach at most their part's
+  highest supply. A pin of any other part that isn't an input makes the net UNKNOWN.
 
-A net that reaches a connector pin with no input is UNKNOWN, as is anything that needs a number nobody gave.
-Each unknown end says why.
+A net with a connector pin that `inputs.toml` doesn't describe is UNKNOWN, as is anything that needs a number
+nobody gave. Each unknown end says why. An input sets its whole net, so other connector pins on that net (a
+daisy-chain connector) share its range. A pin the outside world doesn't drive, such as a debug probe's
+target-voltage sense pin, is listed as `[[undriven]]` with its source:
+
+```toml
+[[undriven]]
+pin = "J3.5"
+source = "hardware/can-encoder/DESIGN.md, J3 row: 5 3V3. Assumes the probe only senses it"
+```
+
+`inputs.toml` can also give `temperature = { min = 0, max = 70, source = "..." }` for the board's ambient.
 
 ## What's here
 
@@ -189,4 +206,7 @@ Not covered: footprint-only parts with no part number (Tag-Connect pads, SWD pad
   ratings.
 - The board inputs have no CANH/CANL ranges yet. Normal bus levels and wiring faults (VBUS shorted onto a
   CAN line) need a sourced range and a way to mark an input as a fault case; both come with the net checks.
+- **AP63200WU-7**: no headroom figure (the datasheet only says the duty cycle approaches 100 % near dropout), so
+  rev 1's +3V3 has a 0 V low end. Its VFB range is for CCM; the AP63200 runs PFM at light load.
+- The LDO output ranges (ME6211, XC6206) are specified at 25 °C.
 - Logic inputs on the CAN transceivers have no recommended range in their datasheets (only VIH/VIL thresholds).

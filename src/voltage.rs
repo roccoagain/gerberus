@@ -170,7 +170,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
         }
         let Some(part) = lib.part_for(c) else { continue };
         for d in &part.drives {
-            for p in plan_drive(design, lib, r, c, part, d) {
+            for p in plan_drive(design, lib, inputs, r, c, part, d) {
                 if !fixed[p.target] {
                     plans.entry(p.target).or_default().push(p);
                 }
@@ -180,7 +180,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
 
     // 3. Groups of the remaining nets, joined by resistors, inductors, LEDs and jumpers.
     let strong: Vec<bool> = (0..n).map(|i| fixed[i] || plans.contains_key(&i)).collect();
-    let groups = build_groups(design, lib, &strong);
+    let groups = build_groups(design, lib, inputs, &strong);
 
     // 4. Resolve whatever has everything it reads, until nothing changes.
     let mut done_groups = vec![false; groups.len()];
@@ -194,6 +194,20 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
             for p in ps {
                 let (span, why) = p.eval(design, &out);
                 merge(&mut nv, span, why);
+            }
+            // A connector pin on a driven net can bring in anything, unless inputs.toml says nothing outside
+            // drives it. (An input sets its whole net, so pins on an input's net are covered by it.)
+            if let Some(nv) = nv.as_mut() {
+                for pin in open_connectors(design, lib, inputs, t) {
+                    nv.span = Span::unknown();
+                    nv.why.push(Why {
+                        text: format!(
+                            "UNKNOWN: {pin} is a connector pin with no range in inputs.toml, so whatever is \
+                             plugged in there can push this net anywhere"
+                        ),
+                        from: vec![],
+                    });
+                }
             }
             out[t] = nv;
             progress = true;
@@ -243,25 +257,6 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
         out[t] = Some(nv);
     }
 
-    // Connector pins on a driven net bring in something no input describes. Say so.
-    for &t in plans.keys() {
-        let Some(nv) = out[t].as_mut() else { continue };
-        for (r, p) in &design.nets[t].pins {
-            if let Some(c) = design.components.get(r)
-                && !c.dnp
-                && is_connector(lib, c)
-            {
-                nv.why.push(Why {
-                    text: format!(
-                        "{r}.{p} is a connector pin with no range in inputs.toml; this range assumes nothing \
-                         outside pushes the net past what drives it"
-                    ),
-                    from: vec![],
-                });
-            }
-        }
-    }
-
     Voltages {
         nets: out
             .into_iter()
@@ -302,6 +297,25 @@ fn part_pin_net(c: &Component, part: &Part, name: &str) -> Option<usize> {
 
 fn class_of(lib: &Library, c: &Component) -> Option<Class> {
     lib.part_for(c).map(|p| p.class)
+}
+
+/// Connector pins on a net that neither an input nor an `undriven` entry describes.
+fn open_connectors(design: &Design, lib: &Library, inputs: &BoardInputs, net: usize) -> Vec<String> {
+    design.nets[net]
+        .pins
+        .iter()
+        .filter(|(r, p)| {
+            design
+                .components
+                .get(r)
+                .is_some_and(|c| !c.dnp && is_connector(lib, c) && !is_undriven(inputs, r, p))
+        })
+        .map(|(r, p)| format!("{r}.{p}"))
+        .collect()
+}
+
+fn is_undriven(inputs: &BoardInputs, r: &str, p: &str) -> bool {
+    inputs.undriven.iter().any(|u| u.pin.reference == r && u.pin.pin == p)
 }
 
 fn is_connector(lib: &Library, c: &Component) -> bool {
@@ -430,6 +444,7 @@ impl Divider {
 fn plan_drive<'a>(
     design: &Design,
     lib: &Library,
+    inputs: &BoardInputs,
     reference: &'a str,
     c: &Component,
     part: &'a Part,
@@ -460,7 +475,12 @@ fn plan_drive<'a>(
             let (Some(s), Some(g)) = (supply, to) else {
                 return vec![plan(pin, vec![], How::Fails(missing(drive)))];
             };
-            match find_divider(design, lib, reference, pin, g) {
+            let found = if drive.feedback {
+                find_divider(design, lib, inputs, reference, pin, g)
+            } else {
+                Ok(None)
+            };
+            match found {
                 Ok(None) => vec![plan(
                     pin,
                     vec![s, g],
@@ -512,13 +532,14 @@ fn missing(drive: &Drive) -> String {
     )
 }
 
-/// The divider on a regulator's feedback net, and the net it sets. `Ok(None)` when the pin isn't a feedback
-/// pin with resistors on it, so the drive sets the pin's own net. The error carries the output net when one
-/// was found, so it too is reported.
+/// The divider on a regulator's feedback net, and the net it sets. `Ok(None)` when no resistor is on the pin,
+/// so it is tied straight to the output and the drive sets the pin's own net. The error carries the output net
+/// when one was found, so it too is reported.
 #[allow(clippy::type_complexity)]
 fn find_divider(
     design: &Design,
     lib: &Library,
+    inputs: &BoardInputs,
     regulator: &str,
     fb: usize,
     ground: usize,
@@ -533,9 +554,14 @@ fn find_divider(
             continue;
         }
         if !is_resistor(lib, c) {
-            // Something else is on the pin (a load, a fixed output): the drive sets this net directly.
-            let _ = p;
-            return Ok(None);
+            return Err((
+                format!(
+                    "UNKNOWN: {r}.{p} is on the feedback net {} besides the divider, and gerberus only understands \
+                     two resistors and capacitors there",
+                    design.nets[fb].name
+                ),
+                None,
+            ));
         }
         let other = c.pins.values().map(|q| q.net).find(|&q| q != fb).unwrap_or(fb);
         resistors.push((r.as_str(), c, other));
@@ -574,15 +600,40 @@ fn find_divider(
         let Some(tol) = &part.tolerance else {
             return fail(format!("{r}'s part file {} gives no tolerance", part.mpn));
         };
+        let Some(tcr) = &part.tcr else {
+            return fail(format!("{r}'s part file {} gives no temperature coefficient", part.mpn));
+        };
+        // Drift from the 25 °C value over the board's temperature range, or the resistor's own rated range.
+        let (tmin, tmax, twhere) = match (&inputs.temperature, &part.temperature) {
+            (Some(b), _) => (b.min, b.max, format!("the board's {} to {} °C", b.min, b.max)),
+            (None, Some(p)) => (
+                p.min,
+                p.max,
+                format!(
+                    "its rated {} to {} °C (p{}), as inputs.toml gives no board temperature",
+                    p.min, p.max, p.page
+                ),
+            ),
+            (None, None) => {
+                return fail(format!(
+                    "neither inputs.toml nor {r}'s part file gives a temperature range, so its drift is unknown"
+                ));
+            }
+        };
+        let drift = tcr.ppm * 1e-6 * (tmax - 25.0).abs().max((25.0 - tmin).abs());
         let doc = part.datasheet.as_ref().map_or("", |d| d.document.as_str());
         notes.push(format!(
-            "{r} {} ±{}% ({} {doc} p{})",
+            "{r} {} ±{}% (p{}) plus {} ppm/°C (p{}) over {twhere}, so ±{}% ({} {doc})",
             c.value,
             round(tol.value * 100.0),
+            tol.page,
+            tcr.ppm,
+            tcr.page,
+            round((tol.value + drift) * 100.0),
             part.mpn,
-            tol.page
         ));
-        ends.push((ohms * (1.0 - tol.value), ohms * (1.0 + tol.value)));
+        let dev = tol.value + drift;
+        ends.push((ohms * (1.0 - dev), ohms * (1.0 + dev)));
     }
     Ok(Some((
         Divider {
@@ -648,12 +699,19 @@ impl Plan<'_> {
                     Range::Known { min, max, .. } => (bound_at(min, sup, s.min), bound_at(max, sup, s.max)),
                     Range::Unknown(_) => (None, None),
                 };
-                let min_note = match &self.drive.range {
-                    Range::Known {
-                        min: Bound::Unknown(r), ..
-                    } => format!("; lowest point UNKNOWN: {r}"),
-                    _ => String::new(),
-                };
+                let mut min_note = String::new();
+                if let Range::Known { min: lo, max: hi, .. } = &self.drive.range {
+                    for (end, b, v) in [("lowest", lo, min), ("highest", hi, max)] {
+                        match b {
+                            Bound::Unknown(r) => min_note += &format!("; {end} point UNKNOWN: {r}"),
+                            _ if v.is_none() => {
+                                min_note +=
+                                    &format!("; {end} point UNKNOWN: it follows a pin whose voltage isn't known")
+                            }
+                            _ => {}
+                        }
+                    }
+                }
                 (
                     Span { min, max },
                     Why {
@@ -719,29 +777,39 @@ impl Plan<'_> {
                         None
                     }
                 };
-                let min = match (s.min, rec.0) {
-                    (Some(sn), Some(rn)) if sn >= rn && sn > ohi => {
+                let head = self.drive.headroom.as_ref();
+                // The lowest supply the range is specified at.
+                let needs = head.map(|h| (ohi + h.volts) / h.duty);
+                let min = match (s.min, rec.0, needs) {
+                    (Some(sn), Some(rn), Some(nd)) if sn >= rn && sn >= nd => {
+                        let h = head.expect("needs comes from headroom");
                         notes.push(format!(
-                            "holds while {} stays at or above {} V; dropout and load steps aren't modelled",
+                            "{} stays at or above {} V, which covers the {} V the output needs ({} p{}{}); line and \
+                             load regulation aren't modelled",
                             name(*supply),
-                            round(sn)
+                            round(sn),
+                            round(nd),
+                            self.part.mpn,
+                            h.page,
+                            h.note.as_deref().map(|n| format!(", {n}")).unwrap_or_default()
                         ));
                         Some(lo)
                     }
-                    (Some(sn), rn) => {
+                    (Some(sn), rn, nd) => {
                         notes.push(format!(
                             "{} can fall to {} V, {}, so the output isn't held and its low end is taken as 0 V",
                             name(*supply),
                             round(sn),
-                            match rn {
-                                Some(rn) if sn < rn => format!("below its recommended minimum of {rn} V"),
-                                Some(_) => format!("not above the {} V output", round(ohi)),
-                                None => "and its recommended minimum isn't known".into(),
+                            match (rn, nd) {
+                                (Some(rn), _) if sn < rn => format!("below its recommended minimum of {rn} V"),
+                                (None, _) => "and its recommended minimum isn't known".into(),
+                                (_, Some(nd)) => format!("below the {} V the output is specified at", round(nd)),
+                                (_, None) => "and the part file gives no headroom the output needs".into(),
                             }
                         ));
                         Some(0.0)
                     }
-                    (None, _) => {
+                    (None, _, _) => {
                         notes.push(format!("{}'s minimum is UNKNOWN", name(*supply)));
                         None
                     }
@@ -892,7 +960,7 @@ impl Group {
     }
 }
 
-fn build_groups(design: &Design, lib: &Library, strong: &[bool]) -> Vec<Group> {
+fn build_groups(design: &Design, lib: &Library, inputs: &BoardInputs, strong: &[bool]) -> Vec<Group> {
     let n = design.nets.len();
     let mut parent: Vec<usize> = (0..n).collect();
     fn find(p: &mut [usize], x: usize) -> usize {
@@ -940,6 +1008,9 @@ fn build_groups(design: &Design, lib: &Library, strong: &[bool]) -> Vec<Group> {
                             pulls.push(Pull::Net { via: r.clone(), net: o });
                         }
                     } else if is_connector(lib, c) {
+                        if is_undriven(inputs, r, pnum) {
+                            continue;
+                        }
                         pulls.push(Pull::Unknown(format!(
                             "{r}.{pnum} is a connector pin with no range in inputs.toml"
                         )));
@@ -972,7 +1043,15 @@ fn build_groups(design: &Design, lib: &Library, strong: &[bool]) -> Vec<Group> {
                             PinKind::PowerOut => pulls.push(Pull::Unknown(format!(
                                 "{r}.{pnum} is a power output, and no part file says what it drives"
                             ))),
-                            _ => {}
+                            // Capacitors are open, a TVS only conducts past its breakdown (a check's job),
+                            // and power and logic inputs only take.
+                            PinKind::PowerIn | PinKind::Input | PinKind::NoConnect => {}
+                            _ if is_capacitor(lib, c) || class_of(lib, c) == Some(Class::Tvs) => {}
+                            _ => pulls.push(Pull::Unknown(format!(
+                                "{r}.{pnum} is a {:?} pin on a part gerberus can't model, so it may pull the net \
+                                 anywhere",
+                                pin.kind
+                            ))),
                         }
                     }
                 }

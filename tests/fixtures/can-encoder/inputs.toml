@@ -8,3 +8,9 @@ to = "J1.4"
 min = 7
 max = 26
 source = "hardware/can-encoder/DESIGN.md: input range 7–26 V; the bus is the 24 V 6S battery bus, up to 25.2 V"
+
+# Connector pins nothing outside drives. Every other connector pin with no input makes its net UNKNOWN.
+
+[[undriven]]
+pin = "J3.5"
+source = "hardware/can-encoder/DESIGN.md, J3 row: SWD pads, 5 3V3. Assumes the probe senses the target voltage there and doesn't power the board through it"

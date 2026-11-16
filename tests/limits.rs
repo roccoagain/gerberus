@@ -465,6 +465,16 @@ fn drives_name_their_supply() {
         "[[drive]]\nkind = \"switches\"\npin = \"A\"\nto = \"B\"\nsupply = \"B\"\nrange = { min = { unknown = \"x\" }, max = { pin = \"B\" }, page = 1 }",
     );
     assert!(p.is_empty(), "{p}");
+    let p = parse(
+        "[[drive]]\nkind = \"forward\"\npin = \"A\"\nto = \"B\"\nfeedback = true\nrange = { min = 0, max = 1, page = 1 }",
+    );
+    assert!(p.contains("only a regulator has `feedback`"), "{p}");
+    let p = parse(
+        "[[drive]]\nkind = \"regulates\"\npin = \"A\"\nto = \"B\"\nsupply = \"B\"\nheadroom = { duty = 1.5, page = 1 }\nrange = { min = 1, max = 2, page = 1 }",
+    );
+    assert!(p.contains("headroom needs"), "{p}");
+    let p = parse("tcr = { ppm = -1, page = 1 }");
+    assert!(p.contains("tcr"), "{p}");
     let p = parse("tolerance = { value = 1.5, page = 1 }");
     assert!(p.contains("tolerance"), "{p}");
 }
@@ -477,7 +487,11 @@ fn resistors_give_their_tolerance() {
     for (mpn, part) in &lib.parts {
         if part.class == gerberus::limits::Class::Resistor {
             match &part.tolerance {
-                Some(t) => assert_eq!(t.value, 0.01, "{mpn}"),
+                Some(t) => {
+                    assert_eq!(t.value, 0.01, "{mpn}");
+                    assert_eq!(part.tcr.as_ref().map(|t| t.ppm), Some(100.0), "{mpn}");
+                    assert!(part.temperature.is_some(), "{mpn}");
+                }
                 None => missing.push(mpn.as_str()),
             }
         }
