@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "scoutfly"
+name = "gerberus"
 version = "0.1.0"

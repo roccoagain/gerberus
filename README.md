@@ -1,6 +1,6 @@
-# Scoutfly
+# Gerberus
 
-Scoutfly checks a PCB design for electrical bugs before it's ordered. See [ROADMAP.md](ROADMAP.md) for where it's going.
+Gerberus checks a PCB design for electrical bugs before it's ordered. See [ROADMAP.md](ROADMAP.md) for where it's going.
 
 ## Status
 
