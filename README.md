@@ -128,9 +128,10 @@ command exits with status 1 when any line has an error and 2 when it can't run.
 cargo run --release -- si path/to/board.kicad_pcb --plots plots/
 ```
 
-It finds USB 2.0 differential pairs on a `.kicad_pcb` by net name (`D+`/`D-`, `DP`/`DM`, `_P`/`_N`), traces
-each line through its tracks, vias and pads from the PHY to the connector, and checks it for high speed
-(480 Mb/s):
+It finds USB 2.0 differential pairs on a `.kicad_pcb` by net name (`D+`/`D-`, `DP`/`DM`, or `_P`/`_N` with USB
+in the name; SuperSpeed lanes named `SS`, `TX` or `RX` are skipped). It traces each line through its tracks, vias
+and pads from the PHY (an IC) to the farthest connector on it (a USB one when there is one), and checks it for high
+speed (480 Mb/s). Anything else on the line, a header or a test point, counts as a stub:
 
 | Rule | Checks | Limit |
 | --- | --- | --- |

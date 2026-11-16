@@ -343,8 +343,9 @@ fn dijkstra(g: &Graph, sources: &[usize]) -> (Vec<f64>, Vec<Option<usize>>) {
     (d, via)
 }
 
-/// Routes `net` from the pad `driver` picks out to the nearest pad `is_end` accepts. With no driver given,
-/// the path starts at the pad farthest from every `is_end` pad, which is the PHY on a USB line.
+/// Routes `net` from the pad `driver` picks out to the farthest part `is_end` accepts, entering it at its
+/// nearest pad. With no driver given, the path starts at the IC pad farthest from every `is_end` pad (any pad
+/// when no IC is on the net), which is the PHY on a USB line.
 pub fn trace(
     layout: &Layout,
     net: &str,
@@ -362,18 +363,32 @@ pub fn trace(
         .filter(|(n, _, _)| d[*n].is_infinite())
         .map(|(_, r, p)| (r.clone(), p.clone()))
         .collect();
-    let start = match driver {
-        Some((r, p)) => pads
-            .iter()
+    let start = if let Some((r, p)) = driver {
+        pads.iter()
             .find(|(_, pr, pp)| pr == r && pp == p)
             .map(|(n, _, _)| *n)
-            .ok_or_else(|| format!("{net}: no pad {r}.{p}"))?,
-        None => pads
+            .ok_or_else(|| format!("{net}: no pad {r}.{p}"))?
+    } else {
+        // An IC (U, IC) drives the line; failing that, whatever sits farthest along it.
+        let routed: Vec<&(usize, String, String)> = pads
             .iter()
             .filter(|(n, r, _)| !is_end(r) && d[*n].is_finite())
+            .collect();
+        let ic = |r: &str| {
+            ["U", "IC"].iter().any(|p| {
+                r.strip_prefix(p)
+                    .is_some_and(|rest| rest.chars().next().is_some_and(|c| c.is_ascii_digit()))
+            })
+        };
+        let pool: Vec<_> = if routed.iter().any(|(_, r, _)| ic(r)) {
+            routed.into_iter().filter(|(_, r, _)| ic(r)).collect()
+        } else {
+            routed
+        };
+        pool.into_iter()
             .max_by(|a, b| d[a.0].total_cmp(&d[b.0]))
             .map(|(n, _, _)| *n)
-            .ok_or_else(|| format!("{net}: no routed pad other than the connector's"))?,
+            .ok_or_else(|| format!("{net}: no routed pad other than the connector's"))?
     };
     if d[start].is_infinite() {
         return Err(format!("{net}: the driver's pad has no copper path to the connector"));
@@ -381,14 +396,33 @@ pub fn trace(
 
     // Walk from the driver to the connector along the shortest path.
     let (_, back) = dijkstra(&g, &[start]);
-    let end = *ends
+    // The far end is the connector farthest along the line, entered at its nearest pad: a header tapped
+    // near the driver is then a stub, and a USB-C connector's second D+ pad (B6 beside A6) is too.
+    // Connector pads the driver can't reach, such as a USB-C connector's unrouted B6, are unrouted too.
+    let mut unrouted = unrouted;
+    for (n, r, p) in &pads {
+        if is_end(r) && *n != start && back[*n].is_none() && !unrouted.iter().any(|u| &u.0 == r && &u.1 == p) {
+            unrouted.push((r.clone(), p.clone()));
+        }
+    }
+    let reach: Vec<(usize, &str, f64)> = pads
         .iter()
-        .min_by(|a, b| {
-            let da = path_len(&g, &back, **a);
-            let db = path_len(&g, &back, **b);
-            da.total_cmp(&db)
-        })
-        .expect("ends is not empty");
+        .filter(|(n, r, _)| is_end(r) && (*n == start || back[*n].is_some()))
+        .map(|(n, r, _)| (*n, r.as_str(), path_len(&g, &back, *n)))
+        .collect();
+    let nearest = |r: &str| {
+        reach
+            .iter()
+            .filter(|x| x.1 == r)
+            .min_by(|a, b| a.2.total_cmp(&b.2))
+            .copied()
+    };
+    let end = reach
+        .iter()
+        .filter_map(|x| nearest(x.1))
+        .max_by(|a, b| a.2.total_cmp(&b.2).then_with(|| b.1.cmp(a.1)))
+        .map(|x| x.0)
+        .ok_or_else(|| format!("{net}: the driver's pad has no copper path to the connector"))?;
     let mut path_edges = Vec::new();
     let mut n = end;
     while n != start {
@@ -525,10 +559,11 @@ fn explore(
         stub.layer = Some(p.layer.clone());
         stub.width = Some(p.width);
     }
-    let mut depth: BTreeMap<usize, f64> = BTreeMap::new();
-    depth.insert(root, 0.0);
+    // Gather the branch's copper first, then measure it: a branch with a loop can be reached the long way
+    // round first.
     let mut stack = vec![(root, first)];
     let mut vias = std::collections::BTreeSet::new();
+    let mut branch: Vec<usize> = Vec::new();
     while let Some((from, e)) = stack.pop() {
         if !seen.insert(e) {
             continue;
@@ -537,11 +572,7 @@ fn explore(
         if on_path.contains(&to) {
             continue;
         }
-        let d = depth[&from] + g.edges[e].length;
-        if depth.get(&to).is_some_and(|&old| old <= d) {
-            continue;
-        }
-        depth.insert(to, d);
+        branch.push(e);
         match &g.nodes[to] {
             Node::Pad { reference, number } => stub.pads.push((reference.clone(), number.clone())),
             Node::ViaHub(i) => {
@@ -559,6 +590,30 @@ fn explore(
             if next != e {
                 stack.push((to, next));
             }
+        }
+    }
+    // Shortest distance from the path to each node of the branch (Bellman-Ford over the few edges it has).
+    let mut depth: BTreeMap<usize, f64> = BTreeMap::new();
+    depth.insert(root, 0.0);
+    loop {
+        let mut changed = false;
+        for &e in &branch {
+            let (a, b) = (g.edges[e].a, g.edges[e].b);
+            for (x, y) in [(a, b), (b, a)] {
+                if y == root || on_path.contains(&y) {
+                    continue;
+                }
+                if let Some(&dx) = depth.get(&x) {
+                    let d = dx + g.edges[e].length;
+                    if depth.get(&y).is_none_or(|&old| d < old - 1e-12) {
+                        depth.insert(y, d);
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if !changed {
+            break;
         }
     }
     stub.vias = vias.len();

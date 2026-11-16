@@ -194,9 +194,15 @@ pub fn find_pairs(layout: &Layout) -> Vec<PairNets> {
     out
 }
 
+/// Whether a pair is USB 2.0 data: a `D+`/`DP` ending, or `USB` in a `_P`/`+` pair's name that doesn't mark it
+/// as a SuperSpeed lane (`SS`, `TX`, `RX`), which runs at other speeds under other limits.
 fn is_usb(p: &PairNets) -> bool {
     let up = p.p.to_ascii_uppercase();
-    up.contains("USB") || up.ends_with("D+") || up.ends_with("DP")
+    if up.ends_with("D+") || up.ends_with("DP") {
+        return true;
+    }
+    let name = p.name.to_ascii_uppercase();
+    name.contains("USB") && !["SS", "TX", "RX"].iter().any(|w| name.contains(w))
 }
 
 /// Whether a footprint is a connector: a `J` or `P` reference, or a connector library footprint.
@@ -235,7 +241,12 @@ impl Loads<'_> {
                 }
                 continue;
             };
-            let Some(pin) = part.pins.get(num) else { continue };
+            let Some(pin) = part.pins.get(num) else {
+                if seen.insert((r.clone(), format!("#{num}"))) {
+                    unknown.push(format!("{r} ({}, pad {num} isn't in its part file's pins)", part.mpn));
+                }
+                continue;
+            };
             if !seen.insert((r.clone(), pin.clone())) {
                 continue;
             }
@@ -341,7 +352,13 @@ fn model(
                     c_end,
                 });
             }
-            Step::Pad { .. } => {}
+            Step::Pad { reference, number } => {
+                let (pf, unk, _) = loads.of(&[(reference.clone(), number.clone())], ends);
+                unknown.extend(unk);
+                if pf > 0.0 {
+                    line.elements.push(Element::Shunt { c: pf * 1e-12 });
+                }
+            }
         }
     }
     (line, unknown)
@@ -383,7 +400,30 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
                 message,
             });
         };
-        let is_end = |r: &str| connectors.contains(r);
+        // When the pair reaches a connector that looks like a USB one, only those count as the far end.
+        let on_net: Vec<&PlacedFootprint> = layout
+            .footprints
+            .iter()
+            .filter(|f| {
+                connectors.contains(f.reference.as_str())
+                    && f.pads
+                        .iter()
+                        .any(|pd| pd.net.as_deref().is_some_and(|n| n == pair.p || n == pair.n))
+            })
+            .collect();
+        let usb_like = |f: &PlacedFootprint| {
+            f.lib_id.to_ascii_uppercase().contains("USB") || f.value.to_ascii_uppercase().contains("USB")
+        };
+        let ends_ok: BTreeSet<&str> = if on_net.iter().any(|f| usb_like(f)) {
+            on_net
+                .iter()
+                .filter(|f| usb_like(f))
+                .map(|f| f.reference.as_str())
+                .collect()
+        } else {
+            connectors.clone()
+        };
+        let is_end = |r: &str| ends_ok.contains(r);
         let rp = route::trace(layout, &pair.p, is_end, None);
         let rn = route::trace(layout, &pair.n, is_end, None);
         let (rp, rn) = match (rp, rn) {
@@ -711,7 +751,12 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
 
         // Capacitance.
         for r in [&rp, &rn] {
-            let pads: Vec<(String, String)> = r.stubs().flat_map(|s| s.pads.clone()).collect();
+            // Parts hanging off the line and parts the line runs through.
+            let mut pads: Vec<(String, String)> = r.stubs().flat_map(|s| s.pads.clone()).collect();
+            pads.extend(r.steps.iter().filter_map(|s| match s {
+                Step::Pad { reference, number } => Some((reference.clone(), number.clone())),
+                _ => None,
+            }));
             let (pf, unknown, used) = loads.of(&pads, &ends);
             let detail = if used.is_empty() {
                 "no parts".to_string()
@@ -839,13 +884,8 @@ pub fn render(report: &Report, all: bool) -> String {
             "no USB pairs found (nets ending in D+/D-, DP/DM, _P/_N with USB in the name)"
         );
     }
-    for p in &report.pairs {
-        let _ = writeln!(
-            out,
-            "\n{} ({} / {}): {} → {}, {:.1} / {:.1} mm, {} / {} vias",
-            p.name, p.p, p.n, p.from, p.to, p.length_p, p.length_n, p.vias_p, p.vias_n
-        );
-        for f in report.findings.iter().filter(|f| f.pair == p.name) {
+    let findings = |out: &mut String, pair: &str| {
+        for f in report.findings.iter().filter(|f| f.pair == pair) {
             if f.verdict == Verdict::Pass && !all {
                 continue;
             }
@@ -856,6 +896,25 @@ pub fn render(report: &Report, all: bool) -> String {
             };
             let _ = writeln!(out, "  {}{sev} [{}] {}", f.verdict, f.rule, f.message);
         }
+    };
+    for p in &report.pairs {
+        let _ = writeln!(
+            out,
+            "\n{} ({} / {}): {} → {}, {:.1} / {:.1} mm, {} / {} vias",
+            p.name, p.p, p.n, p.from, p.to, p.length_p, p.length_n, p.vias_p, p.vias_n
+        );
+        findings(&mut out, &p.name);
+    }
+    // Pairs that couldn't be traced have findings but no report.
+    let untraced: BTreeSet<&str> = report
+        .findings
+        .iter()
+        .map(|f| f.pair.as_str())
+        .filter(|n| !report.pairs.iter().any(|p| p.name == *n))
+        .collect();
+    for name in untraced {
+        let _ = writeln!(out, "\n{name}: not traced");
+        findings(&mut out, name);
     }
     let count = |v: Verdict, s: Option<Severity>| {
         report

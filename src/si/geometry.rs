@@ -237,14 +237,18 @@ fn quantize_gap(g: f64) -> f64 {
 
 /// Whether the even-odd rule puts `p` inside the zone's copper.
 fn zone_has(z: &Zone, p: Point) -> bool {
+    z.polygons.iter().any(|poly| poly_has(poly, p))
+}
+
+/// Even-odd test against one filled polygon. Each of KiCad's filled polygons carries its own holes (joined by
+/// slits), so polygons are tested one at a time: where two zones of the same net overlap, the copper is solid.
+fn poly_has(poly: &[Point], p: Point) -> bool {
     let mut inside = false;
-    for poly in &z.polygons {
-        let n = poly.len();
-        for k in 0..n {
-            let (a, b) = (poly[k], poly[(k + 1) % n]);
-            if (a.1 > p.1) != (b.1 > p.1) && p.0 < a.0 + (p.1 - a.1) * (b.0 - a.0) / (b.1 - a.1) {
-                inside = !inside;
-            }
+    let n = poly.len();
+    for k in 0..n {
+        let (a, b) = (poly[k], poly[(k + 1) % n]);
+        if (a.1 > p.1) != (b.1 > p.1) && p.0 < a.0 + (p.1 - a.1) * (b.0 - a.0) / (b.1 - a.1) {
+            inside = !inside;
         }
     }
     inside
@@ -255,30 +259,39 @@ fn zone_has(z: &Zone, p: Point) -> bool {
 fn outline(z: &Zone) -> Vec<(Point, Point)> {
     const CELL: f64 = 0.01;
     let cell = |p: Point| ((p.0 / CELL).floor() as i64, (p.1 / CELL).floor() as i64);
-    let edges: Vec<(Point, Point)> = z
+    let edges: Vec<(usize, Point, Point)> = z
         .polygons
         .iter()
-        .flat_map(|poly| (0..poly.len()).map(move |k| (poly[k], poly[(k + 1) % poly.len()])))
+        .enumerate()
+        .flat_map(|(i, poly)| (0..poly.len()).map(move |k| (i, poly[k], poly[(k + 1) % poly.len()])))
         .collect();
     let mut by_start: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
-    for (i, (a, _)) in edges.iter().enumerate() {
+    for (i, (_, a, _)) in edges.iter().enumerate() {
         by_start.entry(cell(*a)).or_default().push(i);
     }
     let close = |p: Point, q: Point| dist(p, q) < 2e-3;
     edges
         .iter()
-        .filter(|(a, b)| {
+        .filter(|(i, a, b)| {
+            // An edge inside another polygon of the same net (an overlapping zone) borders copper on both sides.
+            let mid = (f64::midpoint(a.0, b.0), f64::midpoint(a.1, b.1));
+            !z.polygons
+                .iter()
+                .enumerate()
+                .any(|(j, poly)| j != *i && poly_has(poly, mid))
+        })
+        .filter(|(_, a, b)| {
             let (cx, cy) = cell(*b);
             let reversed = (-1..=1)
                 .flat_map(|dx| (-1..=1).map(move |dy| (cx + dx, cy + dy)))
                 .any(|c| {
                     by_start
                         .get(&c)
-                        .is_some_and(|list| list.iter().any(|&j| close(edges[j].0, *b) && close(edges[j].1, *a)))
+                        .is_some_and(|list| list.iter().any(|&j| close(edges[j].1, *b) && close(edges[j].2, *a)))
                 });
             !reversed
         })
-        .copied()
+        .map(|&(_, a, b)| (a, b))
         .collect()
 }
 

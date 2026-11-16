@@ -477,8 +477,9 @@ fn parse_layout(tree: &Sexp) -> Layout {
                     // x' = x cos + y sin, y' = −x sin + y cos.
                     at: (fx + px * c + py * s, fy - px * s + py * c),
                     size,
-                    // Files store the pad's angle on the board, footprint rotation included.
-                    rotation: at.arg_f64(3).unwrap_or(frot),
+                    // Files store the pad's angle on the board, footprint rotation included, and leave it out
+                    // when it is 0.
+                    rotation: at.arg_f64(3).unwrap_or(0.0),
                     layers,
                 })
             })
@@ -526,11 +527,20 @@ fn read_stackup(s: &Sexp) -> Vec<StackLayer> {
                 er: er.unwrap_or(3.3),
             });
         } else if kind == "core" || kind == "prepreg" || name.starts_with("dielectric") {
-            out.push(StackLayer::Dielectric {
-                thickness,
-                er: er.unwrap_or(4.5),
-                loss_tangent: l.child("loss_tangent").and_then(|t| t.arg_f64(1)).unwrap_or(0.02),
-            });
+            // A dielectric of several plies lists each one's thickness, εr and loss tangent in turn, the later
+            // ones after an `addsublayer` keyword. Each becomes a layer of its own.
+            let all = |key: &str| -> Vec<Option<f64>> { l.children(key).map(|t| t.arg_f64(1)).collect() };
+            let (mut thicknesses, ers, tans) = (all("thickness"), all("epsilon_r"), all("loss_tangent"));
+            if thicknesses.is_empty() {
+                thicknesses.push(None);
+            }
+            for (i, t) in thicknesses.iter().enumerate() {
+                out.push(StackLayer::Dielectric {
+                    thickness: t.unwrap_or(0.0),
+                    er: ers.get(i).copied().flatten().or(er).unwrap_or(4.5),
+                    loss_tangent: tans.get(i).copied().flatten().unwrap_or(0.02),
+                });
+            }
         }
     }
     out
