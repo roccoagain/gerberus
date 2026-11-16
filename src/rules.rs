@@ -5,11 +5,12 @@
 //! an UNKNOWN says what was missing. Nothing unknown is ever counted as a pass.
 
 use std::collections::BTreeSet;
-use std::fmt::{self, Write as _};
+use std::fmt;
 
 use serde::Serialize;
 
 use crate::design::{Component, Design, PinKind};
+use crate::diag::{Diagnostic, Level, Show};
 use crate::inputs::BoardInputs;
 use crate::limits::{Bound, Class, Coverage, Library, Limit, Lookup, Part, Quantity, Range, coverage};
 use crate::policy::Policy;
@@ -110,6 +111,10 @@ pub struct Finding {
     /// The fault case the finding comes from, or none for normal operation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub case: Option<String>,
+    /// A short headline for the terminal report, when the message doesn't open with one. Not in the JSON, whose
+    /// `message` says it all.
+    #[serde(skip)]
+    pub headline: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -184,6 +189,7 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
                 message: format!("{reference}.{pin}: {} has no voltage limit for this pin", part.mpn),
                 nets: vec![],
                 case: None,
+                headline: None,
             });
         }
     }
@@ -197,6 +203,7 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
                 message: format!("{reference}: nothing to check its pins against ({reason})"),
                 nets: vec![],
                 case: None,
+                headline: None,
             });
         }
     }
@@ -476,6 +483,7 @@ impl Ctx<'_> {
             message,
             nets,
             case: None,
+            headline: None,
         }
     }
 }
@@ -1209,6 +1217,7 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                 message: msg,
                 nets: vec![pin.net],
                 case: None,
+                headline: None,
             });
         }
     }
@@ -1234,46 +1243,103 @@ fn regulator_headroom(design: &Design, volts: &Voltages, r: &mut Report) {
             message: format!("{} ({}) sets {out}: {text}", reg.reference, reg.mpn),
             nets: vec![reg.supply],
             case: None,
+            headline: (vd == Verdict::Fail).then(|| format!("{} may not hold {out}: {text}", reg.reference)),
         });
     }
 }
 
-/// The report as text: failures first with how their nets got their ranges, then unknowns, then a summary.
-/// `all` also lists passes.
-pub fn render(design: &Design, volts: &Voltages, report: &Report, all: bool) -> String {
-    let mut out = String::new();
-    for f in &report.findings {
-        if f.verdict == Verdict::Pass && !all {
-            continue;
+/// What to do about a FAIL of each rule, for the report's `help` line.
+pub fn help(rule: &str) -> Option<&'static str> {
+    Some(match rule {
+        "abs-max" => "add a divider, clamp or series resistor, or choose a part rated higher",
+        "recommended" => "bring the pin inside its recommended range, or choose a part whose rating covers it",
+        "tvs-breakdown" => "choose a TVS whose lowest breakdown voltage is above the rail's highest voltage",
+        "tvs-standoff" => "choose a TVS whose stand-off voltage is at or above the rail's highest voltage",
+        "cap-voltage" => "use a capacitor rated above the voltage across it",
+        "resistor-power" => "use a larger package or a higher power rating, or raise the resistance",
+        "floating-input" => "tie the pin to a defined level, directly or through a pull resistor",
+        "unpowered" => "connect the pin to a supply, or add what should drive that net",
+        "regulator-headroom" => "raise the regulator's input, or use a regulator with less dropout",
+        "junction-temperature" => "cut the part's dissipation, or give it a lower thermal resistance",
+        "forward-current" => "raise the series resistor until the current is inside the rating",
+        "esd" => "add a TVS or ESD clamp next to the connector pin",
+        "hot-plug" => {
+            "damp the plug-in ringing: a TVS at the input, a bulk electrolytic or RC snubber, or a load switch"
         }
-        let label = match f.verdict {
-            Verdict::Fail => format!("FAIL {}", f.severity),
-            other => other.to_string(),
-        };
-        let _ = writeln!(out, "{label:<13} {:<18} {}", f.rule, f.message);
-        if f.verdict == Verdict::Fail {
-            let volts = f
-                .case
-                .as_ref()
-                .and_then(|c| report.cases.iter().find(|(name, _)| name == c))
-                .map_or(volts, |(_, v)| v);
-            let mut seen = BTreeSet::new();
-            for &n in &f.nets {
-                if seen.insert(n) && volts.nets[n].span != Span::exact(0.0) {
-                    for line in volts.explain(design, n).lines() {
-                        let _ = writeln!(out, "{:<32} {line}", "");
-                    }
-                }
+        "reverse-polarity" => "add reverse-polarity protection on the input: a series diode or an ideal-diode MOSFET",
+        _ => return None,
+    })
+}
+
+/// A finding laid out as a diagnostic, with `help` for a FAIL and, for `--verbose`, how each net it read got its
+/// range.
+pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Finding) -> Diagnostic {
+    let level = match (f.verdict, f.severity) {
+        (Verdict::Fail, Severity::Error) => Level::Error,
+        (Verdict::Fail, Severity::Warning) => Level::Warning,
+        (Verdict::Unknown, _) => Level::Unknown,
+        (Verdict::Pass, _) => Level::Pass,
+    };
+    let message = match &f.case {
+        Some(c) => f
+            .message
+            .strip_prefix(&format!("fault \"{c}\": "))
+            .unwrap_or(&f.message),
+        None => &f.message,
+    };
+    if level == Level::Pass {
+        return Diagnostic::line(level, f.rule, &f.message);
+    }
+    let mut d = Diagnostic::from_message(level, f.rule, &[&f.reference], message);
+    if let Some(h) = &f.headline {
+        d.headline.clone_from(h);
+        d.notes.retain(|n| !h.contains(n.as_str()));
+    }
+    if let Some(c) = &f.case {
+        let at = d.location.take().unwrap_or_else(|| f.reference.clone());
+        d.location = Some(format!("{at}, in fault \"{c}\""));
+    }
+    if f.verdict == Verdict::Fail {
+        d.help = help(f.rule).map(str::to_string);
+        let volts = f
+            .case
+            .as_ref()
+            .and_then(|c| report.cases.iter().find(|(name, _)| name == c))
+            .map_or(volts, |(_, v)| v);
+        let mut seen = BTreeSet::new();
+        for &n in &f.nets {
+            if seen.insert(n) && volts.nets[n].span != Span::exact(0.0) {
+                d.details.push((
+                    format!("how {} gets {}:", design.nets[n].name, volts.nets[n].span),
+                    volts.explain(design, n).lines().map(str::to_string).collect(),
+                ));
             }
         }
     }
-    let _ = write!(
-        out,
-        "\n{} errors, {} warnings, {} unknown, {} passed\n",
-        report.errors(),
-        report.warnings(),
-        report.unknowns(),
-        report.passes()
+    d
+}
+
+/// The report as text: errors, then warnings, then (if `show` asks) unknowns and passes, then a summary.
+pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -> String {
+    let mut out = String::new();
+    let width = show.columns();
+    let mut details = false;
+    // Errors, then warnings, then unknowns and passes: `check` sorts its findings so, but `stress` doesn't.
+    let mut sorted: Vec<&Finding> = report.findings.iter().collect();
+    sorted.sort_by_key(|f| (f.verdict, f.severity));
+    for f in sorted {
+        let d = diagnostic(design, volts, report, f);
+        if !show.lists(d.level) {
+            continue;
+        }
+        details |= !d.details.is_empty();
+        d.render(&mut out, show.style, show.verbose, width);
+    }
+    crate::diag::summary(
+        &mut out,
+        show,
+        [report.errors(), report.warnings(), report.unknowns(), report.passes()],
+        details,
     );
     out
 }

@@ -895,6 +895,7 @@ pub fn junction(
             message: format!("{reference} ({}): {message}", part.mpn),
             nets: vec![],
             case: None,
+            headline: None,
         };
         let doc = part.datasheet.as_ref().map_or("", |d| d.document.as_str());
         // Nothing known at all reads better as "unknown" than as "at least 0 mW".
@@ -1017,7 +1018,21 @@ pub fn junction(
         } else {
             (verdict, end)
         };
-        r.push(finding(verdict, severity, format!("{text}{end}")));
+        let mut f = finding(verdict, severity, format!("{text}{end}"));
+        if verdict == Verdict::Fail {
+            let past = if tj > max.value {
+                "above".to_string()
+            } else {
+                format!("within {:.0} °C of", max.value - tj)
+            };
+            f.headline = Some(format!(
+                "{reference} dissipates {}{lower}, so its junction reaches {tj:.0} °C at {ambient} °C ambient, {past} its \
+                 {} °C maximum",
+                mw(watts),
+                max.value
+            ));
+        }
+        r.push(f);
     }
 }
 
@@ -1061,6 +1076,7 @@ pub fn forward_current(design: &Design, lib: &Library, policy: &Policy, th: &The
             message: format!("{reference} ({}): {message}", part.mpn),
             nets: vec![],
             case: None,
+            headline: None,
         };
         let limit = part.limits.iter().find(|l| {
             l.quantity == crate::limits::Quantity::Current

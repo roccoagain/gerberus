@@ -23,6 +23,7 @@ use self::channel::{Element, Ends, Line};
 use self::eye::{Eye, USB2_TEMPLATE_1};
 use self::geometry::{Analyzer, Section};
 use self::route::{Route, Step};
+use crate::diag::{Diagnostic, Level, Show};
 use crate::kicad::pcb::{Layout, PlacedFootprint};
 use crate::limits::Library;
 use crate::rules::{Severity, Verdict};
@@ -869,14 +870,16 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
     report
 }
 
-/// The report as text: FAILs and UNKNOWNs, and passes too with `all`.
-pub fn render(report: &Report, all: bool) -> String {
+/// The report as text: each pair, then its errors and warnings, and its unknowns and passes when `show` asks.
+pub fn render(report: &Report, show: &Show) -> String {
     let mut out = String::new();
+    let style = show.style;
+    let width = show.columns();
     for a in &report.assumptions {
-        let _ = writeln!(out, "assumption: {a}");
+        let _ = writeln!(out, "{}: {a}", style.paint("1", "assumption"));
     }
     for s in &report.skipped {
-        let _ = writeln!(out, "skipped: {s}");
+        let _ = writeln!(out, "{}: {s}", style.paint("1", "skipped"));
     }
     if report.pairs.is_empty() && report.findings.is_empty() {
         let _ = writeln!(
@@ -884,26 +887,30 @@ pub fn render(report: &Report, all: bool) -> String {
             "no USB pairs found (nets ending in D+/D-, DP/DM, _P/_N with USB in the name)"
         );
     }
-    let findings = |out: &mut String, pair: &str| {
-        for f in report.findings.iter().filter(|f| f.pair == pair) {
-            if f.verdict == Verdict::Pass && !all {
-                continue;
+    let section = |out: &mut String, header: &str, pair: &str, nets: &[&str]| {
+        let _ = writeln!(out, "\n{}", style.paint("1", header));
+        let mut sorted: Vec<&Finding> = report.findings.iter().filter(|f| f.pair == pair).collect();
+        sorted.sort_by_key(|f| (f.verdict, f.severity));
+        for f in sorted {
+            let mut d = diagnostic(f, nets);
+            if show.lists(d.level) {
+                if !out.ends_with("\n\n") {
+                    out.push('\n');
+                }
+                d.location = Some(match d.location.take() {
+                    Some(at) => format!("{at}, pair {pair}"),
+                    None => format!("pair {pair}"),
+                });
+                d.render(out, style, show.verbose, width);
             }
-            let sev = if f.verdict == Verdict::Fail {
-                format!(" {}", f.severity)
-            } else {
-                String::new()
-            };
-            let _ = writeln!(out, "  {}{sev} [{}] {}", f.verdict, f.rule, f.message);
         }
     };
     for p in &report.pairs {
-        let _ = writeln!(
-            out,
-            "\n{} ({} / {}): {} → {}, {:.1} / {:.1} mm, {} / {} vias",
+        let header = format!(
+            "{} ({} / {}): {} → {}, {:.1} / {:.1} mm, {} / {} vias",
             p.name, p.p, p.n, p.from, p.to, p.length_p, p.length_n, p.vias_p, p.vias_n
         );
-        findings(&mut out, &p.name);
+        section(&mut out, &header, &p.name, &[p.p.as_str(), p.n.as_str()]);
     }
     // Pairs that couldn't be traced have findings but no report.
     let untraced: BTreeSet<&str> = report
@@ -913,8 +920,7 @@ pub fn render(report: &Report, all: bool) -> String {
         .filter(|n| !report.pairs.iter().any(|p| p.name == *n))
         .collect();
     for name in untraced {
-        let _ = writeln!(out, "\n{name}: not traced");
-        findings(&mut out, name);
+        section(&mut out, &format!("{name}: not traced"), name, &[name]);
     }
     let count = |v: Verdict, s: Option<Severity>| {
         report
@@ -923,15 +929,35 @@ pub fn render(report: &Report, all: bool) -> String {
             .filter(|f| f.verdict == v && s.is_none_or(|s| f.severity == s))
             .count()
     };
-    let _ = writeln!(
-        out,
-        "\n{} errors, {} warnings, {} unknown, {} passed",
-        count(Verdict::Fail, Some(Severity::Error)),
-        count(Verdict::Fail, Some(Severity::Warning)),
-        count(Verdict::Unknown, None),
-        count(Verdict::Pass, None)
+    if !out.ends_with("\n\n") {
+        out.push('\n');
+    }
+    crate::diag::summary(
+        &mut out,
+        show,
+        [
+            count(Verdict::Fail, Some(Severity::Error)),
+            count(Verdict::Fail, Some(Severity::Warning)),
+            count(Verdict::Unknown, None),
+            count(Verdict::Pass, None),
+        ],
+        false,
     );
     out
+}
+
+/// One finding as a diagnostic; `nets` are the pair's nets, which messages open with.
+fn diagnostic(f: &Finding, nets: &[&str]) -> Diagnostic {
+    let level = match (f.verdict, f.severity) {
+        (Verdict::Fail, Severity::Error) => Level::Error,
+        (Verdict::Fail, Severity::Warning) => Level::Warning,
+        (Verdict::Unknown, _) => Level::Unknown,
+        (Verdict::Pass, _) => Level::Pass,
+    };
+    if level == Level::Pass {
+        return Diagnostic::line(level, f.rule, &f.message);
+    }
+    Diagnostic::from_message(level, f.rule, nets, &f.message)
 }
 
 #[cfg(test)]
