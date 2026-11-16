@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use super::bus::{self, Aliases, Bus};
@@ -62,7 +63,10 @@ fn bus_aliases(root: &Path, files: &HashMap<PathBuf, SchematicFile>, warnings: &
             Ok(json) => {
                 // Project files before schema 4 wrote an empty table without meaning "no aliases", so KiCad
                 // reads such a table as unset.
-                let schema = json.pointer("/meta/version").and_then(|v| v.as_u64()).unwrap_or(0);
+                let schema = json
+                    .pointer("/meta/version")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
                 if let Some(table) = json
                     .pointer("/schematic/bus_aliases")
                     .and_then(|t| t.as_object())
@@ -199,7 +203,7 @@ impl UnionFind {
 
 /// True if `p` lies on the segment from `a` to `b`, ends included.
 fn on_segment(p: Pt, a: Pt, b: Pt) -> bool {
-    let cross = (b.0 - a.0) as i128 * (p.1 - a.1) as i128 - (b.1 - a.1) as i128 * (p.0 - a.0) as i128;
+    let cross = i128::from(b.0 - a.0) * i128::from(p.1 - a.1) - i128::from(b.1 - a.1) * i128::from(p.0 - a.0);
     cross == 0 && p.0 >= a.0.min(b.0) && p.0 <= a.0.max(b.0) && p.1 >= a.1.min(b.1) && p.1 <= a.1.max(b.1)
 }
 
@@ -287,7 +291,7 @@ fn pins_for<'a>(lib: &'a LibSymbol, libs: &'a HashMap<String, LibSymbol>, unit: 
     if source.pins.is_empty()
         && let Some(parent) = &lib.extends
     {
-        let prefix = lib.name.split_once(':').map(|(l, _)| l).unwrap_or("");
+        let prefix = lib.name.split_once(':').map_or("", |(l, _)| l);
         let full = if prefix.is_empty() {
             parent.clone()
         } else {
@@ -546,7 +550,7 @@ impl Builder {
     }
 
     /// One connected group of wires, pins and labels.
-    fn net_group(&mut self, members: Vec<(Pt, Item)>, at: &Here) {
+    fn net_group(&mut self, members: Vec<(Pt, Item)>, at: &Here<'_>) {
         let Here {
             inst_path,
             name_path,
@@ -675,7 +679,7 @@ impl Builder {
 
     /// One connected group of bus lines and bus labels. Each member of the bus becomes a group with no pins
     /// that joins, by name or through the hierarchy, the nets that carry that member.
-    fn bus_group(&mut self, members: Vec<(Pt, Item)>, at: &Here) {
+    fn bus_group(&mut self, members: Vec<(Pt, Item)>, at: &Here<'_>) {
         let Here {
             inst_path,
             name_path,
@@ -769,7 +773,7 @@ impl Builder {
                 match &l.kind {
                     BusSource::Label(LabelKind::Global) => g.links.push(format!("global:{}", m.name)),
                     BusSource::Label(LabelKind::Hierarchical) => {
-                        g.links.push(format!("busport:{inst_path}:{}:{j}", l.name))
+                        g.links.push(format!("busport:{inst_path}:{}:{j}", l.name));
                     }
                     BusSource::SheetPin(child) => g.links.push(format!("busport:{child}:{}:{j}", l.name)),
                     BusSource::Label(LabelKind::Local) => {}
@@ -872,7 +876,7 @@ fn pin_net_name(p: &PlacedPin, unconnected: bool) -> String {
         // Pin names can repeat between units, so these names carry the unit letter.
         let mut name = format!("{}-{}", p.unit_reference, escape(&p.name));
         if unconnected || repeated {
-            name.push_str(&format!("-Pad{}", escape(&p.number)));
+            let _ = write!(name, "-Pad{}", escape(&p.number));
         }
         name
     } else {
@@ -941,7 +945,7 @@ mod tests {
 
     fn sheet_with_alias(members: &[&str], child: Option<&str>) -> SchematicFile {
         SchematicFile {
-            bus_aliases: vec![("PWR".to_string(), members.iter().map(|m| m.to_string()).collect())],
+            bus_aliases: vec![("PWR".to_string(), members.iter().map(ToString::to_string).collect())],
             sheets: child
                 .map(|file| schematic::Sheet {
                     file: file.to_string(),

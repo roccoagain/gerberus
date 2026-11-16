@@ -9,7 +9,7 @@ fn main() {
             {
                 Ok(rs) => {
                     for r in rs {
-                        *kinds.entry(r.kind()).or_default() += 1
+                        *kinds.entry(r.kind()).or_default() += 1;
                     }
                 }
                 Err(e) => println!("ERR {a}: {e}"),
@@ -20,7 +20,7 @@ fn main() {
     }
     let data = gerberus::altium::records::read_stream(
         std::path::Path::new(&args[0]),
-        args.get(1).map(|s| s.as_str()).unwrap_or("FileHeader"),
+        args.get(1).map_or("FileHeader", String::as_str),
     )
     .unwrap()
     .unwrap();

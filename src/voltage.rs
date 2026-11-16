@@ -239,7 +239,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
     let seed_deps = |is: &[&Input]| -> Vec<usize> { is.iter().filter_map(|i| follows(i)).collect() };
 
     // 2. What fitted parts drive, from their part files.
-    let mut plans: BTreeMap<usize, Vec<Plan>> = BTreeMap::new();
+    let mut plans: BTreeMap<usize, Vec<Plan<'_>>> = BTreeMap::new();
     for (r, c) in &design.components {
         if c.dnp {
             continue;
@@ -840,7 +840,7 @@ impl Plan<'_> {
         let src = cite(self.part, &self.drive.range);
         match &self.how {
             How::Fails(reason) => {
-                if self.drive.kind == crate::limits::DriveKind::Regulates {
+                if self.drive.kind == DriveKind::Regulates {
                     regulators.push(self.regulation(
                         Hold::Unknown(reason.clone()),
                         *supply_of(&self.how).unwrap_or(&self.target),
@@ -903,10 +903,14 @@ impl Plan<'_> {
                 if let Range::Known { min: lo, max: hi, .. } = &self.drive.range {
                     for (end, b, v) in [("lowest", lo, min), ("highest", hi, max)] {
                         match b {
-                            Bound::Unknown(r) => min_note += &format!("; {end} point UNKNOWN: {r}"),
+                            Bound::Unknown(r) => {
+                                let _ = write!(min_note, "; {end} point UNKNOWN: {r}");
+                            }
                             _ if v.is_none() => {
-                                min_note +=
-                                    &format!("; {end} point UNKNOWN: it follows a pin whose voltage isn't known")
+                                let _ = write!(
+                                    min_note,
+                                    "; {end} point UNKNOWN: it follows a pin whose voltage isn't known"
+                                );
                             }
                             _ => {}
                         }

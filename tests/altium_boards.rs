@@ -32,7 +32,7 @@ struct Expect {
     warnings: usize,
 }
 
-fn check(project: &str, board: &str, expect: Expect) {
+fn check(project: &str, board: &str, expect: &Expect) {
     let design = altium::load(&fixture(project)).unwrap();
     assert_eq!(
         design.warnings.len(),
@@ -78,9 +78,9 @@ fn check(project: &str, board: &str, expect: Expect) {
             .map(|(k, _)| k.to_string())
             .collect()
     };
-    let set = |v: &[&str]| -> BTreeSet<String> { v.iter().map(|s| s.to_string()).collect() };
+    let set = |v: &[&str]| -> BTreeSet<String> { v.iter().map(ToString::to_string).collect() };
     assert_eq!(
-        missing.iter().map(|s| s.to_string()).collect::<BTreeSet<_>>(),
+        missing.iter().map(ToString::to_string).collect::<BTreeSet<_>>(),
         set(expect.missing),
         "missing"
     );
@@ -99,7 +99,7 @@ fn limesdr_mini_matches_board() {
     check(
         "limesdr-mini/LimeSDR_Mini_1v2.PrjPcb",
         "limesdr-mini/board-nets.tsv",
-        Expect {
+        &Expect {
             board_upper_case: true,
             ..Default::default()
         },
@@ -114,7 +114,7 @@ fn mixr_power_matches_board() {
     check(
         "mixr-power/MIXR Power.PrjPcb",
         "mixr-power/board-nets.tsv",
-        Expect {
+        &Expect {
             renamed: &[
                 ("49V2_EN_7", "49V2_EN"),
                 ("ESP32_PWR_PE_GP7_DEBUG_LEG_8", "ESP32_PWR_PE_GP7_DEBUG_LEG"),
@@ -135,7 +135,7 @@ fn misko3_matches_board() {
     check(
         "misko3/MISKO3.PrjPcb",
         "misko3/board-nets.tsv",
-        Expect {
+        &Expect {
             // Buttons whose footprints have four pads for two pins, and mounting holes M1 and M2, which the board
             // ties to nets without a schematic pin.
             missing: &[
@@ -172,7 +172,7 @@ fn easyinverter_matches_board() {
     check(
         "easyinverter/MainBoard.PrjPCB",
         "easyinverter/board-nets.tsv",
-        Expect::default(),
+        &Expect::default(),
     );
 }
 
@@ -182,7 +182,7 @@ fn cube_sat_eps_matches_board() {
     check(
         "cube-sat-eps/pcb/EPS_board.PrjPcb",
         "cube-sat-eps/board-nets.tsv",
-        Expect {
+        &Expect {
             // The Q400 footprints give three schematic pins nine pads, and the board puts pins 2 and 3 on VBUS
             // as well as pads 4 to 9.
             missing: &[
@@ -208,7 +208,7 @@ fn fmc_dio_matches_board() {
     check(
         "fmc-dio-32ch/FMC_DIO_32ch_lvds_a.PrjPcb",
         "fmc-dio-32ch/board-nets.tsv",
-        Expect {
+        &Expect {
             // IC51's hidden pin 5 is named VCC and has no hidden net name; the reader joins it to a net of its
             // name, the board puts it on P3V3.
             fragmented: &["P3V3"],

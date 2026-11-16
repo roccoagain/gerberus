@@ -41,7 +41,7 @@ impl Footprint {
     /// Each pad number once, sorted.
     pub fn pad_numbers(&self) -> Vec<&str> {
         let mut out: Vec<&str> = self.pads.iter().map(|p| p.number.as_str()).collect();
-        out.sort();
+        out.sort_unstable();
         out.dedup();
         out
     }

@@ -63,7 +63,7 @@ fn every_board_part_has_limits() {
 
 /// Footprint-only parts (test pads, solder jumpers) are not bought, so they have no datasheet. Rev 1's JP1
 /// is in its BOM by mistake, so the test goes by the missing part number as well.
-fn is_bought(c: &gerberus::design::Component) -> bool {
+fn is_bought(c: &Component) -> bool {
     let has_mpn = c.fields.get("MPN").is_some_and(|m| !m.trim().is_empty());
     has_mpn && !c.dnp && c.in_bom && c.on_board
 }
@@ -294,7 +294,7 @@ fn capacitors_without_a_file_get_a_class_default() {
         let c = capacitor(value, field);
         match lib.lookup(&c) {
             Lookup::ClassDefault(p) => {
-                assert_eq!(p.limits[0].recommended.values(), Some((-want.unwrap(), want.unwrap())))
+                assert_eq!(p.limits[0].recommended.values(), Some((-want.unwrap(), want.unwrap())));
             }
             Lookup::Unchecked(_) => assert_eq!(want, None, "{value}"),
             Lookup::Datasheet(p) => panic!("{value} matched {}", p.mpn),

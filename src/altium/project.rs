@@ -75,7 +75,7 @@ pub fn load(path: &Path) -> Result<Project, String> {
             ("design", "PowerPortNamesTakePriority") => project.power_port_names_take_priority = on,
             ("design", "AppendSheetNumberToLocalNets") => project.append_sheet_number_to_local_nets = on,
             ("design", "ChannelDesignatorFormatString") if !value.trim().is_empty() => {
-                project.channel_designator_format = value.trim().to_string()
+                project.channel_designator_format = value.trim().to_string();
             }
             (s, "DocumentPath") if s.starts_with("document") => {
                 let rel = value.split('|').next().unwrap_or("").trim().replace('\\', "/");
