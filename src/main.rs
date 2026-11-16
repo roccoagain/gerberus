@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use scoutfly::limits::{Coverage, Library, coverage};
+use gerberus::limits::{Coverage, Library, coverage};
 
 const USAGE: &str = "usage:
-  scoutfly netlist <design.kicad_sch>
-  scoutfly parts <design.kicad_sch> [--parts DIR]...
+  gerberus netlist <design.kicad_sch>
+  gerberus parts <design.kicad_sch> [--parts DIR]...
 
 `parts` reports where each part's limits come from. It reads the shared library, then a `parts/` folder next
 to the schematic if there is one (its files override the shared ones), then any --parts folders in order.";
@@ -30,7 +30,7 @@ fn main() -> ExitCode {
 }
 
 fn netlist(path: &Path) -> Result<(), String> {
-    let design = scoutfly::kicad::load(path)?;
+    let design = gerberus::kicad::load(path)?;
     for net in &design.nets {
         let pins: Vec<String> = net.pins.iter().map(|(r, p)| format!("{r}.{p}")).collect();
         println!("{}: {}", net.name, pins.join(" "));
@@ -55,7 +55,7 @@ fn parts(path: &Path, rest: &[String]) -> Result<(), String> {
         }
     }
     let lib = Library::load_dirs(&dirs.iter().map(PathBuf::as_path).collect::<Vec<_>>())?;
-    let design = scoutfly::kicad::load(path)?;
+    let design = gerberus::kicad::load(path)?;
     let cov = coverage(&design, &lib);
     let (mut sheet, mut default, mut unchecked) = (0, 0, 0);
     for (r, c) in &cov {

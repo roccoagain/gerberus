@@ -79,7 +79,7 @@ to = "K"
 range = { min = { unknown = "only a maximum is given" }, max = 0.6, page = 1, note = "at IF = 1 A" }
 ```
 
-A pin no voltage limit mentions (other than `NC`/`DNC`) is reported by `scoutfly parts` and must be treated
+A pin no voltage limit mentions (other than `NC`/`DNC`) is reported by `gerberus parts` and must be treated
 as UNKNOWN by checkers.
 
 ### Which datasheet number goes where
@@ -95,7 +95,7 @@ as UNKNOWN by checkers.
 
 ### Where limits come from
 
-`scoutfly parts board.kicad_sch` reports, for every placed part, where its limits come from:
+`gerberus parts board.kicad_sch` reports, for every placed part, where its limits come from:
 
 1. **A part file.** The shared `parts/` folder loads first, then a `parts/` folder next to the schematic, then
    any `--parts` folders. A later file for the same part number replaces the earlier one, so a board can

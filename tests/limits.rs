@@ -2,13 +2,13 @@
 
 use std::path::{Path, PathBuf};
 
-use scoutfly::design::{Component, Pin, PinKind};
-use scoutfly::inputs::BoardInputs;
-use scoutfly::kicad;
-use scoutfly::limits::{
+use gerberus::design::{Component, Pin, PinKind};
+use gerberus::inputs::BoardInputs;
+use gerberus::kicad;
+use gerberus::limits::{
     Bound, Coverage, DriveKind, Library, Lookup, Quantity, Range, class_default, component_mpn, coverage,
 };
-use scoutfly::policy::Policy;
+use gerberus::policy::Policy;
 
 fn root(rel: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)
@@ -63,7 +63,7 @@ fn every_board_part_has_limits() {
 
 /// Footprint-only parts (test pads, solder jumpers) are not bought, so they have no datasheet. Rev 1's JP1
 /// is in its BOM by mistake, so the test goes by the missing part number as well.
-fn is_bought(c: &scoutfly::design::Component) -> bool {
+fn is_bought(c: &gerberus::design::Component) -> bool {
     let has_mpn = c.fields.get("MPN").is_some_and(|m| !m.trim().is_empty());
     has_mpn && !c.dnp && c.in_bom && c.on_board
 }
@@ -206,7 +206,7 @@ fn rejects_malformed_files() {
     for limit in bad {
         let text = format!("{HEAD}[[limit]]\npins = [\"A\"]\nto = \"B\"\n{limit}");
         assert!(
-            toml::from_str::<scoutfly::limits::Part>(&text).is_err(),
+            toml::from_str::<gerberus::limits::Part>(&text).is_err(),
             "accepted:\n{text}"
         );
     }
@@ -217,7 +217,7 @@ fn reports_unsound_files() {
     let text = format!(
         "{HEAD}[[limit]]\npins = [\"A\", \"C\"]\nto = \"B\"\nabs_max = {{ min = 0, max = 5 }}\nrecommended = {{ min = 0, max = 6, page = 2 }}"
     );
-    let part: scoutfly::limits::Part = toml::from_str(&text).unwrap();
+    let part: gerberus::limits::Part = toml::from_str(&text).unwrap();
     let problems = part.problems().join("\n");
     assert!(problems.contains("pin \"C\" is not in [pins]"), "{problems}");
     assert!(
@@ -314,7 +314,7 @@ fn coverage_reports_unchecked_parts() {
 }
 
 fn scratch_dir(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("scoutfly-test-{name}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("gerberus-test-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -350,7 +350,7 @@ fn variant_pin_maps_must_name_every_limited_pin() {
     let text = format!(
         "{HEAD}[[variant]]\nmpn = \"Y\"\npins = {{ 1 = \"A\" }}\n[[limit]]\npins = [\"A\"]\nto = \"B\"\nabs_max = {{ unknown = \"x\" }}\nrecommended = {{ unknown = \"x\" }}"
     );
-    let part: scoutfly::limits::Part = toml::from_str(&text).unwrap();
+    let part: gerberus::limits::Part = toml::from_str(&text).unwrap();
     assert!(
         part.problems().join("\n").contains("variant \"Y\" has no pin named B"),
         "{:?}",

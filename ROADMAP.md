@@ -1,6 +1,6 @@
-# Scoutfly roadmap
+# Gerberus roadmap
 
-Scoutfly checks a PCB design for electrical bugs before it's ordered. It's an open-source, agent-friendly take on the verification tools that big companies pay for.
+Gerberus checks a PCB design for electrical bugs before it's ordered. It's an open-source, agent-friendly take on the verification tools that big companies pay for.
 
 Each phase reads one more part of the design. It starts with the schematic, then adds parts, power, layout, manufacturing and workflow. Every checker shares the same design graph and the same Breakdown report.
 
@@ -42,7 +42,7 @@ Each phase reads one more part of the design. It starts with the schematic, then
 ## Signature features (new, not copies)
 
 - [ ] **Firmware ↔ schematic cross-check.** Read the pin assignments in the firmware (Daisy pin config, STM32CubeMX `.ioc`, ESP-IDF) and confirm they match the netlist.
-- [ ] **Bring-up plan generator.** Scoutfly already knows every rail and voltage range, so it writes the bring-up checklist: which rail to power first, the current limit to set, and the voltage to expect at each test point.
+- [ ] **Bring-up plan generator.** Gerberus already knows every rail and voltage range, so it writes the bring-up checklist: which rail to power first, the current limit to set, and the voltage to expect at each test point.
 
 ## Principles
 
