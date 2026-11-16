@@ -71,14 +71,24 @@ impl BoardInputs {
     /// Everything that doesn't match the design or doesn't make sense. Empty when the file is sound.
     pub fn problems(&self, design: &Design) -> Vec<String> {
         let mut out = Vec::new();
-        for i in &self.inputs {
-            for p in [&i.pin, &i.to] {
-                if design.pin_net(&p.reference, &p.pin).is_none() {
-                    out.push(format!("{}: pin {p} is not in the design", i.name));
-                }
+        for (n, i) in self.inputs.iter().enumerate() {
+            if self.inputs[..n].iter().any(|j| j.name == i.name) {
+                out.push(format!("{}: the name is used twice", i.name));
             }
-            if i.pin == i.to {
-                out.push(format!("{}: `pin` and `to` are the same pin", i.name));
+            let nets: Vec<_> = [&i.pin, &i.to]
+                .into_iter()
+                .map(|p| {
+                    let net = design.pin_net(&p.reference, &p.pin);
+                    if net.is_none() {
+                        out.push(format!("{}: pin {p} is not in the design", i.name));
+                    }
+                    net.map(|n| n.name.clone())
+                })
+                .collect();
+            if let [Some(a), Some(b)] = nets.as_slice()
+                && a == b
+            {
+                out.push(format!("{}: {} and {} are on the same net, {a}", i.name, i.pin, i.to));
             }
             if !(i.min.is_finite() && i.max.is_finite()) || i.min > i.max {
                 out.push(format!("{}: min {} and max {} are not a range", i.name, i.min, i.max));

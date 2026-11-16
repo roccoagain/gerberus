@@ -45,3 +45,9 @@ pins = ["CB"]
 to = "SW"
 abs_max = { min = -0.3, max = 5.5, page = 4 }
 recommended = { unknown = "the recommended operating conditions table lists no CB-to-SW range" }
+
+[[drive]]
+kind = "regulates"
+pin = "FB"
+to = "GND"
+range = { min = 0.985, max = 1.015, page = 5, note = "reference voltage VREF, TJ -40 to 125 C" }

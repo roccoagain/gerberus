@@ -24,3 +24,9 @@ pins = ["VOUT"]
 to = "VSS"
 abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 3 }
 recommended = { unknown = "VOUT is the regulated output; no separate operating range is given" }
+
+[[drive]]
+kind = "regulates"
+pin = "VOUT"
+to = "VSS"
+range = { min = 3.234, max = 3.366, page = 5, note = "table E-1, 3.3 V with accuracy code 2 (+/-2 %), IOUT = 30 mA, VIN = VOUT + 1 V" }

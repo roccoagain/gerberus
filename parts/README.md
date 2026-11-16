@@ -44,7 +44,8 @@ A range is either `{ min = ..., max = ..., page = N, note = "..." }` or `{ unkno
 - Each bound is one of:
   - a number: `38`
   - another pin of the same part: `{ pin = "VIN", plus = 0.3 }`, optionally capped:
-    `{ pin = "VDD", plus = 3.6, at_most = 5.5 }` means min(VDD + 3.6 V, 5.5 V)
+    `{ pin = "VDD", plus = 3.6, at_most = 5.5 }` means min(VDD + 3.6 V, 5.5 V). The other pin's voltage is
+    measured from the limit's `to` pin. `at_most` only goes on `max`.
   - `{ unknown = "reason" }`, for a datasheet that gives only one end
 
 ### Fields of a limit
@@ -57,7 +58,29 @@ A range is either `{ min = ..., max = ..., page = N, note = "..." }` or `{ unkno
 | `abs_max` | Beyond this the part may be damaged |
 | `recommended` | The range the datasheet says to operate in |
 | `breakdown` | TVS, Zener and ESD parts: where the part starts to conduct (VBR). A rail that can sit above `breakdown.min` drives current through the part continuously |
-| `bidirectional` | `breakdown` applies in both polarities |
+| `bidirectional` | `breakdown` is a magnitude and applies in both polarities. `abs_max` and `recommended` stay signed |
+
+### What a part drives
+
+Limits say what a pin may see. `[[drive]]` entries say what the part itself sets when it works, so a checker
+can work out the rails:
+
+```toml
+[[drive]]
+kind = "regulates"     # a regulator holds `pin` at `range` from `to` (a fixed output, or a feedback pin)
+pin = "FB"
+to = "GND"
+range = { min = 0.985, max = 1.015, page = 5 }
+
+[[drive]]
+kind = "forward"       # a diode conducting from `pin` (anode) to `to` (cathode) drops `range`
+pin = "A"
+to = "K"
+range = { min = { unknown = "only a maximum is given" }, max = 0.6, page = 1, note = "at IF = 1 A" }
+```
+
+A pin no voltage limit mentions (other than `NC`/`DNC`) is reported by `scoutfly parts` and must be treated
+as UNKNOWN by checkers.
 
 ### Which datasheet number goes where
 
@@ -65,6 +88,8 @@ A range is either `{ min = ..., max = ..., page = N, note = "..." }` or `{ unkno
 - `recommended` takes recommended operating conditions. When a datasheet has no such table, other operating
   ranges count: a supply range in the electrical characteristics, a receiver's common-mode range, a TVS's
   stand-off voltage (VRWM), and a passive's rated voltage, power or current. Notes say which.
+- When a bound is relative to another pin, `recommended` can come out above `abs_max` (an STM32's 5 V-tolerant
+  pin at low VDD). Checkers use the tighter of the two at the voltages they work out.
 - Rated values of passives and connectors go in `recommended`, not `abs_max`: a capacitor's rated voltage is the
   most it may see continuously, and the withstanding-voltage test above it is a short test, not a rating.
 
@@ -130,4 +155,6 @@ Not covered: footprint-only parts with no part number (Tag-Connect pads, SWD pad
 - **MT6701CT**: the datasheet gives only the VDD rating, so its signal pins are unknown.
 - **OT201616MJBA4SL**: LCSC's datasheet for it is the YXC YSO110TR series sheet, which has no absolute maximum
   ratings.
+- The board inputs have no CANH/CANL ranges yet. Normal bus levels and wiring faults (VBUS shorted onto a
+  CAN line) need a sourced range and a way to mark an input as a fault case; both come with the net checks.
 - Logic inputs on the CAN transceivers have no recommended range in their datasheets (only VIH/VIL thresholds).

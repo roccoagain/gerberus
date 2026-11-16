@@ -45,3 +45,9 @@ pins = ["BST"]
 to = "SW"
 abs_max = { min = -0.3, max = 6.0, page = 4 }
 recommended = { unknown = "the recommended operating conditions table lists only VIN" }
+
+[[drive]]
+kind = "regulates"
+pin = "FB"
+to = "GND"
+range = { min = 0.792, max = 0.808, page = 5, note = "feedback voltage VFB in CCM, AP63200/AP63201" }

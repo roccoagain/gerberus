@@ -26,3 +26,9 @@ pins = ["TRI-STATE"]
 to = "GND"
 abs_max = { unknown = "the datasheet has no absolute maximum ratings" }
 recommended = { min = { unknown = "only the disable threshold, 30 % of VDD max, is given" }, max = { unknown = "only the enable threshold, 70 % of VDD min, is given" }, page = 1 }
+
+[[limit]]
+pins = ["OUTPUT"]
+to = "GND"
+abs_max = { unknown = "the datasheet has no absolute maximum ratings" }
+recommended = { unknown = "OUTPUT is a CMOS output; only VOH min 90 % of VDD and VOL max 10 % of VDD are given (page 1)" }

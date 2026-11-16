@@ -14,4 +14,4 @@ pin = "J1.3"
 to = "J1.4"
 min = 0
 max = 3.3
-source = "hardware/sniffer/DESIGN.md: whether PA3 tolerates 5 V is not verified, so treat the UART as 3.3 V only"
+source = "the board's interface contract in hardware/sniffer/DESIGN.md: treat the UART as 3.3 V only. This is what hosts are told to drive, not a limit of the MCU (PA3 is FT_ea)"

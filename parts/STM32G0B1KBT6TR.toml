@@ -8,7 +8,7 @@ title = "STM32G0B1xB/xC/xE Arm Cortex-M0+ 32-bit MCU, up to 512KB Flash, 144KB R
 document = "DS13560 Rev 3"
 url = "https://www.lcsc.com/datasheet/C7021416.pdf"
 
-# "LQFP32 / UFQFPN32 - GP" column of Table 13 (pages 47 to 55).
+# "LQFP32 / UFQFPN32 - GP" column of Table 12 (pages 47 to 55).
 [pins]
 1 = "PB9"
 2 = "PC14-OSC32_IN"
@@ -73,5 +73,5 @@ recommended = { min = -0.3, max = { pin = "VDD/VDDA", plus = 0.3 }, page = 68, n
 [[limit]]
 pins = ["PF2-NRST"]
 to = "VSS/VSSA"
-abs_max = { min = -0.3, max = 4.0, page = 66, note = "Table 13 lists no FT structure for this pin, so the any-other-pin row applies" }
+abs_max = { min = -0.3, max = 4.0, page = 66, note = "Table 12 lists no FT structure for this pin, so the any-other-pin row applies" }
 recommended = { min = -0.3, max = { unknown = "Table 24 gives only the generic I/O range, which is above this pin's 4.0 V absolute maximum" }, page = 68 }

@@ -63,6 +63,10 @@ fn parts(path: &Path, rest: &[String]) -> Result<(), String> {
             Coverage::Datasheet { mpn } => {
                 sheet += 1;
                 println!("{r}: datasheet limits ({mpn}, {})", lib.files[mpn].display());
+                let gaps = lib.parts[mpn].uncovered_pins();
+                if !gaps.is_empty() {
+                    println!("  no voltage limit on {}: these pins are UNKNOWN", gaps.join(", "));
+                }
             }
             Coverage::ClassDefault { note } => {
                 default += 1;

@@ -32,6 +32,31 @@ pub struct Part {
     pub variants: Vec<Variant>,
     #[serde(default, rename = "limit")]
     pub limits: Vec<Limit>,
+    /// What the part holds its pins at when it is working: a regulator's output or feedback voltage, a
+    /// diode's forward drop. A checker uses these to work out the voltage on the nets the part drives.
+    #[serde(default, rename = "drive")]
+    pub drives: Vec<Drive>,
+}
+
+/// A voltage the part itself sets between two of its pins while operating.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Drive {
+    pub kind: DriveKind,
+    pub pin: String,
+    pub to: String,
+    /// `V(pin) - V(to)` in volts, with its page. Conditions (load current, temperature) go in the note.
+    pub range: Range,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DriveKind {
+    /// A regulator holds `pin` at this voltage from `to`: a fixed output, or a feedback pin that sets the
+    /// output through a divider.
+    Regulates,
+    /// A diode conducting from `pin` (anode) to `to` (cathode) drops this much.
+    Forward,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -117,7 +142,8 @@ pub enum Range {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Bound {
     Value(f64),
-    /// Relative to another pin of the same part: `V(pin) + plus`, capped at `at_most` when given.
+    /// Relative to another pin of the same part: `V(pin) + plus`, capped at `at_most` when given. `V(pin)`
+    /// is measured from the same reference as the limit (its `to` pin). `at_most` only makes sense on `max`.
     Pin {
         pin: String,
         plus: f64,
@@ -267,12 +293,36 @@ impl Part {
             .collect()
     }
 
-    /// The limits of one quantity that apply to a pin name, either as one of `pins` or as the reference.
+    /// The limits of one quantity that list a pin name in `pins`. Limits where it is only the reference
+    /// (`to`) are in [`Part::limits_involving`].
     pub fn limits_for(&self, quantity: Quantity, name: &str) -> impl Iterator<Item = &Limit> {
         let name = name.to_string();
         self.limits
             .iter()
             .filter(move |l| l.quantity == quantity && l.pins.contains(&name))
+    }
+
+    /// The limits of one quantity that name a pin in `pins` or as `to`.
+    pub fn limits_involving(&self, quantity: Quantity, name: &str) -> impl Iterator<Item = &Limit> {
+        let name = name.to_string();
+        self.limits
+            .iter()
+            .filter(move |l| l.quantity == quantity && (l.pins.contains(&name) || l.to.as_ref() == Some(&name)))
+    }
+
+    /// Pin names no voltage limit mentions, apart from `NC` and `DNC`. A checker must report these as
+    /// UNKNOWN; the coverage report lists them.
+    pub fn uncovered_pins(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = self
+            .pins
+            .values()
+            .map(String::as_str)
+            .filter(|n| !matches!(*n, "NC" | "DNC"))
+            .filter(|n| self.limits_involving(Quantity::Voltage, n).next().is_none())
+            .collect();
+        out.sort();
+        out.dedup();
+        out
     }
 
     /// Every pin name a limit refers to, in `pins`, `to` or a relative bound.
@@ -292,6 +342,9 @@ impl Part {
                     }
                 }
             }
+        }
+        for d in &self.drives {
+            out.extend([d.pin.as_str(), d.to.as_str()]);
         }
         out
     }
@@ -362,6 +415,9 @@ impl Part {
                     if page == &Some(0) {
                         out.push(at(&format!("{label}: pages count from 1")));
                     }
+                    if let Bound::Pin { at_most: Some(_), .. } = min {
+                        out.push(at(&format!("{label}: `at_most` only applies to `max`")));
+                    }
                     for b in [min, max] {
                         if let Bound::Pin { pin, .. } = b
                             && !names.contains(&pin.as_str())
@@ -381,12 +437,48 @@ impl Part {
                     }
                 }
             }
+            if let (
+                Some(Range::Known {
+                    min: Bound::Value(vbr), ..
+                }),
+                Range::Known {
+                    max: Bound::Value(vrwm),
+                    ..
+                },
+            ) = (&l.breakdown, &l.recommended)
+                && vrwm >= vbr
+            {
+                out.push(at(&format!("recommended max {vrwm} is not below breakdown min {vbr}")));
+            }
+            // Only plain numbers can be compared here. With pin-relative bounds a checker must use the
+            // tighter of `abs_max` and `recommended` at the voltages it works out.
             if let (Some((alo, ahi)), Some((rlo, rhi))) = (l.abs_max.values(), l.recommended.values())
                 && (rlo < alo || rhi > ahi)
             {
                 out.push(at(&format!(
                     "recommended {rlo}..{rhi} reaches outside abs_max {alo}..{ahi}"
                 )));
+            }
+        }
+        for (i, d) in self.drives.iter().enumerate() {
+            let at = |what: &str| format!("drive {} ({}): {what}", i + 1, d.pin);
+            for p in [&d.pin, &d.to] {
+                if !names.contains(&p.as_str()) {
+                    out.push(at(&format!("pin {p:?} is not in [pins]")));
+                }
+            }
+            if let Range::Known { min, max, page, .. } = &d.range {
+                if d.range.has_values() && (page.is_none() || self.datasheet.is_none()) {
+                    out.push(at("has values but no datasheet page"));
+                }
+                if [min, max].iter().any(|b| matches!(b, Bound::Pin { .. })) {
+                    out.push(at("a drive range must be numbers or unknown"));
+                }
+                if let Some((lo, hi)) = d.range.values()
+                    && lo > hi
+                {
+                    out.push(at(&format!("min {lo} is above max {hi}")));
+                }
             }
         }
         out
@@ -408,7 +500,7 @@ pub enum Lookup<'a> {
     Datasheet(&'a Part),
     /// No part file, but the part's class gives a generic limit, such as a capacitor's rated voltage from its
     /// schematic `Voltage` field. Not checked against a datasheet.
-    ClassDefault(Part),
+    ClassDefault(Box<Part>),
     /// Nothing to check against. Checkers must report the part's pins as unchecked, not as passing.
     Unchecked(String),
 }
@@ -469,7 +561,7 @@ impl Library {
             return Lookup::Datasheet(p);
         }
         if let Some(p) = class_default(c) {
-            return Lookup::ClassDefault(p);
+            return Lookup::ClassDefault(Box::new(p));
         }
         Lookup::Unchecked(format!("no part file for {:?} and no class default", component_mpn(c)))
     }
@@ -544,6 +636,7 @@ pub fn class_default(c: &Component) -> Option<Part> {
             },
             breakdown: None,
         }],
+        drives: Vec::new(),
     })
 }
 

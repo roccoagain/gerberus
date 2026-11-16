@@ -25,10 +25,16 @@ recommended = { min = 2, max = 6.0, page = 1, note = "features list: operating v
 pins = ["CE"]
 to = "VSS"
 abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 5 }
-recommended = { unknown = "no CE operating range is given; only VCEH min 1.0 V and VCEL max 0.5 V (page 6)" }
+recommended = { unknown = "no CE operating range is given; only VCEH min 1.0 V and VCEL max 0.5 V (page 8, ME6211C33 table)" }
 
 [[limit]]
 pins = ["VOUT"]
 to = "VSS"
 abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 5 }
 recommended = { unknown = "VOUT is the regulated output; no separate operating range is given" }
+
+[[drive]]
+kind = "regulates"
+pin = "VOUT"
+to = "VSS"
+range = { min = 3.234, max = 3.366, page = 8, note = "ME6211C33 output voltage, 0.98 to 1.02 x 3.3 V at IOUT = 30 mA, VIN = VOUT + 1 V, 25 C" }

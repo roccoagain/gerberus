@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use scoutfly::design::{Component, Pin, PinKind};
 use scoutfly::inputs::BoardInputs;
 use scoutfly::kicad;
-use scoutfly::limits::{Bound, Coverage, Library, Lookup, Quantity, Range, class_default, component_mpn, coverage};
+use scoutfly::limits::{
+    Bound, Coverage, DriveKind, Library, Lookup, Quantity, Range, class_default, component_mpn, coverage,
+};
 use scoutfly::policy::Policy;
 
 fn root(rel: &str) -> PathBuf {
@@ -127,17 +129,30 @@ fn vbus_max(dir: &str) -> f64 {
 }
 
 /// Rev 1's known bug is visible in the data: its TVS (D2, SMAJ18A) starts conducting below the bus maximum.
-/// D2 sits behind the reverse-polarity Schottky D1, whose drop (0.6 V max at 1 A) doesn't close the gap.
-/// The rule that walks from J1 through D1 to D2 comes later; this only checks the numbers support it.
+/// D2 sits behind the reverse-polarity Schottky D1, so it sees VBUS less D1's forward drop. Even the largest
+/// drop the B5819W file gives doesn't close the gap. The rule that walks from J1 through D1 to D2 comes later;
+/// this only checks the numbers support it.
 #[test]
 fn rev1_tvs_conducts_on_the_bus() {
     let lib = library();
     let design = kicad::load(&root("tests/fixtures/can-encoder-rev1/can-encoder.kicad_sch")).unwrap();
     assert_eq!(component_mpn(&design.components["D2"]), "SMAJ18A");
+    let d1 = lib.part_for(&design.components["D1"]).unwrap();
+    let drop = d1.drives.iter().find(|d| d.kind == DriveKind::Forward).unwrap();
+    let Range::Known {
+        max: Bound::Value(vf_max),
+        ..
+    } = &drop.range
+    else {
+        panic!("no VF max")
+    };
     let (vbr_min, vrwm) = tvs_numbers(&lib, "SMAJ18A");
     let bus = vbus_max("can-encoder-rev1");
-    assert!(bus - 0.6 > vbr_min, "bus {bus} V vs breakdown {vbr_min} V");
-    assert!(bus > vrwm);
+    assert!(
+        bus - vf_max > vbr_min,
+        "bus {bus} V - {vf_max} V vs breakdown {vbr_min} V"
+    );
+    assert!(bus - vf_max > vrwm);
 }
 
 /// Rev 2's fix holds up in the same data: the SMF26A's stand-off covers the bus.
@@ -365,4 +380,59 @@ fn derating_policy_is_separate_from_limits() {
         "{err}"
     );
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The regulators say what they hold their outputs at, so a checker can start the rails from them.
+#[test]
+fn regulators_and_diodes_describe_what_they_drive() {
+    let lib = library();
+    for (mpn, pin, lo, hi) in [
+        ("TPS560430YFDBVR", "FB", 0.985, 1.015),
+        ("AP63200WU-7", "FB", 0.792, 0.808),
+        ("ME6211C33M5G-N", "VOUT", 3.234, 3.366),
+        ("XC6206P332MR-G", "VOUT", 3.234, 3.366),
+    ] {
+        let d = lib.parts[mpn]
+            .drives
+            .iter()
+            .find(|d| d.kind == DriveKind::Regulates)
+            .unwrap();
+        assert_eq!((d.pin.as_str(), d.range.values()), (pin, Some((lo, hi))), "{mpn}");
+    }
+}
+
+/// Every pin a part has is either limited or reported as uncovered, and the gaps are the known ones.
+#[test]
+fn uncovered_pins_are_the_known_gaps() {
+    let lib = library();
+    let mut gaps = Vec::new();
+    for (mpn, part) in &lib.parts {
+        for pin in part.uncovered_pins() {
+            gaps.push(format!("{mpn}.{pin}"));
+        }
+    }
+    // Inductors have only a current limit; ground and reference pins appear as `to`.
+    assert_eq!(
+        gaps,
+        [
+            "FNR4030S6R8MT.1",
+            "FNR4030S6R8MT.2",
+            "SWPA252012S100MT.1",
+            "SWPA252012S100MT.2"
+        ]
+    );
+}
+
+#[test]
+fn inputs_reject_same_net_and_repeated_names() {
+    let design = kicad::load(&root("tests/fixtures/can-encoder/can-encoder.kicad_sch")).unwrap();
+    let text = "board = \"x\"\n[[input]]\nname = \"A\"\npin = \"J1.1\"\nto = \"J2.1\"\nmin = 0\nmax = 1\nsource = \"s\"\n\
+                [[input]]\nname = \"A\"\npin = \"J1.1\"\nto = \"J1.4\"\nmin = 0\nmax = 1\nsource = \"s\"\n";
+    let inputs: BoardInputs = toml::from_str(text).unwrap();
+    let problems = inputs.problems(&design).join("\n");
+    assert!(
+        problems.contains("J1.1 and J2.1 are on the same net, VBUS"),
+        "{problems}"
+    );
+    assert!(problems.contains("A: the name is used twice"), "{problems}");
 }
