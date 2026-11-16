@@ -450,14 +450,27 @@ impl Part {
             {
                 out.push(at(&format!("recommended max {vrwm} is not below breakdown min {vbr}")));
             }
-            // Only plain numbers can be compared here. With pin-relative bounds a checker must use the
+            // Ends are compared where both are plain numbers. With pin-relative ends a checker must use the
             // tighter of `abs_max` and `recommended` at the voltages it works out.
-            if let (Some((alo, ahi)), Some((rlo, rhi))) = (l.abs_max.values(), l.recommended.values())
-                && (rlo < alo || rhi > ahi)
+            if let (
+                Range::Known {
+                    min: amin, max: amax, ..
+                },
+                Range::Known {
+                    min: rmin, max: rmax, ..
+                },
+            ) = (&l.abs_max, &l.recommended)
             {
-                out.push(at(&format!(
-                    "recommended {rlo}..{rhi} reaches outside abs_max {alo}..{ahi}"
-                )));
+                if let (Bound::Value(a), Bound::Value(r)) = (amin, rmin)
+                    && r < a
+                {
+                    out.push(at(&format!("recommended min {r} reaches outside abs_max min {a}")));
+                }
+                if let (Bound::Value(a), Bound::Value(r)) = (amax, rmax)
+                    && r > a
+                {
+                    out.push(at(&format!("recommended max {r} reaches outside abs_max max {a}")));
+                }
             }
         }
         for (i, d) in self.drives.iter().enumerate() {
