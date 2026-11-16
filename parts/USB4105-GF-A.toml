@@ -1,0 +1,57 @@
+mpn = "USB4105-GF-A"
+manufacturer = "GCT (Global Connector Technology)"
+description = "USB Type-C receptacle for USB 2.0, 16 contacts, SMT top mount"
+class = "connector"
+
+temperature = { min = -40, max = 85, page = 1, note = "Mechanical & Environmental: operating temperature" }
+
+[datasheet]
+title = "USB4105, USB Type C Receptacle for USB 2.0, SMT Type, PCB Top Mount"
+document = "drawing USB4105, dated 4th October 2019"
+url = "https://www.lcsc.com/datasheet/C3020560.pdf"
+
+# The mating table on p1. The receptacle's shell is listed as GND; its footprint gives the shell one pad number, S1.
+[pins]
+A1 = "GND"
+A4 = "VBUS"
+A5 = "CC1"
+A6 = "Dp1"
+A7 = "Dn1"
+A8 = "SBU1"
+A9 = "VBUS"
+A12 = "GND"
+B1 = "GND"
+B4 = "VBUS"
+B5 = "CC2"
+B6 = "Dp2"
+B7 = "Dn2"
+B8 = "SBU2"
+B9 = "VBUS"
+B12 = "GND"
+S1 = "SHELL"
+
+# No 'to': the rating applies between any two contacts.
+[[limit]]
+pins = ["GND", "VBUS", "CC1", "CC2", "Dp1", "Dn1", "Dp2", "Dn2", "SBU1", "SBU2", "SHELL"]
+abs_max = { unknown = "the drawing gives a voltage rating and a 100 V AC dielectric withstanding test, not an absolute maximum" }
+recommended = { min = -20, max = 20, page = 1, note = "Electrical: voltage rating 20 V DC" }
+
+[[limit]]
+quantity = "current"
+pins = ["CC1", "Dp1", "Dn1", "Dp2", "Dn2", "SBU1", "SBU2"]
+abs_max = { unknown = "the drawing gives only current ratings" }
+recommended = { min = -0.25, max = 0.25, page = 1, note = "Electrical: current rating 0.25 A per pin for all other pins" }
+
+[[limit]]
+quantity = "current"
+pins = ["CC2"]
+abs_max = { unknown = "the drawing gives only current ratings" }
+recommended = { min = -1.25, max = 1.25, page = 1, note = "Electrical: current rating 1.25 A for B5 pin" }
+
+# Settled after the blind second reading, which wrote -5 .. 5 A here: 5 A is the VBUS contacts' total, not a
+# per-pin rating, so a per-pin bound of 5 A would pass four VBUS pins carrying 12 A between them.
+[[limit]]
+quantity = "current"
+pins = ["VBUS", "GND", "SHELL"]
+abs_max = { unknown = "the drawing gives only current ratings" }
+recommended = { unknown = "rated 5.00 A collectively for the VBUS pins and 6.25 A collectively for the GND pins, not per pin; the shell has no current rating" }

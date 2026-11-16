@@ -1,0 +1,59 @@
+{
+  "fetched": 1794855096,
+  "listing": {
+    "code": "C25905",
+    "mpn": "0402WGF5101TCE",
+    "manufacturer": "UNI-ROYAL",
+    "stock": 327800,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0402",
+    "similar": [
+      {
+        "code": "C53109434",
+        "mpn": "TC0225B5101TCC",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 300,
+        "status": "normal",
+        "package": "0402",
+        "description": "62.5mW 5.1kΩ 25V Thin Film Resistor ±25ppm/℃ ±0.1% 0402 Chip Resistor - Surface Mount"
+      },
+      {
+        "code": "C2770714",
+        "mpn": "CQ02WGF5101TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "5.1kΩ ±1% 62.5mW 0402 Thick Film Resistor AEC-Q200"
+      },
+      {
+        "code": "C2773936",
+        "mpn": "HP02WAF5101TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "100mW 5.1kΩ 50V Thick Film Resistor ±100ppm/℃ ±1% 0402 Chip Resistor - Surface Mount"
+      },
+      {
+        "code": "C423276",
+        "mpn": "0402WGD5101TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "5.1kΩ ±0.5% 62.5mW 0402 Thick Film Resistor"
+      },
+      {
+        "code": "C2772475",
+        "mpn": "ES02WGF5101TCE",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "62.5mW 5.1kΩ 50V Thick Film Resistor ±1% 0402 Chip Resistor - Surface Mount"
+      }
+    ]
+  }
+}

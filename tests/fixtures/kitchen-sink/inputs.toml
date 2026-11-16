@@ -1,0 +1,221 @@
+board = "kitchen-sink"
+
+# The voltages the outside world puts on this test board's connectors. Ranges that come from the board's own
+# interface contract are in kitchen-sink/README.md; the rest cite their standard.
+
+temperature = { min = 0, max = 70, source = "kitchen-sink/README.md: the board's ambient range, 0 to 70 C, so the thermal checks have a defined ambient" }
+
+[[input]]
+name = "VIN"
+pin = "J1.1"
+to = "J1.4"
+min = 7
+max = 26
+source = "kitchen-sink/README.md, J1: VIN 7 to 26 V, the same 24 V bus as can-encoder"
+
+# The CAN bus: other nodes and this board's own transceiver drive it, and their grounds can sit apart from this
+# board's. CANH = VCM + VOD/2 and CANL = VCM - VOD/2. J1 is the only CAN connector.
+[[input]]
+name = "CANH"
+pin = "J1.2"
+to = "J1.4"
+min = -2.06
+max = 9.5
+source = "each wire is the common mode + half the differential: the ISO 11898 standard's -2 V to 7 V common-mode range of tolerable ground offset (TI SLLA270, January 2008, p6) + half of -0.12 to 5 V (the differential below)"
+
+[[input]]
+name = "CANL"
+pin = "J1.3"
+to = "J1.4"
+min = -4.5
+max = 7.06
+source = "each wire is the common mode - half the differential: the ISO 11898 standard's -2 V to 7 V common-mode range of tolerable ground offset (TI SLLA270, January 2008, p6) - half of -0.12 to 5 V (the differential below)"
+
+# CANH and CANL move together: whatever the common-mode voltage, the drivers set the difference between them.
+[[differential]]
+pin = "J1.2"
+to = "J1.3"
+min = -0.12
+max = 5
+source = "TCAN1044A-Q1 SLLSFJ3D p6: VOD(DOM) 1.5 to 5 V at RL = 2240 ohm (the ISO 11898-2 arbitration load, the widest dominant row; 1.5 to 3 V at 50 to 65 ohm) and VOD(REC) -120 to 12 mV at 60 ohm. Assumes every node's driver stays inside the same ISO 11898-2 limits. The 5 V row is for the 2240 ohm arbitration load; with a 120 ohm terminator fitted the dominant differential is 1.5 to 3 V, so this range is wider than the bus can reach"
+
+# Fault cases. Each is checked on its own, against absolute maximum ratings, TVS breakdown and capacitor ratings,
+# with its inputs in place of the normal ones on the same nets. A miswired or damaged cable puts VIN (the VIN
+# input's range) on a bus line.
+[[input]]
+name = "CANH shorted to VIN"
+fault = "VIN shorted onto CANH"
+pin = "J1.2"
+to = "J1.4"
+min = 7
+max = 26
+source = "kitchen-sink/README.md, CAN section: a miswired cable can put VIN (the VIN input's 7 to 26 V) on either bus wire; can-encoder/DESIGN.md (rev 1 to rev 2 changes) swapped the TCAN330 for the TCAN1044AV because its bus pins survive VBUS shorted onto CANH/CANL"
+
+[[input]]
+name = "CANL shorted to VIN"
+fault = "VIN shorted onto CANL"
+pin = "J1.3"
+to = "J1.4"
+min = 7
+max = 26
+source = "kitchen-sink/README.md, CAN section: a miswired cable can put VIN (the VIN input's 7 to 26 V) on either bus wire; can-encoder/DESIGN.md (rev 1 to rev 2 changes) swapped the TCAN330 for the TCAN1044AV because its bus pins survive VBUS shorted onto CANH/CANL"
+
+[[input]]
+name = "VAUX"
+pin = "J2.1"
+to = "J2.3"
+min = 3.0
+max = 5.5
+source = "kitchen-sink/README.md, J2: VAUX 3.0 to 5.5 V (a single Li-ion cell up to a USB supply). Nothing stops it being plugged in backwards"
+
+# J3 (SWD, 1 VTref, 2 SWDIO, 3 SWCLK, 4 GND). A probe drives SWDIO and SWCLK; it only senses VTref.
+
+[[input]]
+name = "SWDIO (probe following VTref)"
+pin = "J3.2"
+to = "J3.4"
+min = 0
+max = { pin = "J3.1" }
+source = "No particular probe: Rocco, 2026-11-16. Covers one whose outputs follow the target voltage it senses on VTref (J3.1)"
+
+[[input]]
+name = "SWDIO (probe at a fixed 3.3 V)"
+pin = "J3.2"
+to = "J3.4"
+min = 0
+max = 3.3
+source = "No particular probe: Rocco, 2026-11-16. Covers one whose outputs are fixed at 3.3 V; assumes no probe drives above 3.3 V"
+
+[[input]]
+name = "SWCLK (probe following VTref)"
+pin = "J3.3"
+to = "J3.4"
+min = 0
+max = { pin = "J3.1" }
+source = "No particular probe: Rocco, 2026-11-16. Covers one whose outputs follow the target voltage it senses on VTref (J3.1)"
+
+[[input]]
+name = "SWCLK (probe at a fixed 3.3 V)"
+pin = "J3.3"
+to = "J3.4"
+min = 0
+max = 3.3
+source = "No particular probe: Rocco, 2026-11-16. Covers one whose outputs are fixed at 3.3 V; assumes no probe drives above 3.3 V"
+
+[[undriven]]
+pin = "J3.1"
+source = "kitchen-sink/README.md, J3: VTref, the probe only senses it. Assumes the board is powered while a probe is connected"
+
+# J4 (UART, 1 TX, 2 RX, 3 GND, 4 GND).
+
+[[undriven]]
+pin = "J4.1"
+source = "kitchen-sink/README.md, J4: TX (board to host); the host only listens"
+
+[[input]]
+name = "UART RX (host to board)"
+pin = "J4.2"
+to = "J4.3"
+min = 0
+max = 3.3
+source = "kitchen-sink/README.md, J4: hosts drive RX at 3.3 V logic"
+
+# J5 and J6: USB-C receptacles on USB 2.0 ports.
+
+[[input]]
+name = "VBUS1"
+pin = "J5.A4"
+to = "J5.A1"
+min = 4.75
+max = 5.25
+reverse = "a USB-C plug can't put VBUS on the GND contacts"
+source = "USB 2.0 specification, Table 7-7: VBUS at a high-power port 4.75 to 5.25 V"
+
+[[input]]
+name = "USB1 D+"
+pin = "J5.A6"
+to = "J5.A1"
+min = 0
+max = 3.6
+source = "USB 2.0 specification, Table 7-7: VOH at most 3.6 V (full-speed driver); high-speed signalling stays below it"
+
+[[input]]
+name = "USB1 D-"
+pin = "J5.A7"
+to = "J5.A1"
+min = 0
+max = 3.6
+source = "USB 2.0 specification, Table 7-7: VOH at most 3.6 V (full-speed driver); high-speed signalling stays below it"
+
+[[input]]
+name = "USB1 CC1"
+pin = "J5.A5"
+to = "J5.A1"
+min = 0
+max = 5.5
+source = "assumed: a USB-C source pulls CC up through Rp from at most 5 V, here given 10 % margin; not checked against the Type-C specification's tables"
+
+[[input]]
+name = "USB1 CC2"
+pin = "J5.B5"
+to = "J5.A1"
+min = 0
+max = 5.5
+source = "assumed: a USB-C source pulls CC up through Rp from at most 5 V, here given 10 % margin; not checked against the Type-C specification's tables"
+
+[[undriven]]
+pin = "J5.A8"
+source = "SBU1 is unused on a USB 2.0 port; nothing on the board connects to it"
+
+[[undriven]]
+pin = "J5.B8"
+source = "SBU2 is unused on a USB 2.0 port; nothing on the board connects to it"
+
+[[input]]
+name = "VBUS2"
+pin = "J6.A4"
+to = "J6.A1"
+min = 4.75
+max = 5.25
+reverse = "a USB-C plug can't put VBUS on the GND contacts"
+source = "USB 2.0 specification, Table 7-7: VBUS at a high-power port 4.75 to 5.25 V"
+
+[[input]]
+name = "USB2 D+"
+pin = "J6.A6"
+to = "J6.A1"
+min = 0
+max = 3.6
+source = "USB 2.0 specification, Table 7-7: VOH at most 3.6 V (full-speed driver); high-speed signalling stays below it"
+
+[[input]]
+name = "USB2 D-"
+pin = "J6.A7"
+to = "J6.A1"
+min = 0
+max = 3.6
+source = "USB 2.0 specification, Table 7-7: VOH at most 3.6 V (full-speed driver); high-speed signalling stays below it"
+
+[[input]]
+name = "USB2 CC1"
+pin = "J6.A5"
+to = "J6.A1"
+min = 0
+max = 5.5
+source = "assumed: a USB-C source pulls CC up through Rp from at most 5 V, here given 10 % margin; not checked against the Type-C specification's tables"
+
+[[input]]
+name = "USB2 CC2"
+pin = "J6.B5"
+to = "J6.A1"
+min = 0
+max = 5.5
+source = "assumed: a USB-C source pulls CC up through Rp from at most 5 V, here given 10 % margin; not checked against the Type-C specification's tables"
+
+[[undriven]]
+pin = "J6.A8"
+source = "SBU1 is unused on a USB 2.0 port; nothing on the board connects to it"
+
+[[undriven]]
+pin = "J6.B8"
+source = "SBU2 is unused on a USB 2.0 port; nothing on the board connects to it"

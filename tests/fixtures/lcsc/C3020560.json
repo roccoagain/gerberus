@@ -1,0 +1,59 @@
+{
+  "fetched": 1794855096,
+  "listing": {
+    "code": "C3020560",
+    "mpn": "USB4105-GF-A",
+    "manufacturer": "Global Connector Technology",
+    "stock": 13056,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SMD",
+    "similar": [
+      {
+        "code": "C27636760",
+        "mpn": "GT-USB-9010A",
+        "manufacturer": "G-Switch",
+        "stock": 1249,
+        "status": "normal",
+        "package": "SMD",
+        "description": "USB-C (USB TYPE-C) Receptacle Connector 16 Position Surface Mount, Right Angle"
+      },
+      {
+        "code": "C2988366",
+        "mpn": "GT-USB-9010AB",
+        "manufacturer": "G-Switch",
+        "stock": 810,
+        "status": "normal",
+        "package": "SMD",
+        "description": "USB-C (USB TYPE-C) Receptacle Connector 16 Position Surface Mount, Right Angle"
+      },
+      {
+        "code": "C2988369",
+        "mpn": "GT-USB-7010ASV",
+        "manufacturer": "G-Switch",
+        "stock": 61330,
+        "status": "normal",
+        "package": "SMD",
+        "description": "USB-C (USB TYPE-C) Receptacle Connector 16 Position Surface Mount, Right Angle"
+      },
+      {
+        "code": "C42400252",
+        "mpn": "HYCW498-USBC16-735B",
+        "manufacturer": "HOAUC",
+        "stock": 14900,
+        "status": "normal",
+        "package": "SMD",
+        "description": "USB-C (USB TYPE-C) Receptacle Connector 16 Position Surface Mount, Right Angle"
+      },
+      {
+        "code": "C48533150",
+        "mpn": "GT-USB-9010B",
+        "manufacturer": "G-Switch",
+        "stock": 226,
+        "status": "normal",
+        "package": "SMD",
+        "description": "USB 2.0 1 16P -40℃~+85℃ Surface Mount, Right Angle SMD USB, DVI, HDMI Connector Assemblies"
+      }
+    ]
+  }
+}
