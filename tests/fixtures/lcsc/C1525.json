@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817737,
+  "listing": {
+    "code": "C1525",
+    "mpn": "CL05B104KO5NNNC",
+    "manufacturer": "Samsung Electro-Mechanics",
+    "stock": 6506200,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0402",
+    "similar": [
+      {
+        "code": "C106994",
+        "mpn": "GRM155R71C104KA88J",
+        "manufacturer": "muRata",
+        "stock": 10750,
+        "status": "normal",
+        "package": "0402",
+        "description": "100nF ±10% 16V Ceramic Capacitor X7R 0402"
+      },
+      {
+        "code": "C71629",
+        "mpn": "GRM155R71C104KA88D",
+        "manufacturer": "muRata",
+        "stock": 929700,
+        "status": "normal",
+        "package": "0402",
+        "description": "100nF ±10% 16V Ceramic Capacitor X7R 0402"
+      },
+      {
+        "code": "C92753",
+        "mpn": "EMK105B7104KV-F",
+        "manufacturer": "Taiyo Yuden",
+        "stock": 771450,
+        "status": "normal",
+        "package": "0402",
+        "description": "100nF ±10% 16V Ceramic Capacitor X7R 0402"
+      },
+      {
+        "code": "C2167897",
+        "mpn": "C0402C104J4RACTU",
+        "manufacturer": "KEMET",
+        "stock": 9660,
+        "status": "normal",
+        "package": "0402",
+        "description": "100nF ±5% 16V Ceramic Capacitor X7R 0402"
+      },
+      {
+        "code": "C913742",
+        "mpn": "GRM155R71C104JA88D",
+        "manufacturer": "muRata",
+        "stock": 11550,
+        "status": "normal",
+        "package": "0402",
+        "description": "100nF ±5% 16V Ceramic Capacitor X7R 0402"
+      }
+    ]
+  }
+}

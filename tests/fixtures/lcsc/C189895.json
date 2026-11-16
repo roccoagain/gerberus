@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817739,
+  "listing": {
+    "code": "C189895",
+    "mpn": "SM04B-GHS-TB(LF)(SN)",
+    "manufacturer": "JST",
+    "stock": 29790,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SMD,P=1.25mm,Surface Mount,Right Angle",
+    "similar": [
+      {
+        "code": "C2845399",
+        "mpn": "HC-GH-4PWT",
+        "manufacturer": "HCTL",
+        "stock": 27555,
+        "status": "normal",
+        "package": "SMD,P=1.25mm,Surface Mount,Right Angle",
+        "description": "Connector Header 4 position 1.25mm Pitch 1A Surface Mount, Right Angle -25℃~+85℃"
+      },
+      {
+        "code": "C54905900",
+        "mpn": "LAIL-PHC1.25-4P-01-GH-WT",
+        "manufacturer": "LAILAN",
+        "stock": 58065,
+        "status": "normal",
+        "package": "SMD,P=1.25mm,Surface Mount,Right Angle",
+        "description": "Surface Mount, Right Angle GH 50V 4 1 1.25mm 1A -25℃~+85℃ 4P Tin Beige 1x4P SMD,P=1.25mm,Surface Mount,Right Angle Headers, Male Pins"
+      },
+      {
+        "code": "C41411189",
+        "mpn": "WT125H1W-043R-005",
+        "manufacturer": "ZGWD",
+        "stock": 370,
+        "status": "normal",
+        "package": "SMD,P=1.25mm,Surface Mount,Right Angle",
+        "description": "Connector Header 4 position 1.25mm Pitch Surface Mount, Right Angle -25℃~+85℃"
+      },
+      {
+        "code": "C54431912",
+        "mpn": "SH-GH1.25-4PWB",
+        "manufacturer": "SHOU HAN",
+        "stock": 7690,
+        "status": "normal",
+        "package": "SMD,P=1.25mm,Surface Mount,Right Angle",
+        "description": "Surface Mount, Right Angle GH 50V 4 1 1.25mm 1A 4P -25℃~+85℃ Tin Beige 1x4P SMD,P=1.25mm,Surface Mount,Right Angle Headers, Male Pins RoHS"
+      },
+      {
+        "code": "C2886767",
+        "mpn": "GH125-S04DCA-00",
+        "manufacturer": "JUSHUO",
+        "stock": 41130,
+        "status": "normal",
+        "package": "SMD,P=1.25mm,Surface Mount,Right Angle",
+        "description": "Connector Header 4 position 1.25mm Pitch 1A Surface Mount, Right Angle -25℃~+85℃"
+      }
+    ]
+  }
+}

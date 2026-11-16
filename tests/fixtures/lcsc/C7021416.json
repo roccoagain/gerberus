@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817763,
+  "listing": {
+    "code": "C7021416",
+    "mpn": "STM32G0B1KBT6TR",
+    "manufacturer": "ST",
+    "stock": 372,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "LQFP-32(7x7)",
+    "similar": [
+      {
+        "code": "C5270165",
+        "mpn": "STM32G0B1KBT6",
+        "manufacturer": "ST",
+        "stock": 269,
+        "status": "normal",
+        "package": "LQFP-32(7x7)",
+        "description": "ARM Cortex-M0+ LQFP-32(7x7) Microcontrollers RoHS"
+      },
+      {
+        "code": "C2829308",
+        "mpn": "STM32G0B1KET6",
+        "manufacturer": "ST",
+        "stock": 3,
+        "status": "normal",
+        "package": "LQFP-32(7x7)",
+        "description": "ARM Cortex-M0+ 32 Bit 64MHz LQFP-32(7x7) Microcontrollers RoHS"
+      },
+      {
+        "code": "C529348",
+        "mpn": "STM32G071KBT6",
+        "manufacturer": "ST",
+        "stock": 210,
+        "status": "normal",
+        "package": "LQFP-32(7x7)",
+        "description": "ARM Cortex-M0+ 32 Bit 64MHz LQFP-32(7x7) Microcontrollers RoHS"
+      },
+      {
+        "code": "C724238",
+        "mpn": "STM32G071KBT3",
+        "manufacturer": "ST",
+        "stock": 3,
+        "status": "normal",
+        "package": "LQFP-32(7x7)",
+        "description": "ARM Cortex-M0+ 32 Bit 64MHz LQFP-32(7x7) Microcontrollers RoHS"
+      },
+      {
+        "code": "C52711774",
+        "mpn": "PY32T090K1BT7",
+        "manufacturer": "PUYA",
+        "stock": 45,
+        "status": "normal",
+        "package": "LQFP-32(7x7)",
+        "description": "ARM Cortex-M0+ 32 Bit 72MHz LQFP-32(7x7) Microcontrollers"
+      }
+    ]
+  }
+}

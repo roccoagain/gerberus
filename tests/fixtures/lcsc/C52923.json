@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817738,
+  "listing": {
+    "code": "C52923",
+    "mpn": "CL05A105KA5NQNC",
+    "manufacturer": "Samsung Electro-Mechanics",
+    "stock": 5456600,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0402",
+    "similar": [
+      {
+        "code": "C16193167",
+        "mpn": "CL05A105KA5NNNC",
+        "manufacturer": "Samsung Electro-Mechanics",
+        "stock": 28270,
+        "status": "normal",
+        "package": "0402",
+        "description": "1uF X5R ±10% 25V 0402 Ceramic Capacitors RoHS"
+      },
+      {
+        "code": "C191909",
+        "mpn": "C1005X5R1E105KT000E",
+        "manufacturer": "TDK",
+        "stock": 16720,
+        "status": "normal",
+        "package": "0402",
+        "description": "1uF ±10% 25V Ceramic Capacitor X5R 0402"
+      },
+      {
+        "code": "C2186557",
+        "mpn": "GRM155R61E105KA12J",
+        "manufacturer": "muRata",
+        "stock": 74500,
+        "status": "normal",
+        "package": "0402",
+        "description": "1uF ±10% 25V Ceramic Capacitor X5R 0402"
+      },
+      {
+        "code": "C237173",
+        "mpn": "0402X105K250CT",
+        "manufacturer": "Walsin",
+        "stock": 26550,
+        "status": "normal",
+        "package": "0402",
+        "description": "1uF ±10% 25V Ceramic Capacitor X5R 0402"
+      },
+      {
+        "code": "C326568",
+        "mpn": "CC0402KRX5R8BB105",
+        "manufacturer": "YAGEO",
+        "stock": 138160,
+        "status": "normal",
+        "package": "0402",
+        "description": "1uF ±10% 25V Ceramic Capacitor X5R 0402"
+      }
+    ]
+  }
+}

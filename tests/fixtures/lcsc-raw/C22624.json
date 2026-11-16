@@ -1,0 +1,25 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C22624",
+  "productModel": "B5819WS",
+  "brandNameEn": "JSCJ",
+  "encapStandard": "SOD-323",
+  "stockNumber": 629540,
+  "productCycle": "normal",
+  "alternatePartList": [
+   {
+    "productCode": "C77281",
+    "productCycle": "normal",
+    "encapStandard": "SOD-323",
+    "productModel": "B1040WS",
+    "brandNameEn": "JSCJ",
+    "productIntroEn": "Diode Independent 40V 1A Surface Mount SOD-323",
+    "stockNumber": 6000
+   }
+  ],
+  "smtLabel": "EXPAND"
+ },
+ "ok": true
+}

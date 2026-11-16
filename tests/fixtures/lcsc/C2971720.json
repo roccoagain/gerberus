@@ -1,0 +1,23 @@
+{
+  "fetched": 1794817740,
+  "listing": {
+    "code": "C2971720",
+    "mpn": "STM32F042G6U6TR",
+    "manufacturer": "ST",
+    "stock": 69,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "UFQFN-28",
+    "similar": [
+      {
+        "code": "C961597",
+        "mpn": "STM32F042G6U6",
+        "manufacturer": "ST",
+        "stock": 163,
+        "status": "normal",
+        "package": "UFQFPN-28(4x4)",
+        "description": "ARM Cortex-M0 32 Bit 48MHz UFQFPN-28(4x4) Microcontrollers RoHS"
+      }
+    ]
+  }
+}

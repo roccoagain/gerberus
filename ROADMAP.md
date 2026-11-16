@@ -11,7 +11,7 @@ Each phase reads one more part of the design. It starts with the schematic, then
 ## v0.2 — Parts
 
 - [ ] Check that symbol, footprint and datasheet pinouts agree (catches swapped or missing pins). *(Copies: Ultra Librarian / SnapEDA verification)*
-- [ ] BOM health: end-of-life parts, stock, second sources. *(Copies: SiliconExpert, Octopart / Supplyframe)*
+- [ ] BOM health: end-of-life parts, stock, second sources. Stock, LCSC listing status and candidate second sources from LCSC are done; manufacturer lifecycle needs a distributor API key. *(Copies: SiliconExpert, Octopart / Supplyframe)*
 - [ ] Datasheet → Hunter's Notes part model using an LLM, checked and signed off by a person. *(New: no paid tool does this)*
 
 ## v0.3 — Power and stress

@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817763,
+  "listing": {
+    "code": "C167876",
+    "mpn": "FNR4030S6R8MT",
+    "manufacturer": "cjiang",
+    "stock": 24560,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SMD,4x4mm",
+    "similar": [
+      {
+        "code": "C843301",
+        "mpn": "FHD4020S-6R8MT",
+        "manufacturer": "cjiang",
+        "stock": 68790,
+        "status": "normal",
+        "package": "SMD,4x4mm",
+        "description": "2.8A 6.8uH ±20% 4.2A 130mΩ SMD,4x4mm Fixed Inductors RoHS"
+      },
+      {
+        "code": "C168031",
+        "mpn": "FNR6028S6R8MT",
+        "manufacturer": "cjiang",
+        "stock": 140,
+        "status": "normal",
+        "package": "SMD,6x6mm",
+        "description": "2.6A 6.8uH ±20% 3A 61mΩ Magnetic Shielded Inductor SMD,6x6mm Fixed Inductors RoHS"
+      },
+      {
+        "code": "C167965",
+        "mpn": "FNR5040S6R8MT",
+        "manufacturer": "cjiang",
+        "stock": 5990,
+        "status": "normal",
+        "package": "SMD,5x5mm",
+        "description": "2.8A 6.8uH ±20% 3.4A 56mΩ Magnetic Shielded Inductor SMD,5x5mm Fixed Inductors RoHS"
+      },
+      {
+        "code": "C168072",
+        "mpn": "FNR6045S6R8MT",
+        "manufacturer": "cjiang",
+        "stock": 3050,
+        "status": "normal",
+        "package": "SMD,6x6mm",
+        "description": "3.3A 6.8uH ±20% 4.3A 40mΩ Magnetic Shielded Inductor SMD,6x6mm Fixed Inductors RoHS"
+      },
+      {
+        "code": "C168125",
+        "mpn": "FNR8040S6R8MT",
+        "manufacturer": "cjiang",
+        "stock": 165,
+        "status": "normal",
+        "package": "SMD,8x8mm",
+        "description": "4A 6.8uH ±20% 5.2A 31mΩ Magnetic Shielded Inductor SMD,8x8mm Fixed Inductors RoHS"
+      }
+    ]
+  }
+}
