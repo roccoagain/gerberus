@@ -48,7 +48,7 @@ fn report() -> &'static Report {
     })
 }
 
-/// `severity rule reference [case]` for every finding with this verdict, sorted.
+/// `severity rule reference [case]` for every finding with this verdict, sorted, one line per finding.
 fn listed(verdict: Verdict) -> Vec<String> {
     let mut out: Vec<String> = report()
         .findings
@@ -60,7 +60,6 @@ fn listed(verdict: Verdict) -> Vec<String> {
         })
         .collect();
     out.sort();
-    out.dedup();
     out
 }
 
@@ -124,6 +123,8 @@ fn netlist_matches_the_board() {
 
 #[test]
 fn check_fails_exactly_the_planted_bugs() {
+    // Without the thermal rules (gerberus PR #17). Once they are in, the list also has `error forward-current D17`,
+    // `error junction-temperature U7` and `warning forward-current D15` / `D16` (the board's thermal sheet).
     let want = [
         "error abs-max U3 [VAUX reversed]",
         "error abs-max U5 [VIN shorted onto CANH]",
@@ -143,6 +144,8 @@ fn check_fails_exactly_the_planted_bugs() {
         "error tvs-breakdown D3",
         "error unpowered U9",
         "warning esd J3",
+        "warning esd J3",
+        "warning esd J3",
         "warning recommended U6",
         "warning regulator-headroom U3",
         "warning tvs-standoff D11",
@@ -159,7 +162,7 @@ fn check_fails_exactly_the_planted_bugs() {
 
 #[test]
 fn check_messages_cite_the_numbers() {
-    let cases: [(&str, &str, Option<&str>, &[&str]); 7] = [
+    let cases: [(&str, &str, Option<&str>, &[&str]); 8] = [
         ("abs-max", "U6", None, &["PA4", "/mcu/VSENSE", "26 V", "4 V"]),
         (
             "abs-max",
@@ -171,13 +174,16 @@ fn check_messages_cite_the_numbers() {
         ("cap-voltage", "C2", None, &["26 V", "25 V"]),
         ("floating-input", "U3", None, &["CE"]),
         ("unpowered", "U9", None, &["VDD", "/sensors/+3V3_ENC"]),
-        ("regulator-headroom", "U3", None, &["/power/VAUX", "3 V"]),
+        ("regulator-headroom", "U3", None, &["/power/VAUX", "can fall to 3 V"]),
+        ("recommended", "U6", None, &["PA4", "26 V"]),
     ];
     for (rule, reference, case, needles) in cases {
-        for f in find(rule, reference, case) {
-            if f.verdict != Verdict::Fail {
-                continue;
-            }
+        let fails: Vec<_> = find(rule, reference, case)
+            .into_iter()
+            .filter(|f| f.verdict == Verdict::Fail)
+            .collect();
+        assert!(!fails.is_empty(), "no {rule} FAIL on {reference}");
+        for f in fails {
             for n in needles {
                 assert!(
                     f.message.contains(n),
@@ -207,10 +213,7 @@ fn each_section_has_a_pass_case() {
     all("floating-input", "U4", None, Verdict::Pass);
     // mcu: clamped UART pins, and USB pins clamped (port 1) or covered by a surge diode (port 2).
     for reference in ["J4", "J5", "J6"] {
-        assert!(
-            find("esd", reference, None).iter().all(|f| f.verdict != Verdict::Fail),
-            "{reference}"
-        );
+        all("esd", reference, None, Verdict::Pass);
     }
     // sensors: the powered sensor.
     all("unpowered", "U8", None, Verdict::Pass);
@@ -227,6 +230,7 @@ fn pinout_finds_the_swapped_led() {
             .filter(|f| f.severity == s)
             .map(|f| f.reference.as_str())
             .collect();
+        v.sort_unstable();
         v.dedup();
         v
     };
