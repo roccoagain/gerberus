@@ -401,6 +401,28 @@ fn floating_inputs_and_unpowered_pins_fail() {
         .find(|f| f.reference == "U9" && f.message.contains("/NOPOWER"))
         .unwrap();
     assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
+    // A part with no part file and two of its own power pins tied on a net with only a capacitor, like the
+    // MAX9722A's charge-pump output PVSS and SVSS: it may supply that net itself, so nothing proves it unpowered.
+    let pump = new_net(&mut d, "/PVSS");
+    add(
+        &mut d,
+        "U8",
+        "Amplifier:Pump",
+        "X",
+        None,
+        vec![pin("1", PinKind::PowerIn, pump), pin("2", PinKind::PowerIn, pump)],
+    );
+    add(
+        &mut d,
+        "C98",
+        "Device:C",
+        "1uF 50V",
+        None,
+        vec![pin("1", PinKind::Passive, pump), pin("2", PinKind::Passive, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f = r.by_rule("unpowered").find(|f| f.reference == "U8").unwrap();
+    assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
     let f = r
         .by_rule("unpowered")
         .find(|f| f.reference == "U9" && f.message.contains("GND"))
@@ -693,6 +715,30 @@ fn esd_on_the_test_boards() {
     assert_eq!(esd(&r, "J1.2 (/UART_TX)"), Verdict::Fail);
     // The ME6211 gives no ESD rating.
     assert_eq!(esd(&r, "J1.1 (+5V)"), Verdict::Unknown);
+}
+
+/// A part with no part file on a connector's net could be an IC or a clamp, so the net can't pass: it was
+/// passing as "only passive parts" (the audio board rev 2's MAX9722A on the headphone jack).
+#[test]
+fn esd_is_unknown_with_an_undescribed_part() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let canh = net(&d, "/CANH");
+    let gnd = net(&d, "GND");
+    add(
+        &mut d,
+        "U7",
+        "Amplifier:Unknown",
+        "MYSTERY1",
+        Some("MYSTERY1"),
+        vec![pin("1", PinKind::Input, canh), pin("2", PinKind::PowerIn, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r
+        .by_rule("esd")
+        .filter(|f| f.message.starts_with("J1.2 (/CANH)"))
+        .collect();
+    assert_eq!(f[0].verdict, Verdict::Unknown, "{}", f[0].message);
+    assert!(f[0].message.contains("U7 (MYSTERY1)"), "{}", f[0].message);
 }
 
 /// A part that fails its maximum in normal operation and its minimum when reversed still counts as damaged by

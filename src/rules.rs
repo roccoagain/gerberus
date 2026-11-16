@@ -1130,7 +1130,34 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
             } else {
                 format!("{} ({})", pin.number, pin.name)
             };
+            // A part with no part file may supply the net itself: a charge pump's output or an internal
+            // regulator's pin that its symbol marks as a power input (the MAX9722A's PVSS).
+            // Two or more of its own pins on the net (PVSS and SVSS tied) set this apart from a lone power pin
+            // left unconnected, which stays a FAIL.
+            let own_pins = design.nets[pin.net]
+                .pins
+                .iter()
+                .filter(|(r2, _)| r2 == reference)
+                .count();
+            let own_rail = lib.part_for(c).is_none()
+                && own_pins >= 2
+                && design.nets[pin.net].pins.iter().all(|(r2, p2)| {
+                    r2 == reference
+                        || design
+                            .components
+                            .get(r2)
+                            .and_then(|c2| c2.pins.get(p2))
+                            .is_some_and(|p2| p2.kind == PinKind::Passive)
+                });
             let (vd, msg) = match nv.driver {
+                Driver::Floating if own_rail => (
+                    Verdict::Unknown,
+                    format!(
+                        "{reference}.{name} is on {net}, which only {reference}'s own pins and passive parts reach. \
+                         {reference} has no part file, so nothing says whether it supplies that net itself (a charge \
+                         pump or internal regulator output)"
+                    ),
+                ),
                 Driver::Floating => (
                     Verdict::Fail,
                     format!(
