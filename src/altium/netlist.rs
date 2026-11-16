@@ -1258,6 +1258,7 @@ impl Builder<'_> {
                         name,
                         kind,
                         no_connect: no_connect.contains(&(r.clone(), num.clone())),
+                        stack: None,
                         net: index,
                     });
                 }

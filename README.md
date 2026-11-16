@@ -2,6 +2,67 @@
 
 Gerberus checks a PCB design for electrical bugs before it's ordered. See [ROADMAP.md](ROADMAP.md) for where it's going.
 
+## Install
+
+On macOS or Linux:
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.sh | sh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.ps1 | iex"
+```
+
+The installer downloads the release built for your machine (macOS on Apple silicon or Intel, Linux on x86-64 or
+ARM64 with glibc 2.35 or newer, Windows on x86-64) and puts `gerberus` and `gerberus-update` in `~/.cargo/bin`
+(`$CARGO_HOME/bin` if you set it), adding that folder to your `PATH` if it isn't there. The [releases
+page](https://github.com/roccoagain/gerberus/releases) also has each build as a plain archive, with checksums. To
+build it yourself instead, with Rust installed:
+
+```sh
+cargo install --locked --git https://github.com/roccoagain/gerberus
+```
+
+The shared part library (`parts/`) and the derating policy (`policy.toml`) are built into the binary, so it needs
+nothing else beside it. `gerberus datasheet verify` also needs poppler's `pdftotext` (`brew install poppler`,
+`apt install poppler-utils`).
+
+### Updating
+
+```sh
+gerberus update
+```
+
+fetches the latest release and installs it over the old one (on Windows, the running `gerberus.exe` is renamed
+`gerberus.exe.old` to make room, and the next update removes it). It runs `gerberus-update`, which the installer put
+next to `gerberus` and which reads the install receipt the installer left in your config folder, so it updates the
+copy you installed, where you installed it. A copy built with `cargo install` has no updater: run the same
+`cargo install` command again.
+
+Once a day, `gerberus` also asks GitHub for the latest release and, after a command finishes, prints a line on
+stderr when a newer one is out. It waits at most a second for GitHub, and only on the first run of the day; the
+answer is kept in `~/.cache/gerberus/latest-release` (`%LOCALAPPDATA%\gerberus` on Windows). It doesn't check when
+its output goes to a pipe or a file, or when `CI` is set. Set `GERBERUS_NO_UPDATE_CHECK=1` to turn it off.
+`gerberus --version` prints the version you have.
+
+### Releasing
+
+Releases are built by [cargo-dist](https://opensource.axo.dev/cargo-dist/) (`dist-workspace.toml`,
+`.github/workflows/release.yml`). To cut one, bump `version` in `Cargo.toml` on main, then push a tag for it:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The release workflow builds every target, makes the installers, and publishes them as a GitHub Release named after
+the tag. A tag with a pre-release suffix (`v0.2.0-rc.1`) makes a pre-release, which the installer's `latest` link
+and the update check skip. After changing `dist-workspace.toml`, run `dist generate` to regenerate the workflow;
+CI's `dist plan` step fails when the two disagree.
+
 ## Status
 
 It reads KiCad schematics (KiCad 10 format, including hierarchical sheets and buses) into a design graph of parts,
@@ -50,7 +111,7 @@ cites the numbers, their datasheet pages and how each net got its range. The ten
 | `cap-voltage` | a capacitor sees more than its rated voltage (error), or more than `policy.toml` allows (warning) | error / warning |
 | `resistor-power` | a resistor's worst-case V²/R is over its rating (error) or the policy's share of it (warning) | error / warning |
 | `floating-input` | an input pin is on a net nothing drives (UNKNOWN when only open-drain or tri-state outputs, connectors or unmodelled parts reach it) | error |
-| `unpowered` | a power pin is on a net nothing supplies | error |
+| `unpowered` | a power pin is on a net nothing supplies (UNKNOWN when two or more pins of one part with no part file are tied on it with only passives: it may supply the net itself, like a charge pump's output) | error |
 | `regulator-headroom` | a regulator's supply can fall below what its datasheet output range needs | warning |
 | `esd` | an external connector pin's net has no TVS or ESD clamp, and a part on it (directly, or through one series resistor, inductor or diode with no clamp behind it) has no system-level ESD rating to `policy.toml`'s level | warning |
 | `reverse-polarity` | a supply input connected backwards (its fault case `<name> reversed`) takes a part past its absolute maximum ratings | error |
@@ -83,7 +144,8 @@ The `esd` rule looks at every connector pin `inputs.toml` names (inputs and undr
 references). A TVS or ESD diode on the net passes it, if it breaks down below the absolute maximum of the IC
 pins beside it (an SMF26A on a 3.3 V logic pin doesn't count). A pull-up or pull-down isn't followed onto its
 rail. So does a clamp behind the one series part between the
-connector and the ICs it protects (VBUS → D1 → TVS). Otherwise every IC pin on the net needs an IEC 61000-4-2
+connector and the ICs it protects (VBUS → D1 → TVS). A part with no part file on the way (other than a connector, test point or jumper) makes the net UNKNOWN,
+since it could be an IC or a clamp. Otherwise every IC pin on the net needs an IEC 61000-4-2
 rating (`[[esd]]` in its part file) at `policy.toml`'s `[esd]` level: an HBM or CDM rating only covers handling
 in a factory, so it FAILs as a warning, and a part with no rating at all is UNKNOWN.
 

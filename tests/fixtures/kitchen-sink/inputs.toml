@@ -37,7 +37,7 @@ pin = "J1.2"
 to = "J1.3"
 min = -0.12
 max = 5
-source = "TCAN1044A-Q1 SLLSFJ3D p6: VOD(DOM) 1.5 to 5 V at RL = 2240 ohm (the ISO 11898-2 arbitration load, the widest dominant row; 1.5 to 3 V at 50 to 65 ohm) and VOD(REC) -120 to 12 mV at 60 ohm. Assumes every node's driver, the C610s' too, stays inside the same ISO 11898-2 limits"
+source = "TCAN1044A-Q1 SLLSFJ3D p6: VOD(DOM) 1.5 to 5 V at RL = 2240 ohm (the ISO 11898-2 arbitration load, the widest dominant row; 1.5 to 3 V at 50 to 65 ohm) and VOD(REC) -120 to 12 mV at 60 ohm. Assumes every node's driver stays inside the same ISO 11898-2 limits. The 5 V row is for the 2240 ohm arbitration load; with a 120 ohm terminator fitted the dominant differential is 1.5 to 3 V, so this range is wider than the bus can reach"
 
 # Fault cases. Each is checked on its own, against absolute maximum ratings, TVS breakdown and capacitor ratings,
 # with its inputs in place of the normal ones on the same nets. A miswired or damaged cable puts VIN (the VIN
@@ -49,7 +49,7 @@ pin = "J1.2"
 to = "J1.4"
 min = 7
 max = 26
-source = "hardware/can-encoder/DESIGN.md, rev 1 to rev 2 changes: TCAN330 to TCAN1044AV because its bus pins survive ±58 V, so VIN shorted onto CANH/CANL doesn't kill it"
+source = "kitchen-sink/README.md, CAN section: a miswired cable can put VIN (the VIN input's 7 to 26 V) on either bus wire; can-encoder/DESIGN.md (rev 1 to rev 2 changes) swapped the TCAN330 for the TCAN1044AV because its bus pins survive VBUS shorted onto CANH/CANL"
 
 [[input]]
 name = "CANL shorted to VIN"
@@ -58,7 +58,7 @@ pin = "J1.3"
 to = "J1.4"
 min = 7
 max = 26
-source = "hardware/can-encoder/DESIGN.md, rev 1 to rev 2 changes: TCAN330 to TCAN1044AV because its bus pins survive ±58 V, so VIN shorted onto CANH/CANL doesn't kill it"
+source = "kitchen-sink/README.md, CAN section: a miswired cable can put VIN (the VIN input's 7 to 26 V) on either bus wire; can-encoder/DESIGN.md (rev 1 to rev 2 changes) swapped the TCAN330 for the TCAN1044AV because its bus pins survive VBUS shorted onto CANH/CANL"
 
 [[input]]
 name = "VAUX"

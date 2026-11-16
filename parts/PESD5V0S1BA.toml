@@ -1,0 +1,41 @@
+mpn = "PESD5V0S1BA"
+manufacturer = "Nexperia"
+description = "Bidirectional 5 V ESD protection diode, SOD323"
+class = "tvs"
+
+[datasheet]
+title = "PESD5V0S1BA Bidirectional ESD protection diode"
+document = "Product data sheet, 26 April 2024"
+url = "https://www.lcsc.com/datasheet/C19224.pdf"
+
+[pins]
+1 = "K1"
+2 = "K2"
+
+[[limit]]
+pins = ["K1"]
+to = "K2"
+bidirectional = true
+abs_max = { unknown = "the limiting values rate pulses (PPPM, IPPM), not a voltage" }
+recommended = { min = -5, max = 5, page = 4, note = "VRWM reverse standoff voltage 5 V; bidirectional, so ±5 V" }
+breakdown = { min = 5.5, max = 9.5, page = 4, note = "VBR at IR = 1 mA, Tamb = 25 °C" }
+
+[[capacitance]]
+pins = ["K1"]
+to = "K2"
+typ = 35
+max = 45
+page = 4
+note = "Cd diode capacitance, f = 1 MHz, VR = 0 V, Tamb = 25 °C"
+
+[[esd]]
+model = "iec-contact"
+volts = 30000
+page = 3
+note = "IEC 61000-4-2 contact discharge, pin 1 to pin 2; no air-discharge figure is given"
+
+[[esd]]
+model = "hbm"
+volts = 10000
+page = 3
+note = "HBM MIL-Std 883"

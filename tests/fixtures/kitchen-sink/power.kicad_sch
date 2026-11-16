@@ -766,7 +766,7 @@
           (name "K" (effects (font (size 1.27 1.27))))
           (number "2" (effects (font (size 1.27 1.27))))))))
   (text
-    "POWER\nJ1 VIN 7-26 V -> D1 (blocks a reversed VIN: reverse-polarity PASS) -> +VDC.\nD2 SMF26A on +VDC: tvs PASS. D3 SMAJ18A on +VDC: tvs-breakdown FAIL (breaks down from 20 V; +VDC reaches 26 V).\nC1 10 uF 50 V: cap-voltage PASS. C2 10 uF 25 V on +VDC: cap-voltage FAIL (26 V > 25 V).\nU1 TPS560430 buck -> +5V, U2 XC6206 -> +3V3: regulator-headroom PASS.\nJ2 VAUX 3.0-5.5 V -> U3 ME6211 -> +3V3A with nothing in series: reverse-polarity FAIL,\nregulator-headroom FAIL (3.0 V can't hold 3.3 V), floating-input FAIL (CE left open).\nC7's LCSC number is a 0603 1 uF's (C15849): bom FAIL (wrong part). D5 is drawn with a\nsymbol whose pin 1 is the anode, but the LED's pad 1 is its cathode: pinout FAIL."
+    "POWER\nJ1 VIN 7-26 V -> D1 (blocks a reversed VIN: reverse-polarity PASS) -> +VDC.\nD2 SMF26A on +VDC: tvs PASS. D3 SMAJ18A on +VDC: tvs-breakdown FAIL (breaks down from 20 V; +VDC reaches 26 V).\nC1 10 uF 50 V: cap-voltage PASS. C2 10 uF 25 V on +VDC: cap-voltage FAIL (26 V > 25 V).\nU1 TPS560430 buck -> +5V, U2 XC6206 -> +3V3: regulator-headroom PASS.\nJ2 VAUX 3.0-5.5 V -> U3 ME6211 -> +3V3A with nothing in series: reverse-polarity FAIL,\nregulator-headroom FAIL (VAUX falls to 3.0 V, below the VOUT + 1 V its output is specified at), floating-input FAIL (CE left open).\nC7's LCSC number is a 0603 1 uF's (C15849): bom FAIL (wrong part). D5 is drawn with a\nsymbol whose pin 1 is the anode, but the LED's pad 1 is its cathode: pinout FAIL."
     (at 20 20 0)
     (effects (font (size 1.6 1.6)) (justify left top))
     (uuid "c4693a62-4683-5024-abd1-c49822bda7b0"))

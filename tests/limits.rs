@@ -276,6 +276,7 @@ fn capacitor(value: &str, voltage: Option<&str>) -> Component {
                 name: String::new(),
                 kind: PinKind::Passive,
                 no_connect: false,
+                stack: None,
                 net: 0,
             },
         );
@@ -570,4 +571,41 @@ fn resistors_give_their_tolerance() {
         }
     }
     assert!(missing.is_empty(), "no tolerance: {missing:?}");
+}
+
+/// A released binary has no `parts/` or `policy.toml` beside it, so it uses the copies built into it. They must
+/// be the files in this repository.
+#[test]
+fn built_in_library_and_policy_match_the_files() {
+    let built_in = Library::builtin().unwrap();
+    let files = library();
+    assert_eq!(
+        built_in.parts.keys().collect::<Vec<_>>(),
+        files.parts.keys().collect::<Vec<_>>()
+    );
+    for (mpn, part) in &files.parts {
+        assert_eq!(format!("{part:?}"), format!("{:?}", built_in.parts[mpn]), "{mpn}");
+        let name = files.files[mpn].file_name().unwrap().to_str().unwrap();
+        assert_eq!(built_in.files[mpn], Path::new(&format!("parts/{name} (built in)")));
+    }
+    let policy = Policy::load(&root("policy.toml")).unwrap();
+    assert_eq!(format!("{policy:?}"), format!("{:?}", Policy::builtin().unwrap()));
+}
+
+/// A board's own part file replaces the built-in one with the same part number.
+#[test]
+fn a_folder_overrides_the_built_in_library() {
+    let dir = std::env::temp_dir().join(format!("gerberus-override-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut lib = Library::builtin().unwrap();
+    let (mpn, path) = lib.files.iter().next().map(|(m, p)| (m.clone(), p.clone())).unwrap();
+    let name = path
+        .to_str()
+        .unwrap()
+        .trim_start_matches("parts/")
+        .trim_end_matches(" (built in)");
+    std::fs::copy(root("parts").join(name), dir.join(name)).unwrap();
+    lib.add_dir(&dir).unwrap();
+    assert_eq!(lib.files[&mpn], dir.join(name));
+    std::fs::remove_dir_all(&dir).unwrap();
 }

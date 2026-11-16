@@ -472,7 +472,7 @@
           (name "K" (effects (font (size 1.27 1.27))))
           (number "2" (effects (font (size 1.27 1.27))))))))
   (text
-    "CAN\nCANH/CANL come in on J1 (power sheet). inputs.toml gives each wire the ISO 11898 common mode plus or minus\nhalf the differential, a [[differential]] for CANH - CANL, and two faults: VIN shorted onto CANH, onto CANL.\nU4 TCAN1044AV (bus pins +/-58 V): abs-max PASS in both faults; esd PASS on its +/-8 kV IEC rating.\nU5 TCAN330 (bus pins +/-14 V): abs-max FAIL in both faults.\nR3 120 ohm 0402 across the bus: resistor-power FAIL (5 V dominant differential = 213 mW > 62.5 mW).\nU4's STB is pulled down by R5: floating-input PASS. CANA and CANB come from the MCU sheet on buses."
+    "CAN\nCANH/CANL come in on J1 (power sheet). inputs.toml gives each wire the ISO 11898 common mode plus or minus\nhalf the differential, a [[differential]] for CANH - CANL, and two faults: VIN shorted onto CANH, onto CANL.\nU4 TCAN1044AV (bus pins +/-58 V): abs-max PASS in both faults; esd PASS on its +/-8 kV IEC rating (and U5's +/-12 kV).\nU5 TCAN330 (bus pins +/-14 V): abs-max FAIL in both faults.\nR3 120 ohm 0402 across the bus: resistor-power FAIL (the 5 V widest dominant differential inputs.toml allows: up to 211 mW > 62.5 mW).\nU4's STB is pulled down by R5: floating-input PASS. CANA and CANB come from the MCU sheet on buses."
     (at 20 20 0)
     (effects (font (size 1.6 1.6)) (justify left top))
     (uuid "e279b96f-ede4-5e6e-ad3d-d2d61fa449ba"))

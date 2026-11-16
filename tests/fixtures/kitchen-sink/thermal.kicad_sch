@@ -141,7 +141,7 @@
           (name "GND" (effects (font (size 1.27 1.27))))
           (number "1" (effects (font (size 1.27 1.27))))))))
   (text
-    "THERMAL\ninputs.toml sets the ambient to 0-70 C. U7 (mcu sheet) drives D15-D17 straight through 120 ohm resistors.\nD15, D16 KT-0805G (30 mA): about 29 mA each, forward-current FAIL (warning: over the 50 % derating).\nD17 KT-0603R (25 mA): forward-current FAIL (error).\nR15-R17 120 ohm 0402: resistor-power FAIL (about 97 mW > 62.5 mW).\nU7 dissipates the LEDs' current at up to 3.37 V on top of its own: junction-temperature FAIL (over 105 C).\nD8 on the mcu sheet is the pass case: 1k, 3.4 mA."
+    "THERMAL\ninputs.toml sets the ambient to 0-70 C. U7 (mcu sheet) drives D15-D17 straight through 120 ohm resistors.\nD15, D16 KT-0805G (30 mA): up to 28.5 mA each (VF taken as 0 V), forward-current FAIL (warning: over the 50 % derating).\nD17 KT-0603R (25 mA): forward-current FAIL (error).\nR15-R17 120 ohm 0402: resistor-power FAIL (up to 95.8 mW > 62.5 mW).\nU7 dissipates the LEDs' current at up to 3.37 V on top of its own: junction-temperature FAIL (over 105 C).\nD8 on the mcu sheet is the pass case: 1k, 3.4 mA."
     (at 20 20 0)
     (effects (font (size 1.6 1.6)) (justify left top))
     (uuid "ae685c9b-0139-5704-9050-479acfd64710"))

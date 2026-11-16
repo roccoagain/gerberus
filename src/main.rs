@@ -16,12 +16,15 @@ const USAGE: &str = "usage:
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
+  gerberus update
+  gerberus --version
 
 <design> is a KiCad root .kicad_sch, an Altium .PrjPcb project, or a single Altium .SchDoc. `pinout` reads
 KiCad designs only, since it compares against the KiCad board.
 
-`parts` reports where each part's limits come from. It reads the shared library, then a `parts/` folder next
-to the schematic if there is one (its files override the shared ones), then any --parts folders in order.
+`parts` reports where each part's limits come from. It reads the shared library (built into gerberus), then a
+`parts/` folder next to the schematic if there is one (its files override the shared ones), then any --parts
+folders in order.
 
 `pinout` checks that each part's symbol pins, footprint pads and datasheet pin table agree. It reads the board
 next to the schematic (same name, .kicad_pcb) unless --pcb names another, and the same part folders as
@@ -55,11 +58,35 @@ needs poppler's `pdftotext`. --all also lists confirmed values. It exits with st
 or mismatched. `blank` prints the part file with every datasheet value replaced by \"?\", for a second reader to
 fill in blind; `compare` lists every value where two readings disagree and exits with status 1 if any do.
 
+`update` updates gerberus to the latest release with `gerberus-update`, which the installers put next to it.
+Once a day, gerberus also asks GitHub whether a newer release is out and says so after a command finishes; set
+GERBERUS_NO_UPDATE_CHECK=1 to turn that off. It never checks when its output isn't a terminal or in CI.
+
 Every command exits with status 2 when it can't run (bad arguments, unreadable files).";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let result = match args.as_slice() {
+    if let [flag] = args.as_slice()
+        && (flag == "--version" || flag == "-V")
+    {
+        println!("gerberus {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
+    if let [cmd] = args.as_slice()
+        && cmd == "update"
+    {
+        return update();
+    }
+    let check = UpdateCheck::start();
+    let code = run(&args);
+    if let Some(check) = check {
+        check.finish();
+    }
+    code
+}
+
+fn run(args: &[String]) -> ExitCode {
+    let result = match args {
         [cmd, path] if cmd == "netlist" => netlist(Path::new(path)),
         [cmd, path, rest @ ..] if cmd == "parts" => parts(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "pinout" => pinout(Path::new(path), rest),
@@ -95,9 +122,114 @@ fn netlist(path: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
+/// The once-a-day check for a newer release, running beside the command.
+struct UpdateCheck {
+    /// The remembered latest release, to compare with this build once the command is done.
+    remembered: Option<String>,
+    /// GitHub's answer, when the remembered one was too old and GitHub is being asked again.
+    fresh: Option<std::sync::mpsc::Receiver<Option<String>>>,
+    started: std::time::Instant,
+}
+
+impl UpdateCheck {
+    fn start() -> Option<UpdateCheck> {
+        use gerberus::update;
+        use std::io::IsTerminal;
+        let off = |v: &str| std::env::var_os(v).is_some_and(|x| !x.is_empty() && x != "0");
+        if off(update::OPT_OUT) || off("CI") || !std::io::stderr().is_terminal() || !std::io::stdout().is_terminal() {
+            return None;
+        }
+        let dir = update::default_cache_dir()?;
+        let (remembered, stale) = update::remembered(&dir);
+        let fresh = stale.then(|| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            // Mark today's check as done before asking, so a slow or unreachable GitHub (whose answer this run
+            // may not wait for) is asked once a day, not on every run. A failed answer keeps the last tag.
+            let _ = update::remember(&dir, remembered.as_deref().unwrap_or(""));
+            std::thread::spawn(move || {
+                if let Ok(tag) = update::fetch_latest() {
+                    let _ = update::remember(&dir, tag.as_deref().unwrap_or(""));
+                    let _ = tx.send(tag);
+                }
+            });
+            rx
+        });
+        Some(UpdateCheck {
+            remembered,
+            fresh,
+            started: std::time::Instant::now(),
+        })
+    }
+
+    /// Prints a notice when a newer release is out, waiting for GitHub at most `update::WAIT` more.
+    fn finish(self) {
+        use gerberus::update;
+        let fresh = self.fresh.and_then(|rx| {
+            let left = update::WAIT.saturating_sub(self.started.elapsed());
+            rx.recv_timeout(left).ok().flatten()
+        });
+        let Some(latest) = fresh.or(self.remembered) else {
+            return;
+        };
+        let has_updater = std::env::current_exe()
+            .ok()
+            .and_then(|exe| update::updater_next_to(&exe))
+            .is_some();
+        if let Some(n) = update::notice(&latest, env!("CARGO_PKG_VERSION"), has_updater) {
+            eprintln!("\n{n}");
+        }
+    }
+}
+
+/// `gerberus update`: runs `gerberus-update` from beside this binary, where the installers put it.
+fn update() -> ExitCode {
+    let exe = std::env::current_exe().ok();
+    let Some(updater) = exe.as_deref().and_then(gerberus::update::updater_next_to) else {
+        eprintln!(
+            "error: gerberus-update isn't installed next to {}, so this copy of gerberus wasn't installed by its \
+             installer. Install the latest release as described at https://github.com/{}#install, or rebuild it \
+             the way you built it.",
+            exe.as_deref()
+                .map_or_else(|| "gerberus".to_string(), |e| e.display().to_string()),
+            gerberus::update::REPO
+        );
+        return ExitCode::from(2);
+    };
+    // Windows won't let the installer overwrite this running gerberus.exe, but it does let it be renamed, so
+    // move it aside for the installer and put it back if the update fails.
+    let aside = match exe.as_deref().filter(|_| cfg!(windows)) {
+        Some(exe) => match gerberus::update::set_aside(exe) {
+            Ok(aside) => Some((exe, aside)),
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
+    };
+    let (code, ok) = match std::process::Command::new(&updater).status() {
+        Ok(s) if s.success() => (ExitCode::SUCCESS, true),
+        Ok(s) => {
+            eprintln!("error: {} exited with {s}", updater.display());
+            (ExitCode::from(1), false)
+        }
+        Err(e) => {
+            eprintln!("error: {}: {e}", updater.display());
+            (ExitCode::from(2), false)
+        }
+    };
+    if let Some((exe, aside)) = aside
+        && !ok
+        && let Err(e) = gerberus::update::restore(exe, &aside)
+    {
+        eprintln!("error: {e}");
+    }
+    code
+}
+
 /// Command-line options shared by the commands that read part files.
 struct Options {
-    /// The shared library, a `parts/` folder next to the schematic, then any `--parts` folders.
+    /// A `parts/` folder next to the schematic, then any `--parts` folders, read after the built-in library.
     dirs: Vec<PathBuf>,
     /// `--pcb`, when the command takes it and it was given.
     pcb: Option<PathBuf>,
@@ -110,7 +242,7 @@ struct Options {
 
 /// Reads `--parts` and whichever of `--pcb`, `--inputs` and `--explain` the command takes.
 fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, String> {
-    let mut dirs: Vec<PathBuf> = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("parts")];
+    let mut dirs: Vec<PathBuf> = vec![];
     let local = path.parent().unwrap_or(Path::new(".")).join("parts");
     if local.is_dir() {
         dirs.push(local);
@@ -136,8 +268,13 @@ fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, Stri
     })
 }
 
+/// The built-in shared library, then each folder in `dirs`, a later file replacing an earlier one.
 fn load_library(dirs: &[PathBuf]) -> Result<Library, String> {
-    Library::load_dirs(&dirs.iter().map(PathBuf::as_path).collect::<Vec<_>>())
+    let mut lib = Library::builtin()?;
+    for dir in dirs {
+        lib.add_dir(dir)?;
+    }
+    Ok(lib)
 }
 
 /// The design, its library and its worked-out net voltages.
@@ -190,7 +327,7 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
         .collect();
     let o = options(path, &rest, &["--inputs"])?;
     let (design, lib, inputs, v) = analyse(path, &o)?;
-    let policy = gerberus::policy::Policy::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("policy.toml"))?;
+    let policy = gerberus::policy::Policy::builtin()?;
     let report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
     if json {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);

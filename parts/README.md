@@ -290,6 +290,7 @@ against the PDF at that URL.
 | can-encoder rev 2 | TPS560430YFDBVR, STM32F042G6U6TR, MT6835GT-STD-R, TCAN1044AVDDFRQ1, XC6206P332MR-G, SMF26A, B5819WS, KT-0603R, SM04B-GHS-TB, OT201616MJBA4SL, SWPA252012S100MT, CC0805KKX7R9BB225, CL05B104KB54PNC, CL05B104KO5NNNC, CL21A226MAQNNNE, CL05A105KA5NQNC, 0402WGF4702TCE, 0402WGF1202TCE, 0402WGF1001TCE, 0402WGF1200TCE, 0402WGF1002TCE |
 | can-encoder rev 1 | AP63200WU-7, STM32G0B1KBT6TR, MT6701CT-STD-R, TCAN330GDCNR, NUP2105LT1G, SMAJ18A, B5819W SL, KT-0805G, SM04B-GHS-TB, OT201616MJBA4SL, FNR4030S6R8MT, GRM21BR61H106KE43L, 0402CG101J500NT, CL05B104KO5NNNC, CL21A226MAQNNNE, CL05A105KA5NQNC, 0402WGF4702TCE, 0402WGF1502TCE, 0402WGF1001TCE, 0402WGF1200TCE, 0402WGF1002TCE |
 | kitchen-sink | the parts above, plus USB4105-GF-A, 0402WGF5101TCE, TPD1E05U06DPYR and TVS0500DRVR |
+| audio board rev 2 (B1narySolutions/amp-hardware, not a fixture) | TLV9061QDBVRQ1, AO3401A, 2N7002NXAKR, PESD5V0S1BA |
 
 Not covered: footprint-only parts with no part number (Tag-Connect pads, SWD pads, solder jumpers).
 
@@ -319,6 +320,11 @@ Found by the blind second reading of every file (November 2026):
   3.3 V, assuming none drives above 3.3 V. Two more assumptions aren't checked: the probe only senses the
   board's VCC pin and doesn't power the board through it, and the board is powered while a probe is connected.
   A fixed 3.3 V probe on an unpowered board would drive its pins far above VDD + 0.3 V.
+- **MOSFETs** have no model of their channel. AO3401A's body diode is a `forward` drive from D to S, which fits
+  its use as a reverse-polarity switch (supply into D) and would be wrong in a high-side switch fed at S;
+  2N7002NXAKR has no drive, so its drain net comes from what else pulls it.
+- **PESD5V0S1BA**: the audio board rev 2 orders PESD5V0S1BAF, which the PESD5V0S1BA datasheet doesn't list, so
+  it isn't a variant here. Its jacks' ESD checks stay UNKNOWN until a datasheet names the BAF.
 - Resistor power can't FAIL in fault cases: a fault drives the two ends of a resistor from independent ranges,
   which can overstate the voltage across it, so a FAIL there is UNKNOWN.
 - Each CAN wire's range is the ISO common-mode range ± half the differential, which is wider than any one wire

@@ -1353,7 +1353,7 @@
           (alternate "TSC_G1_IO4" bidirectional line)
           (alternate "USART2_RX" bidirectional line)))))
   (text
-    "MCU\nU6 STM32G0B1 runs USB1, both CAN transceivers (buses CANA, CANB), I2C (bus I2C), the encoder and D8.\nJ3 SWD: probe inputs following VTref and fixed at 3.3 V. Its pins reach only HBM-rated STM32 pins: esd FAIL (warning).\nJ4 UART: D6/D7 TPD1E05U06 clamp TX and RX: esd PASS.\nD8 red LED through 1k from PA5: forward-current PASS (3.4 mA of 25 mA).\nR18 feeds +VDC to PA4 for a supply measurement, but the divider's bottom resistor was left off, so PA4\nsees up to 26 V: abs-max FAIL. Every other pin's abs-max passes.\nU7 STM32F042 runs USB2 and drives three LEDs through 120 ohm (bus LED[0..2], thermal sheet): it dissipates\ntheir current, so junction-temperature FAIL."
+    "MCU\nU6 STM32G0B1 runs USB1, both CAN transceivers (buses CANA, CANB), I2C (bus I2C), the encoder and D8.\nJ3 SWD: probe inputs following VTref and fixed at 3.3 V. Its pins reach parts rated only to HBM: esd FAIL (warning).\nJ4 UART: D6/D7 TPD1E05U06 clamp TX and RX: esd PASS.\nD8 red LED through 1k from PA5: forward-current PASS (3.4 mA of 25 mA).\nR18 feeds +VDC to PA4 for a supply measurement, but the divider's bottom resistor was left off, so PA4\nsees up to 26 V: abs-max FAIL. PA0/PA1 are UNKNOWN, as U9 (sensors) drives them unpowered.\nU7 STM32F042 runs USB2 and drives three LEDs through 120 ohm (bus LED[0..2], thermal sheet): it dissipates\ntheir current, so junction-temperature FAIL."
     (at 20 20 0)
     (effects (font (size 1.6 1.6)) (justify left top))
     (uuid "8036c1a9-65ab-5b56-bafd-f7d5b816fca9"))

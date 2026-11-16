@@ -9,7 +9,7 @@ use gerberus::kicad;
 use gerberus::limits::Library;
 use gerberus::policy::Policy;
 use gerberus::rules::{RULES, Report, Severity, Verdict, check, render};
-use gerberus::voltage::{Voltages, compute};
+use gerberus::voltage::{Span, Voltages, compute};
 
 fn root(rel: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)
@@ -324,6 +324,7 @@ fn pin(number: &str, kind: PinKind, net: usize) -> Pin {
         name: String::new(),
         kind,
         no_connect: false,
+        stack: None,
         net,
     }
 }
@@ -400,6 +401,54 @@ fn floating_inputs_and_unpowered_pins_fail() {
         .by_rule("unpowered")
         .find(|f| f.reference == "U9" && f.message.contains("/NOPOWER"))
         .unwrap();
+    assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
+    // A part with no part file and two of its own power pins tied on a net with only a capacitor, like the
+    // MAX9722A's charge-pump output PVSS and SVSS: it may supply that net itself, so nothing proves it unpowered.
+    let pump = new_net(&mut d, "/PVSS");
+    let v33 = net(&d, "+3V3");
+    add(
+        &mut d,
+        "U8",
+        "Amplifier:Pump",
+        "X",
+        None,
+        vec![
+            pin("1", PinKind::PowerIn, pump),
+            pin("2", PinKind::PowerIn, pump),
+            pin("3", PinKind::PowerIn, v33),
+        ],
+    );
+    // The same with nothing else powering the part is a supply net that never reaches a source (a mistyped
+    // label): that stays a FAIL.
+    let typo = new_net(&mut d, "/VDD_TYPO");
+    add(
+        &mut d,
+        "U7",
+        "Amplifier:Pump",
+        "X",
+        None,
+        vec![pin("1", PinKind::PowerIn, typo), pin("2", PinKind::PowerIn, typo)],
+    );
+    add(
+        &mut d,
+        "C97",
+        "Device:C",
+        "100nF 50V",
+        None,
+        vec![pin("1", PinKind::Passive, typo), pin("2", PinKind::Passive, gnd)],
+    );
+    add(
+        &mut d,
+        "C98",
+        "Device:C",
+        "1uF 50V",
+        None,
+        vec![pin("1", PinKind::Passive, pump), pin("2", PinKind::Passive, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f = r.by_rule("unpowered").find(|f| f.reference == "U8").unwrap();
+    assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
+    let f = r.by_rule("unpowered").find(|f| f.reference == "U7").unwrap();
     assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
     let f = r
         .by_rule("unpowered")
@@ -695,6 +744,30 @@ fn esd_on_the_test_boards() {
     assert_eq!(esd(&r, "J1.1 (+5V)"), Verdict::Unknown);
 }
 
+/// A part with no part file on a connector's net could be an IC or a clamp, so the net can't pass: it was
+/// passing as "only passive parts" (the audio board rev 2's MAX9722A on the headphone jack).
+#[test]
+fn esd_is_unknown_with_an_undescribed_part() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let canh = net(&d, "/CANH");
+    let gnd = net(&d, "GND");
+    add(
+        &mut d,
+        "U7",
+        "Amplifier:Unknown",
+        "MYSTERY1",
+        Some("MYSTERY1"),
+        vec![pin("1", PinKind::Input, canh), pin("2", PinKind::PowerIn, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r
+        .by_rule("esd")
+        .filter(|f| f.message.starts_with("J1.2 (/CANH)"))
+        .collect();
+    assert_eq!(f[0].verdict, Verdict::Unknown, "{}", f[0].message);
+    assert!(f[0].message.contains("U7 (MYSTERY1)"), "{}", f[0].message);
+}
+
 /// A part that fails its maximum in normal operation and its minimum when reversed still counts as damaged by
 /// the reversal: the two failures are different findings.
 #[test]
@@ -734,4 +807,154 @@ fn esd_does_not_follow_pulls_onto_rails() {
     let (_, r) = run_on(&d, &inputs);
     let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J2.6")).collect();
     assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
+}
+
+/// Parts with no part file that can't take the discharge into one pin don't hold a connector's net at UNKNOWN: a
+/// generic pull-down to a rail, and a connector named by its symbol library rather than its reference.
+#[test]
+fn esd_skips_undescribed_pulls_and_connectors() {
+    let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    let swo = d.components["J2"].pins["6"].net;
+    let gnd = net(&d, "GND");
+    add(
+        &mut d,
+        "R98",
+        "Device:R",
+        "10k",
+        None,
+        vec![pin("1", PinKind::Passive, swo), pin("2", PinKind::Passive, gnd)],
+    );
+    add(
+        &mut d,
+        "USB2",
+        "Connector:USB_C_Receptacle",
+        "USB_C",
+        None,
+        vec![pin("A5", PinKind::Bidirectional, swo), pin("A1", PinKind::Passive, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J2.6")).collect();
+    assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
+}
+
+/// A part with no part file behind a series diode whose far side is clamped is sheltered by that clamp, as an IC
+/// there would be: can-encoder rev 2's VBUS reaches +VDC through D1, where D2 (SMF26A) clamps.
+#[test]
+fn esd_shelters_undescribed_parts_behind_a_clamp() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let vdc = net(&d, "+VDC");
+    let gnd = net(&d, "GND");
+    let before: Vec<_> = run_on(&d, &inputs)
+        .1
+        .by_rule("esd")
+        .filter(|f| f.message.starts_with("J1.1"))
+        .map(|f| f.verdict)
+        .collect();
+    assert_eq!(before, [Verdict::Pass]);
+    add(
+        &mut d,
+        "U98",
+        "Regulator:Mystery",
+        "MYSTERY2",
+        Some("MYSTERY2"),
+        vec![pin("1", PinKind::PowerIn, vdc), pin("2", PinKind::PowerIn, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J1.1")).collect();
+    assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
+}
+
+/// A rail fed through a ferrite bead takes the driven rail's range: a bead is a DC short. The amp board's +5V
+/// comes from +5V_RAW through FB101 (`Device:FerriteBead`, no part file), and was UNKNOWN.
+#[test]
+fn ferrite_beads_pass_a_rail_through() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let (v33, gnd) = (net(&d, "+3V3"), net(&d, "GND"));
+    let quiet = new_net(&mut d, "/3V3_QUIET");
+    let quieter = new_net(&mut d, "/3V3_QUIETER");
+    add(
+        &mut d,
+        "FB98",
+        "Device:FerriteBead",
+        "600R",
+        None,
+        vec![pin("1", PinKind::Passive, v33), pin("2", PinKind::Passive, quiet)],
+    );
+    add(
+        &mut d,
+        "L98",
+        "Device:FerriteBead_Small",
+        "600R",
+        None,
+        vec![pin("1", PinKind::Passive, quiet), pin("2", PinKind::Passive, quieter)],
+    );
+    add(
+        &mut d,
+        "C98",
+        "Device:C",
+        "1uF 16V",
+        None,
+        vec![pin("1", PinKind::Passive, quieter), pin("2", PinKind::Passive, gnd)],
+    );
+    let (v, _) = run_on(&d, &inputs);
+    assert_eq!(v.nets[quiet].span, v.nets[v33].span, "{:#?}", v.nets[quiet]);
+    assert_eq!(v.nets[quieter].span, v.nets[v33].span, "{:#?}", v.nets[quieter]);
+    assert!(
+        v.nets[quieter].why[0].text.contains("ferrite bead L98"),
+        "{:#?}",
+        v.nets[quieter]
+    );
+}
+
+/// A stacked power pin (KiCad 10 `[3,9]`) left on a net nothing drives is one unpowered pin, not a part that may
+/// supply its own rail because two of its pins share the net.
+#[test]
+fn an_open_stacked_power_pin_fails_once() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let open = new_net(&mut d, "/OPEN");
+    let v33 = net(&d, "+3V3");
+    let stacked = |number: &str, net| Pin {
+        stack: Some("3".into()),
+        ..pin(number, PinKind::PowerIn, net)
+    };
+    add(
+        &mut d,
+        "U6",
+        "Logic:Stacked",
+        "X",
+        None,
+        vec![stacked("3", open), stacked("9", open), pin("1", PinKind::PowerIn, v33)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r
+        .by_rule("unpowered")
+        .filter(|f| f.reference == "U6" && f.message.contains("/OPEN"))
+        .collect();
+    assert!(f.len() == 1 && f[0].verdict == Verdict::Fail, "{f:#?}");
+}
+
+/// A connector on a rail fed through a ferrite bead can bring in anything, as on any driven net.
+#[test]
+fn a_connector_after_a_bead_is_unknown() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let (v33, gnd) = (net(&d, "+3V3"), net(&d, "GND"));
+    let ext = new_net(&mut d, "/3V3_EXT");
+    add(
+        &mut d,
+        "FB97",
+        "Device:FerriteBead",
+        "600R",
+        None,
+        vec![pin("1", PinKind::Passive, v33), pin("2", PinKind::Passive, ext)],
+    );
+    add(
+        &mut d,
+        "J97",
+        "Connector:Conn_01x02",
+        "OUT",
+        None,
+        vec![pin("1", PinKind::Passive, ext), pin("2", PinKind::Passive, gnd)],
+    );
+    let (v, _) = run_on(&d, &inputs);
+    assert_eq!(v.nets[ext].span, Span::unknown(), "{:#?}", v.nets[ext]);
 }

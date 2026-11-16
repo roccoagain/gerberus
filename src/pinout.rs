@@ -395,7 +395,12 @@ pub fn shown_name(name: &str) -> Option<String> {
         if ch == '}' {
             continue;
         }
-        out.push(ch);
+        // Datasheets print a minus sign or an en dash where a symbol has a hyphen: TI's `V–` and `–IN`.
+        out.push(if matches!(ch, '–' | '—' | '−' | '‐') {
+            '-'
+        } else {
+            ch
+        });
     }
     let out = out.trim().to_string();
     (!out.is_empty() && out != "~").then_some(out)
@@ -490,6 +495,13 @@ fn canonical(word: &str) -> String {
 /// Whether a symbol pin name and a datasheet pin name plausibly name the same pin.
 pub fn names_match(a: &str, b: &str) -> bool {
     let (ca, cb) = (compact(a), compact(b));
+    // KiCad's op-amp symbols name the inputs `+` and `-`; datasheets say `+IN`, `IN+`, `-IN` or `IN-`.
+    let bare_input = |sign: &str, other: &str| {
+        (sign == "+" || sign == "-") && (other == format!("{sign}IN") || other == format!("IN{sign}"))
+    };
+    if bare_input(&ca, &cb) || bare_input(&cb, &ca) {
+        return true;
+    }
     if !ca.is_empty() && (ca == cb || canonical(&ca) == canonical(&cb)) {
         return true;
     }
@@ -518,6 +530,10 @@ mod tests {
         assert!(names_match("PF0", "PF0-OSC_IN"));
         assert!(names_match("PA14/PA15", "PA14-BOOT0/PA15"));
         assert!(names_match("IN+", "IN+"));
+        assert!(names_match("V-", "V–"));
+        assert!(names_match("-", "–IN"));
+        assert!(names_match("+", "+IN"));
+        assert!(names_match("-", "IN-"));
     }
 
     #[test]
@@ -531,6 +547,9 @@ mod tests {
         assert!(!names_match("TXD", "RXD"));
         assert!(!names_match("IN+", "IN-"));
         assert!(!names_match("+IN", "-IN"));
+        assert!(!names_match("+", "-IN"));
+        assert!(!names_match("-", "+IN"));
+        assert!(!names_match("V+", "V–"));
         assert!(!names_match("OUT+", "OUT-"));
         assert!(!names_match("-IN", "IN"));
         assert!(!names_match("LED-A", "LED-K"));
