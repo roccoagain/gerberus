@@ -50,7 +50,7 @@ cites the numbers, their datasheet pages and how each net got its range. The ten
 | `cap-voltage` | a capacitor sees more than its rated voltage (error), or more than `policy.toml` allows (warning) | error / warning |
 | `resistor-power` | a resistor's worst-case V²/R is over its rating (error) or the policy's share of it (warning) | error / warning |
 | `floating-input` | an input pin is on a net nothing drives (UNKNOWN when only open-drain or tri-state outputs, connectors or unmodelled parts reach it) | error |
-| `unpowered` | a power pin is on a net nothing supplies | error |
+| `unpowered` | a power pin is on a net nothing supplies (UNKNOWN when two or more pins of one part with no part file are tied on it with only passives: it may supply the net itself, like a charge pump's output) | error |
 | `regulator-headroom` | a regulator's supply can fall below what its datasheet output range needs | warning |
 | `esd` | an external connector pin's net has no TVS or ESD clamp, and a part on it (directly, or through one series resistor, inductor or diode with no clamp behind it) has no system-level ESD rating to `policy.toml`'s level | warning |
 | `reverse-polarity` | a supply input connected backwards (its fault case `<name> reversed`) takes a part past its absolute maximum ratings | error |
@@ -83,7 +83,8 @@ The `esd` rule looks at every connector pin `inputs.toml` names (inputs and undr
 references). A TVS or ESD diode on the net passes it, if it breaks down below the absolute maximum of the IC
 pins beside it (an SMF26A on a 3.3 V logic pin doesn't count). A pull-up or pull-down isn't followed onto its
 rail. So does a clamp behind the one series part between the
-connector and the ICs it protects (VBUS → D1 → TVS). Otherwise every IC pin on the net needs an IEC 61000-4-2
+connector and the ICs it protects (VBUS → D1 → TVS). A part with no part file on the way (other than a connector, test point or jumper) makes the net UNKNOWN,
+since it could be an IC or a clamp. Otherwise every IC pin on the net needs an IEC 61000-4-2
 rating (`[[esd]]` in its part file) at `policy.toml`'s `[esd]` level: an HBM or CDM rating only covers handling
 in a factory, so it FAILs as a warning, and a part with no rating at all is UNKNOWN.
 

@@ -83,16 +83,74 @@ fn is_rail(design: &Design, net: usize) -> bool {
 /// a pin on the connector's side of it.
 type Clamps = BTreeMap<Option<String>, Vec<String>>;
 
-fn reached<'a>(design: &Design, lib: &'a Library, net: usize) -> (Clamps, Vec<Reached<'a>>, Vec<String>) {
+/// A connector, test point, jumper or net tie: by its reference (`J3`, `P1`, `TP1`, `CN2`, `JP1`, `NT1`,
+/// `USB1`), its symbol library (`Connector:…`, as `undriven_pins` reads it), its part file's class, or because
+/// inputs.toml names it. It carries the discharge rather than taking it, so it needs no part file here.
+fn is_connector_like(design: &Design, lib: &Library, reference: &str, named: &BTreeSet<String>) -> bool {
+    let letters: String = reference
+        .chars()
+        .take_while(char::is_ascii_alphabetic)
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    named.contains(reference)
+        || matches!(
+            letters.as_str(),
+            "J" | "P" | "TP" | "CN" | "CON" | "USB" | "JP" | "SJ" | "NT"
+        )
+        || design.components.get(reference).is_some_and(|c| {
+            c.lib_id.starts_with("Connector") || lib.part_for(c).is_some_and(|p| p.class == Class::Connector)
+        })
+}
+
+/// A two-pin resistor, capacitor, inductor or ferrite (by reference) with its far side on a rail or ground: a
+/// pull, decoupling or filter part. The discharge goes into the rail, not into one pin, so it needs no part file.
+fn to_rail(design: &Design, reference: &str, net: usize) -> bool {
+    let letters: String = reference.chars().take_while(char::is_ascii_alphabetic).collect();
+    let Some(c) = design.components.get(reference) else {
+        return false;
+    };
+    matches!(letters.as_str(), "R" | "C" | "L" | "FB")
+        && c.pins.len() == 2
+        && c.pins.values().any(|p| p.net != net && is_rail(design, p.net))
+}
+
+/// A fitted part with no part file and no class default on a net the discharge reaches (not a connector, test
+/// point or passive to a rail): it might be an IC or a clamp, so the rule can't pass the net.
+fn unmodelled(design: &Design, lib: &Library, reference: &str, net: usize, named: &BTreeSet<String>) -> Option<String> {
+    let c = design.components.get(reference)?;
+    if c.dnp || is_connector_like(design, lib, reference, named) || to_rail(design, reference, net) {
+        return None;
+    }
+    match lib.lookup(c) {
+        Lookup::Unchecked(_) => Some(format!("{reference} ({})", c.value)),
+        _ => None,
+    }
+}
+
+/// Parts with no part file, keyed like [`Clamps`] by the series part they sit behind.
+type Unknown = BTreeMap<Option<String>, Vec<String>>;
+
+/// What the discharge reaches from a net: clamps (by the series part they sit behind), ICs, clamps that break
+/// down too high, and parts with no part file.
+type Reach<'a> = (Clamps, Vec<Reached<'a>>, Vec<String>, Unknown);
+
+fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<String>) -> Reach<'a> {
     let mut clamps = Clamps::new();
     let mut ics = vec![];
+    let mut unknown = Unknown::new();
     let mut raw: BTreeMap<Option<String>, Vec<(String, Option<f64>)>> = BTreeMap::new();
     let visit = |n: usize,
                  through: Option<String>,
                  raw: &mut BTreeMap<Option<String>, Vec<(String, Option<f64>)>>,
-                 ics: &mut Vec<Reached<'a>>| {
+                 ics: &mut Vec<Reached<'a>>,
+                 unknown: &mut Unknown| {
         for (r, p) in &design.nets[n].pins {
-            let Some(part) = part_of(design, lib, r) else { continue };
+            let Some(part) = part_of(design, lib, r) else {
+                if let Some(u) = unmodelled(design, lib, r, n, named) {
+                    unknown.entry(through.clone()).or_default().push(u);
+                }
+                continue;
+            };
             match part.class {
                 Class::Tvs => {
                     let breakdown = part
@@ -119,7 +177,7 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize) -> (Clamps, Vec<Re
             }
         }
     };
-    visit(net, None, &mut raw, &mut ics);
+    visit(net, None, &mut raw, &mut ics, &mut unknown);
     for (r, _) in &design.nets[net].pins {
         let Some(c) = design.components.get(r) else { continue };
         let class = part_of(design, lib, r).map(|p| p.class);
@@ -135,7 +193,7 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize) -> (Clamps, Vec<Re
             .values()
             .filter(|p| p.net != net && !(pull && is_rail(design, p.net)))
         {
-            visit(p.net, Some(r.clone()), &mut raw, &mut ics);
+            visit(p.net, Some(r.clone()), &mut raw, &mut ics, &mut unknown);
         }
     }
     // A TVS only protects the pins beside it when it breaks down before they do: an SMF26A (up to 32 V) on a
@@ -175,15 +233,42 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize) -> (Clamps, Vec<Re
         v.sort();
         v.dedup();
     }
-    (clamps, ics, too_high)
+    for v in unknown.values_mut() {
+        v.sort();
+        v.dedup();
+    }
+    (clamps, ics, too_high, unknown)
 }
 
 /// The `esd` rule: every net an external connector pin is on is clamped by a TVS or ESD diode, or everything on
 /// it is rated to the policy's IEC 61000-4-2 level.
 pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs, r: &mut Vec<Finding>) {
-    for (net, pins) in external_nets(design, inputs) {
+    let external = external_nets(design, inputs);
+    let named: BTreeSet<String> = external
+        .values()
+        .flatten()
+        .filter_map(|p| p.split('.').next())
+        .map(str::to_string)
+        .collect();
+    for (net, pins) in external {
         let at = format!("{} ({})", pins.join(", "), design.nets[net].name);
-        let (clamps, ics, too_high) = reached(design, lib, net);
+        let (clamps, ics, too_high, unknown) = reached(design, lib, net, &named);
+        // A part with no part file behind a series part clamped on its far side is sheltered by that clamp, like
+        // an IC there.
+        let unknown: Vec<String> = unknown
+            .into_iter()
+            .filter(|(t, _)| t.is_none() || !clamps.contains_key(t))
+            .flat_map(|(_, u)| u)
+            .collect();
+        let no_file = if unknown.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "{} {} no part file",
+                unknown.join(", "),
+                if unknown.len() == 1 { "has" } else { "have" }
+            )
+        };
         let at = if too_high.is_empty() {
             at
         } else {
@@ -217,7 +302,7 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             .iter()
             .filter_map(|(t, c)| Some(format!("{} behind {}", c.join(", "), t.as_ref()?)))
             .collect();
-        if ics.is_empty() && !sheltered.is_empty() {
+        if ics.is_empty() && !sheltered.is_empty() && unknown.is_empty() {
             r.push(finding(
                 Verdict::Pass,
                 &connector,
@@ -237,11 +322,27 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             continue;
         };
         if ics.is_empty() {
-            r.push(finding(
-                Verdict::Pass,
-                &connector,
-                format!("{at} has no clamp, but reaches no IC, only passive parts"),
-            ));
+            r.push(if unknown.is_empty() {
+                finding(
+                    Verdict::Pass,
+                    &connector,
+                    format!("{at} has no clamp, but reaches no IC, only passive parts"),
+                )
+            } else {
+                finding(
+                    Verdict::Unknown,
+                    &connector,
+                    if sheltered.is_empty() {
+                        format!("{at} has no clamp that a part file describes, and it reaches parts nothing describes: {no_file}")
+                    } else {
+                        format!(
+                            "{at} is clamped only behind series parts ({}), and it reaches parts nothing describes \
+                             outside them: {no_file}",
+                            sheltered.join("; ")
+                        )
+                    },
+                )
+            });
             continue;
         }
         let (mut weak, mut unrated) = (vec![], vec![]);
@@ -292,14 +393,15 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
                     weak.join("; ")
                 ),
             )
-        } else if !unrated.is_empty() {
-            (
-                Verdict::Unknown,
-                format!(
-                    "{at} has no clamp, and nothing says what {} survive",
-                    unrated.join(", ")
-                ),
-            )
+        } else if !unrated.is_empty() || !unknown.is_empty() {
+            let mut why = vec![];
+            if !unrated.is_empty() {
+                why.push(format!("nothing says what {} survive", unrated.join(", ")));
+            }
+            if !unknown.is_empty() {
+                why.push(no_file.clone());
+            }
+            (Verdict::Unknown, format!("{at} has no clamp, and {}", why.join("; ")))
         } else {
             (Verdict::Pass, format!("{at} has no clamp, but {}", fine.join("; ")))
         };

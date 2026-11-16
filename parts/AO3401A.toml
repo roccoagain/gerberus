@@ -1,0 +1,38 @@
+mpn = "AO3401A"
+manufacturer = "Alpha & Omega Semiconductor"
+description = "30 V P-channel MOSFET, SOT-23"
+class = "ic"
+
+[datasheet]
+title = "AO3401A 30V P-Channel MOSFET"
+document = "Rev 3.1, December 2023"
+url = "https://www.lcsc.com/datasheet/C15127.pdf"
+
+# The SOT23 outline on page 1 names the leads but doesn't number them: top view, G lower left, S lower right,
+# D at the top, which is SOT-23 pins 1, 2 and 3.
+[pins]
+1 = "G"
+2 = "S"
+3 = "D"
+
+[[limit]]
+pins = ["D"]
+to = "S"
+abs_max = { min = -30, max = { unknown = "a positive VDS forward-biases the body diode; it is limited by current (IS), not voltage" }, page = 1, note = "VDS drain-source voltage, TA = 25 °C" }
+recommended = { unknown = "no recommended operating conditions are given" }
+
+[[limit]]
+pins = ["G"]
+to = "S"
+abs_max = { min = -12, max = 12, page = 1, note = "VGS ±12 V" }
+recommended = { unknown = "no recommended operating conditions are given" }
+
+# The body diode conducts from drain to source. With the gate driven, the channel bypasses it, so the drop can
+# be close to 0 V; the datasheet gives only its maximum. gerberus reads a forward drive as setting the source
+# net from the drain, which fits the reverse-polarity switch this part is used as (supply into D, load on S),
+# not a high-side switch fed at S. ID (–4 A), IS (–2 A) and PD (1.4 W) aren't listed: no rule uses them yet.
+[[drive]]
+kind = "forward"
+pin = "D"
+to = "S"
+range = { min = { unknown = "only a maximum is given, and the channel can bypass the diode" }, max = 1, page = 2, note = "VSD diode forward voltage magnitude, IS = –1 A, VGS = 0 V (printed –1 V for this P-channel part)" }
