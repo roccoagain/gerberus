@@ -392,7 +392,7 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                     None => format!("{reference}.{pin} ({})", net_name(an)),
                     Some(b) => format!("{reference}.{pin} ({}) from {to} ({})", net_name(an), net_name(b)),
                 };
-                let mut finding = |verdict, severity, msg: String| {
+                let mut finding = |verdict, severity, msg: String, headline: Option<String>| {
                     out.push(Finding {
                         rule: "hot-plug",
                         verdict,
@@ -401,6 +401,7 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                         message: format!("{msg}; {}", policy.reason),
                         nets: vec![],
                         case: None,
+                        headline,
                     });
                 };
                 let Some((max, _, min, _)) = sweep.peak(an, b) else {
@@ -408,6 +409,7 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                         Verdict::Unknown,
                         severity,
                         format!("{what}: ngspice didn't measure it ({cite})"),
+                        None,
                     );
                     continue;
                 };
@@ -450,6 +452,11 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                             sig(bmin),
                             cite_of(limit.breakdown.as_ref())
                         ),
+                        Some(format!(
+                            "{reference}.{pin} settles at {} V after hot plug, at or past its {} V breakdown minimum",
+                            sig(settled),
+                            sig(bmin)
+                        )),
                     );
                     continue;
                 }
@@ -474,6 +481,7 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                         Verdict::Fail,
                         severity,
                         format!("{what}: {span}: {why} ({cite}), in run {run} ({})", sweep.runs[run]),
+                        Some(format!("{reference}.{pin} on hot plug: {why}")),
                     );
                     continue;
                 }
@@ -486,12 +494,18 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                     None => format!("inside its {kind}"),
                 };
                 if unsure.is_empty() {
-                    finding(Verdict::Pass, severity, format!("{what}: {span}, {inside} ({cite})"));
+                    finding(
+                        Verdict::Pass,
+                        severity,
+                        format!("{what}: {span}, {inside} ({cite})"),
+                        None,
+                    );
                 } else {
                     finding(
                         Verdict::Unknown,
                         severity,
                         format!("{what}: {span} ({cite}), but {}", unsure.join("; ")),
+                        None,
                     );
                 }
             }

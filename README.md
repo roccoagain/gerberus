@@ -100,7 +100,24 @@ cargo run -- check path/to/board.kicad_sch
 regulators and feedback dividers (see [`parts/README.md`](parts/README.md#net-voltages)). `--explain` prints why.
 
 `check` compares those ranges with the part limits. Each check comes out PASS, FAIL or UNKNOWN, and a FAIL
-cites the numbers, their datasheet pages and how each net got its range. The rules:
+cites the numbers, their datasheet pages and how each net got its range. The report reads like rustc's:
+
+```text
+error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V
+  --> U6.PA4 (/mcu/VSENSE)
+   = note: worst case 0 to 26 V
+   = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx
+   = help: add a divider, clamp or series resistor, or choose a part rated higher
+
+error: 18 errors, 9 warnings, 110 unknown, 402 passed
+   = note: 110 unknown and 402 passed not shown; --unknown or --all lists them
+   = note: --verbose shows how each net in a finding got its voltage range
+```
+
+Errors come first, then warnings. UNKNOWNs and passes are only counted unless `--unknown` (UNKNOWNs) or `--all`
+(both) asks for them, and how each net got its range is printed only with `--verbose` (`-v`). Colour is on when
+the output is a terminal and `NO_COLOR` isn't set; `--color always|never|auto` overrides that. `stress`, `si` and
+`pinout` print the same way and take the same flags. The rules:
 
 | Rule | FAILs when | Severity |
 | --- | --- | --- |
@@ -123,8 +140,8 @@ A bound relative to another pin (`VDD + 0.3 V`) passes only if it holds however 
 everything that drives the pin is itself bounded by that pin's net (pull-ups to it, outputs of parts it alone
 supplies, diodes and regulators fed from it; not switch nodes that can overshoot it). `bidirectional` makes only
 a TVS's breakdown a magnitude; abs max, recommended and stand-off ranges stay signed. A regulator that isn't held leaves its
-rail's low end as a floor, so a check can pass on it but never fail on it. `--all` lists passes, `--json` prints
-the findings, and the command exits with status 1 when any error FAILs.
+rail's low end as a floor, so a check can pass on it but never fail on it. `--json` prints the findings (the
+same fields whatever the terminal flags), and the command exits with status 1 when any error FAILs.
 
 The voltage across two pins is narrowed by a `[[differential]]` in `inputs.toml` (a CAN bus's CANH − CANL), and
 by nets of passive parts: a net reached only through resistors, LEDs and jumpers, with no capacitor or inductor
@@ -349,7 +366,7 @@ other nets, so a pass means the layout leaves the eye open, not that a real cabl
 line with no capacitance in `parts/` are listed as not modelled.
 
 `--plots DIR` writes an eye diagram and a TDR plot (the impedance the driver sees along each line) for each pair
-as SVG. `--json` prints the report as JSON, and `--all` lists passes as well as failures. The command exits with
+as SVG. `--json` prints the report as JSON, `--unknown` lists UNKNOWNs and `--all` lists passes as well. The command exits with
 status 1 when any rule fails with an error.
 
 The test board `tests/fixtures/usb-si-testbed` (from [roccoagain/hardware](https://github.com/roccoagain/hardware))

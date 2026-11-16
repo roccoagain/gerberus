@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use gerberus::design::{Component, Design, Net, Pin, PinKind};
+use gerberus::diag::Show;
 use gerberus::inputs::BoardInputs;
 use gerberus::kicad;
 use gerberus::limits::Library;
@@ -61,7 +62,7 @@ fn rev1_tvs_conducts_on_the_bus() {
     // The other errors are the termination resistor (its power and its rated voltage, √(P·R) = 2.74 V) and the
     // two VBUS-on-the-bus faults, and the report explains how +12V gets to 25.2 V.
     assert_eq!(r.errors(), 5, "{:#?}", fails(&r));
-    let text = render(&d, &v, &r, false);
+    let text = render(&d, &v, &r, &Show::everything());
     for want in ["D1 (B5819W SL)", "input VBUS on J1.1", "5 errors"] {
         assert!(text.contains(want), "missing {want:?} in\n{text}");
     }
@@ -145,7 +146,7 @@ fn vbus_on_the_bus_faults() {
         );
     }
     // The report explains the fault's net from the fault's own input.
-    let text = render(&d, &v, &r, false);
+    let text = render(&d, &v, &r, &Show::everything());
     assert!(text.contains("input CANH shorted to VBUS on J1.2"), "{text}");
 
     let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
