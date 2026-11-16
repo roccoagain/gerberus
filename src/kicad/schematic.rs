@@ -17,11 +17,17 @@ pub struct SchematicFile {
     pub lib_symbols: HashMap<String, LibSymbol>,
     pub symbols: Vec<SymbolInstance>,
     pub wires: Vec<(Pt, Pt)>,
+    /// Bus segments. KiCad saves bus-to-bus entries as bus segments too.
+    pub buses: Vec<(Pt, Pt)>,
+    /// Wire-to-bus entries, from `at` to `at + size`.
+    pub bus_entries: Vec<(Pt, Pt)>,
+    /// `(bus_alias "NAME" (members ...))` items. KiCad 9 and later keep aliases in the project file instead.
+    pub bus_aliases: Vec<(String, Vec<String>)>,
     pub junctions: Vec<Pt>,
     pub no_connects: Vec<Pt>,
     pub labels: Vec<Label>,
     pub sheets: Vec<Sheet>,
-    /// Items found that this reader does not support yet, such as buses.
+    /// Items found that this reader does not support yet, such as directive labels.
     pub unsupported: Vec<String>,
 }
 
@@ -178,7 +184,7 @@ pub fn read(root: &Sexp) -> Result<SchematicFile, String> {
     for item in root.items() {
         match item.head() {
             Some("symbol") => f.symbols.push(read_symbol(item)),
-            Some("wire") => {
+            Some(kind @ ("wire" | "bus")) => {
                 let pts: Vec<Pt> = item
                     .child("pts")
                     .map(|p| {
@@ -187,8 +193,36 @@ pub fn read(root: &Sexp) -> Result<SchematicFile, String> {
                             .collect()
                     })
                     .unwrap_or_default();
+                let lines = if kind == "wire" { &mut f.wires } else { &mut f.buses };
                 for w in pts.windows(2) {
-                    f.wires.push((w[0], w[1]));
+                    lines.push((w[0], w[1]));
+                }
+            }
+            Some("bus_entry") => {
+                let size = item.child("size");
+                if let (Some((x, y, _)), Some(dx), Some(dy)) = (
+                    at_of(item),
+                    size.and_then(|s| s.arg_f64(1)),
+                    size.and_then(|s| s.arg_f64(2)),
+                ) {
+                    f.bus_entries
+                        .push(((to_iu(x), to_iu(y)), (to_iu(x + dx), to_iu(y + dy))));
+                }
+            }
+            Some("bus_alias") => {
+                if let Some(name) = item.arg(1) {
+                    let members = item
+                        .child("members")
+                        .map(|m| {
+                            m.items()
+                                .iter()
+                                .skip(1)
+                                .filter_map(Sexp::text)
+                                .map(str::to_string)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    f.bus_aliases.push((name.to_string(), members));
                 }
             }
             Some("junction") => f.junctions.extend(pt_of(item)),
@@ -224,9 +258,7 @@ pub fn read(root: &Sexp) -> Result<SchematicFile, String> {
                     .filter_map(|p| Some((p.arg(1)?.to_string(), pt_of(p)?)))
                     .collect(),
             }),
-            Some(other @ ("bus" | "bus_entry" | "bus_alias" | "directive_label" | "netclass_flag")) => {
-                f.unsupported.push(other.to_string())
-            }
+            Some(other @ ("directive_label" | "netclass_flag")) => f.unsupported.push(other.to_string()),
             _ => {}
         }
     }
