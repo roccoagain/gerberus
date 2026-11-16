@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817762,
+  "listing": {
+    "code": "C1546",
+    "mpn": "0402CG101J500NT",
+    "manufacturer": "FH",
+    "stock": 681700,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0402",
+    "similar": [
+      {
+        "code": "C2991625",
+        "mpn": "0402CG101J101NT",
+        "manufacturer": "FH",
+        "stock": 17400,
+        "status": "normal",
+        "package": "0402",
+        "description": "100pF ±5% 100V Ceramic Capacitor C0G 0402"
+      },
+      {
+        "code": "C20624310",
+        "mpn": "0402CG101G500NT",
+        "manufacturer": "FH",
+        "stock": 26500,
+        "status": "normal",
+        "package": "0402",
+        "description": "100pF ±2% 50V Ceramic Capacitor C0G 0402"
+      },
+      {
+        "code": "C20616240",
+        "mpn": "0402CG101F500NT",
+        "manufacturer": "FH",
+        "stock": 15350,
+        "status": "normal",
+        "package": "0402",
+        "description": "100pF ±1% 50V Ceramic Capacitor C0G 0402"
+      },
+      {
+        "code": "C2991538",
+        "mpn": "0402B101K500NT",
+        "manufacturer": "FH",
+        "stock": 97800,
+        "status": "normal",
+        "package": "0402",
+        "description": "100pF ±10% 50V Ceramic Capacitor X7R 0402"
+      },
+      {
+        "code": "C19269973",
+        "mpn": "AM02CG101J500NT",
+        "manufacturer": "FH",
+        "stock": 0,
+        "status": "normal",
+        "package": "0402",
+        "description": "100pF ±5% 50V Ceramic Capacitor C0G 0402"
+      }
+    ]
+  }
+}

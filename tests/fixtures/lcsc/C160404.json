@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817760,
+  "listing": {
+    "code": "C160404",
+    "mpn": "SM04B-SRSS-TB(LF)(SN)",
+    "manufacturer": "JST",
+    "stock": 60115,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "SMD,P=1mm,Surface Mount,Right Angle",
+    "similar": [
+      {
+        "code": "C2919605",
+        "mpn": "1.0K-BH-4PWB",
+        "manufacturer": "HDGC",
+        "stock": 3020,
+        "status": "normal",
+        "package": "SMD,P=1mm,Surface Mount,Right Angle",
+        "description": "Connector Header 4 position 1mm Pitch 1A Surface Mount, Right Angle -25℃~+85℃"
+      },
+      {
+        "code": "C53895856",
+        "mpn": "1.0-Q-4PWB-R-0",
+        "manufacturer": "GUOCONN",
+        "stock": 1400,
+        "status": "normal",
+        "package": "SMD,P=1mm,Surface Mount,Right Angle",
+        "description": "Surface Mount, Right Angle SH 50V 4 1 1mm 1A 4P -25℃~+85℃ Tin Beige 1x4P SMD,P=1mm,Surface Mount,Right Angle Headers, Male Pins"
+      },
+      {
+        "code": "C54905904",
+        "mpn": "LAIL-PHC1.0-4P-01-SH-WT",
+        "manufacturer": "LAILAN",
+        "stock": 60850,
+        "status": "normal",
+        "package": "SMD,P=1mm,Surface Mount,Right Angle",
+        "description": "Surface Mount, Right Angle SH 50V 4 1 1mm 1A -25℃~+85℃ 4P Tin Beige 1x4P SMD,P=1mm,Surface Mount,Right Angle Headers, Male Pins"
+      },
+      {
+        "code": "C42382852",
+        "mpn": "W1001120-4PW2431",
+        "manufacturer": "HMTCONN",
+        "stock": 9400,
+        "status": "normal",
+        "package": "SMD,P=1mm,Surface Mount,Right Angle",
+        "description": "Surface Mount, Right Angle SH 50V 4 1 1mm 1A 4P -25℃~+85℃ Tin Beige 1x4P SMD,P=1mm,Surface Mount,Right Angle Headers, Male Pins RoHS"
+      },
+      {
+        "code": "C7419890",
+        "mpn": "ZX-BX-WT141SH",
+        "manufacturer": "Megastar",
+        "stock": 3535,
+        "status": "normal",
+        "package": "SMD,P=1mm",
+        "description": "Connector Header 4 position 1mm Pitch 1A Surface Mount,Vertical -25℃~+85℃"
+      }
+    ]
+  }
+}

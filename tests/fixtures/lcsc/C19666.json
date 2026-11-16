@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817760,
+  "listing": {
+    "code": "C19666",
+    "mpn": "CL10A475KO8NNNC",
+    "manufacturer": "Samsung Electro-Mechanics",
+    "stock": 2063950,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0603",
+    "similar": [
+      {
+        "code": "C92758",
+        "mpn": "EMK107ABJ475KA-T",
+        "manufacturer": "Taiyo Yuden",
+        "stock": 144280,
+        "status": "normal",
+        "package": "0603",
+        "description": "4.7uF ±10% 16V Ceramic Capacitor X5R 0603"
+      },
+      {
+        "code": "C90057",
+        "mpn": "GRM188R61E475KE11D",
+        "manufacturer": "muRata",
+        "stock": 86330,
+        "status": "normal",
+        "package": "0603",
+        "description": "4.7uF ±10% 25V Ceramic Capacitor X5R 0603"
+      },
+      {
+        "code": "C162274",
+        "mpn": "GRM188R6YA475KE15D",
+        "manufacturer": "muRata",
+        "stock": 8330,
+        "status": "normal",
+        "package": "0603",
+        "description": "4.7uF ±10% 35V Ceramic Capacitor X5R 0603"
+      },
+      {
+        "code": "C1512034",
+        "mpn": "0603YD475KAT2A",
+        "manufacturer": "Kyocera AVX",
+        "stock": 3,
+        "status": "normal",
+        "package": "0603",
+        "description": "4.7uF ±10% 16V Ceramic Capacitor X5R 0603"
+      },
+      {
+        "code": "C20070318",
+        "mpn": "CSA0603X5R475K160JT",
+        "manufacturer": "HRE",
+        "stock": 16680,
+        "status": "normal",
+        "package": "0603",
+        "description": "4.7uF X5R ±10% 16V 0603 Ceramic Capacitors"
+      }
+    ]
+  }
+}

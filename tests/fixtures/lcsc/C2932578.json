@@ -1,0 +1,23 @@
+{
+  "fetched": 1794817740,
+  "listing": {
+    "code": "C2932578",
+    "mpn": "MT6835GT-STD-R",
+    "manufacturer": "NOVOSENSE",
+    "stock": 0,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "TSSOP-16",
+    "similar": [
+      {
+        "code": "C879562",
+        "mpn": "MT6825GT-EED-R",
+        "manufacturer": "NOVOSENSE",
+        "stock": 75,
+        "status": "normal",
+        "package": "TSSOP-16",
+        "description": "SPI TSSOP-16 Angle, Linear Position Measuring RoHS"
+      }
+    ]
+  }
+}

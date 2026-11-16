@@ -1,0 +1,59 @@
+{
+  "fetched": 1794817737,
+  "listing": {
+    "code": "C307331",
+    "mpn": "CL05B104KB54PNC",
+    "manufacturer": "Samsung Electro-Mechanics",
+    "stock": 500,
+    "status": "normal",
+    "assembly": "basic",
+    "package": "0402",
+    "similar": [
+      {
+        "code": "C110251",
+        "mpn": "0402B104K500NT",
+        "manufacturer": "FH",
+        "stock": 3199380,
+        "status": "normal",
+        "package": "0402",
+        "description": "100nF ±10% 50V Ceramic Capacitor X7R 0402"
+      },
+      {
+        "code": "C131394",
+        "mpn": "CC0402KRX7R9BB104",
+        "manufacturer": "YAGEO",
+        "stock": 9036450,
+        "status": "normal",
+        "package": "0402",
+        "description": "100nF ±10% 50V Ceramic Capacitor X7R 0402"
+      },
+      {
+        "code": "C152814",
+        "mpn": "0402B104K500CT",
+        "manufacturer": "Walsin",
+        "stock": 695150,
+        "status": "normal",
+        "package": "0402",
+        "description": "100nF ±10% 50V Ceramic Capacitor X7R 0402"
+      },
+      {
+        "code": "C17702730",
+        "mpn": "C0402B104K500NT",
+        "manufacturer": "TORCH",
+        "stock": 45800,
+        "status": "normal",
+        "package": "0402",
+        "description": "100nF ±10% 50V Ceramic Capacitor X7R 0402"
+      },
+      {
+        "code": "C2167244",
+        "mpn": "04025C104KAT2A",
+        "manufacturer": "Kyocera AVX",
+        "stock": 7550,
+        "status": "normal",
+        "package": "0402",
+        "description": "100nF ±10% 50V Ceramic Capacitor X7R 0402"
+      }
+    ]
+  }
+}
