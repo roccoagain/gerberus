@@ -672,7 +672,12 @@ impl Ctx<'_> {
                 }
             } else if linear {
                 load.take(&out, &format!("{label} output"));
-                let iq: f64 = part.supply.iter().filter_map(crate::limits::SupplyCurrent::max).sum();
+                // Its own supply current counts once, not once per output.
+                let iq: f64 = if st.regs.contains_key(&reg.reference) {
+                    0.0
+                } else {
+                    part.supply.iter().filter_map(crate::limits::SupplyCurrent::max).sum()
+                };
                 // The drop is largest at the top of the supply. When the output isn't held over the whole supply
                 // range but is at its top, use the held output there: below the supply it needs, a linear
                 // regulator is in dropout and drops less than it does while regulating.
