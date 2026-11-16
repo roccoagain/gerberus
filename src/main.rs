@@ -13,6 +13,7 @@ const USAGE: &str = "usage:
   gerberus loads <design> [--inputs FILE] [--parts DIR]...
   gerberus check <design> [--inputs FILE] [--parts DIR]... [--all] [--json]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
+  gerberus si <board.kicad_pcb> [--parts DIR]... [--all] [--json] [--plots DIR]
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
@@ -45,6 +46,12 @@ any error FAILs.
 status, and similar parts from other makers. Answers are cached in --cache (default ~/.cache/gerberus/lcsc) for
 --max-age hours (default 24); --offline uses only the cache. It exits with status 1 when any line has an error.
 
+`si` checks every USB 2.0 pair on a KiCad board (nets ending in D+/D-, DP/DM or _P/_N with USB in the name):
+impedance from a 2D field solver run on the stackup, skew, vias, stubs, reference planes, length and the
+capacitance of parts on the lines, then simulates each pair at 480 Mb/s and checks the eye at the connector
+against the USB 2.0 Template 1 mask. --plots writes each pair's eye diagram and impedance profile (TDR) as SVG
+files into DIR. It reads part capacitance from the same part folders as `parts`, matched by footprint value.
+It exits with status 1 when any error FAILs.
 `datasheet` checks part files against their datasheets (see .claude/skills/datasheet-to-part). `verify` downloads each
 file's datasheet (cached in --cache, default ~/.cache/gerberus/datasheets), or reads --pdf, and looks for every
 cited value on its page: in the right MIN/TYP/MAX column, in the right unit, on a row that names the pin. It
@@ -64,6 +71,7 @@ fn main() -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "loads" => loads(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
+        [cmd, path, rest @ ..] if cmd == "si" => si(Path::new(path), rest),
         [cmd, sub, rest @ ..] if cmd == "datasheet" => datasheet(sub, rest),
         _ => {
             eprintln!("{USAGE}");
@@ -380,6 +388,48 @@ fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
 
 fn count(n: usize, what: &str) -> String {
     format!("{n} {what}{}", if n == 1 { "" } else { "s" })
+}
+
+fn si(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let all = rest.iter().any(|a| a == "--all");
+    let json = rest.iter().any(|a| a == "--json");
+    let mut plots = None;
+    let mut others = Vec::new();
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--all" | "--json" => {}
+            "--plots" => plots = Some(PathBuf::from(it.next().ok_or("--plots needs a folder")?)),
+            _ => others.push(a.clone()),
+        }
+    }
+    let o = options(path, &others, &[])?;
+    let lib = load_library(&o.dirs)?;
+    let layout = gerberus::kicad::pcb::load_layout(path)?;
+    let report = gerberus::si::check(&layout, &lib);
+    if let Some(dir) = plots {
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        for p in &report.pairs {
+            let safe: String = p
+                .name
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' })
+                .collect();
+            for (kind, svg) in [("eye", gerberus::si::svg::eye(p)), ("tdr", gerberus::si::svg::tdr(p))] {
+                if let Some(svg) = svg {
+                    let file = dir.join(format!("{safe}-{kind}.svg"));
+                    std::fs::write(&file, svg).map_err(|e| format!("{}: {e}", file.display()))?;
+                    eprintln!("wrote {}", file.display());
+                }
+            }
+        }
+    }
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
+    } else {
+        print!("{}", gerberus::si::render(&report, all));
+    }
+    Ok(report.errors() == 0)
 }
 
 fn datasheet(sub: &str, rest: &[String]) -> Result<bool, String> {

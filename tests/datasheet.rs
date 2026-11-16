@@ -80,6 +80,42 @@ fn units_come_from_the_unit_column_and_are_scaled() {
     assert_eq!(o.status, Status::NotFound, "{o:?}");
 }
 
+const CAPACITANCE: &str = "
+7.6 Electrical Characteristics
+                   PARAMETER                                    TEST CONDITIONS                   MIN        TYP         MAX     UNIT
+CIO             I/O capacitance                                 VIO = 2.5 V, f = 1 MHz                       0.42        0.6     pF
+IR              Leakage current                                 VIO = 5 V                                    1           10      nA
+";
+
+#[test]
+fn capacitance_is_read_in_picofarads_from_its_column() {
+    // 0.42 pF typical, 0.6 pF maximum.
+    let o = check_claim(&claim(0.42e-12, Role::Typ, Unit::Farad, &["I/O"]), CAPACITANCE);
+    assert_eq!(o.status, Status::Confirmed, "{o:?}");
+    let o = check_claim(&claim(0.6e-12, Role::Max, Unit::Farad, &["I/O"]), CAPACITANCE);
+    assert_eq!(o.status, Status::Confirmed, "{o:?}");
+    // The typical value filed as a maximum is the mistake to catch.
+    let o = check_claim(&claim(0.42e-12, Role::Max, Unit::Farad, &["I/O"]), CAPACITANCE);
+    assert_eq!(o.status, Status::Mismatch, "{o:?}");
+    // 10 nA is not 10 pF, and ppm is not a pico prefix.
+    let o = check_claim(&claim(10e-12, Role::Max, Unit::Farad, &[]), CAPACITANCE);
+    assert_eq!(o.status, Status::NotFound, "{o:?}");
+}
+
+#[test]
+fn capacitance_entries_are_claimed_blanked_and_compared() {
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let part = &lib.parts["TPD1E05U06DPYR"];
+    let c: Vec<Claim> = claims(part).into_iter().filter(|c| c.unit == Unit::Farad).collect();
+    assert_eq!(c.len(), 1);
+    assert_eq!((c[0].role, c[0].page), (Role::Typ, 7));
+    let mut other = part.clone();
+    other.capacitance[0].typ = Some(0.5);
+    assert!(compare(part, &other).iter().any(|d| d.at == "capacitance"));
+    let text = std::fs::read_to_string(root("parts/TPD1E05U06DPYR.toml")).unwrap();
+    assert!(blank(&text).unwrap().contains("typ = \"?\""));
+}
+
 #[test]
 fn a_row_that_names_no_pin_is_only_plausible() {
     let o = check_claim(&claim(36.0, Role::Max, Unit::Volt, &["CANH"]), ELECTRICAL);
