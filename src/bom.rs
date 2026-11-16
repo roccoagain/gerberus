@@ -56,18 +56,21 @@ pub fn lines(design: &Design) -> Vec<Line> {
                 None => (None, Some(raw.to_string())),
             },
         };
-        by_key
+        let line = by_key
             .entry((mpn.clone(), lcsc.clone(), bad_lcsc.clone()))
             .or_insert_with(|| Line {
                 mpn,
-                has_mpn_field,
+                has_mpn_field: false,
                 lcsc,
                 bad_lcsc,
                 references: Vec::new(),
-                commodity: is_commodity(c),
-            })
-            .references
-            .push(r.clone());
+                commodity: true,
+            });
+        // One part with an MPN field is enough to compare against LCSC; one part that isn't a plain
+        // resistor or capacitor makes the whole line a sourcing question.
+        line.has_mpn_field |= has_mpn_field;
+        line.commodity &= is_commodity(c);
+        line.references.push(r.clone());
     }
     let mut out: Vec<Line> = by_key.into_values().collect();
     for l in &mut out {
@@ -77,10 +80,21 @@ pub fn lines(design: &Design) -> Vec<Line> {
     out
 }
 
+/// KiCad's plain resistor and non-polarised capacitor symbols. Anything else (crystals, shunts, trimmers,
+/// polarised capacitors) is not a commodity.
+const COMMODITY_SYMBOLS: [&str; 8] = [
+    "Device:R",
+    "Device:R_Small",
+    "Device:R_US",
+    "Device:R_Small_US",
+    "Device:C",
+    "Device:C_Small",
+    "Device:C_US",
+    "Device:C_Small_US",
+];
+
 fn is_commodity(c: &Component) -> bool {
-    let sym = c.lib_id.strip_prefix("Device:").unwrap_or("");
-    (sym.starts_with('R') && !sym.starts_with("R_Pack") && !sym.starts_with("R_Pot"))
-        || (sym.starts_with('C') && !sym.starts_with("CP") && !sym.starts_with("C_Polarized"))
+    COMMODITY_SYMBOLS.contains(&c.lib_id.as_str())
 }
 
 fn lcsc_field(c: &Component) -> Option<&str> {
@@ -210,6 +224,11 @@ pub trait Source {
     fn listing(&mut self, code: &str) -> Result<Option<Listing>, String>;
     /// A short name for reports, such as `LCSC`.
     fn name(&self) -> &str;
+    /// Why the last answer for `code` may be out of date, such as a cached answer used because a fresh
+    /// lookup failed.
+    fn caveat(&self, _code: &str) -> Option<String> {
+        None
+    }
 }
 
 /// One cached answer. `listing: None` caches "LCSC has no such part" too.
@@ -228,7 +247,10 @@ pub struct Lcsc {
     pub max_age: Duration,
     /// Use only the cache, whatever its age; a code that isn't cached is an error.
     pub offline: bool,
+    /// The product detail endpoint, followed by the LCSC code. Tests point it somewhere unreachable.
+    pub endpoint: String,
     agent: Option<ureq::Agent>,
+    caveats: BTreeMap<String, String>,
 }
 
 const LCSC_DETAIL: &str = "https://wmsc.lcsc.com/ftps/wm/product/detail?productCode=";
@@ -239,7 +261,9 @@ impl Lcsc {
             cache,
             max_age,
             offline,
+            endpoint: LCSC_DETAIL.to_string(),
             agent: None,
+            caveats: BTreeMap::new(),
         }
     }
 
@@ -256,9 +280,39 @@ impl Lcsc {
         Some(self.cache.as_ref()?.join(format!("{code}.json")))
     }
 
-    fn read_cache(&self, code: &str) -> Option<CacheEntry> {
-        let text = std::fs::read_to_string(self.cache_path(code)?).ok()?;
-        serde_json::from_str(&text).ok()
+    /// `Ok(None)` when nothing is cached; `Err` when a cache file exists but can't be read.
+    fn read_cache(&self, code: &str) -> Result<Option<CacheEntry>, String> {
+        let Some(path) = self.cache_path(code) else {
+            return Ok(None);
+        };
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(format!("can't read cache file {}: {e}", path.display())),
+        };
+        serde_json::from_str(&text)
+            .map(Some)
+            .map_err(|e| format!("cache file {} is damaged: {e}", path.display()))
+    }
+
+    fn write_cache(&self, code: &str, listing: &Option<Listing>) {
+        // A cache that can't be written only costs a repeat lookup, so it is not an error. Writing to a
+        // temporary file and renaming it means a reader never sees half a file.
+        let Some(path) = self.cache_path(code) else { return };
+        let entry = CacheEntry {
+            fetched: now(),
+            listing: listing.clone(),
+        };
+        let Ok(text) = serde_json::to_string_pretty(&entry) else {
+            return;
+        };
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
+        if std::fs::write(&tmp, text + "\n").is_ok() && std::fs::rename(&tmp, &path).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
     }
 
     fn fetch(&mut self, code: &str) -> Result<Option<Listing>, String> {
@@ -274,7 +328,7 @@ impl Lcsc {
                 .build()
                 .into()
         });
-        let url = format!("{LCSC_DETAIL}{code}");
+        let url = format!("{}{code}", self.endpoint);
         let mut resp = agent
             .get(&url)
             .call()
@@ -298,33 +352,42 @@ impl Source for Lcsc {
         "LCSC"
     }
 
+    fn caveat(&self, code: &str) -> Option<String> {
+        self.caveats.get(code).cloned()
+    }
+
     fn listing(&mut self, code: &str) -> Result<Option<Listing>, String> {
-        let cached = self.read_cache(code);
+        self.caveats.remove(code);
         if self.offline {
-            return cached
+            return self
+                .read_cache(code)?
                 .map(|c| c.listing)
                 .ok_or_else(|| format!("{code} is not in the LCSC cache and lookups are offline"));
         }
+        // A damaged cache file is refetched rather than trusted.
+        let cached = self.read_cache(code).ok().flatten();
         if let Some(c) = &cached
             && now().saturating_sub(c.fetched) < self.max_age.as_secs()
         {
             return Ok(c.listing.clone());
         }
-        let listing = self.fetch(code)?;
-        if let Some(path) = self.cache_path(code) {
-            let entry = CacheEntry {
-                fetched: now(),
-                listing: listing.clone(),
-            };
-            // A cache that can't be written only costs a repeat lookup, so it is not an error.
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
+        match self.fetch(code) {
+            Ok(listing) => {
+                self.write_cache(code, &listing);
+                Ok(listing)
             }
-            if let Ok(text) = serde_json::to_string_pretty(&entry) {
-                let _ = std::fs::write(&path, text + "\n");
-            }
+            Err(e) => match cached {
+                Some(c) => {
+                    let hours = now().saturating_sub(c.fetched) / 3600;
+                    self.caveats.insert(
+                        code.to_string(),
+                        format!("using LCSC's answer from {hours} h ago, because a fresh lookup failed: {e}"),
+                    );
+                    Ok(c.listing)
+                }
+                None => Err(e),
+            },
         }
-        Ok(listing)
     }
 }
 
@@ -416,7 +479,15 @@ fn squash(s: &str) -> String {
 
 /// Checks every BOM line of a design against a source.
 pub fn check(design: &Design, source: &mut dyn Source, opts: Options) -> Vec<Health> {
-    lines(design)
+    let lines = lines(design);
+    // Lines with different part numbers can share an LCSC number (`10k` and `10K`); stock must cover them all.
+    let mut per_code: BTreeMap<String, u64> = BTreeMap::new();
+    for l in &lines {
+        if let Some(code) = &l.lcsc {
+            *per_code.entry(code.clone()).or_default() += l.references.len() as u64;
+        }
+    }
+    lines
         .into_iter()
         .map(|line| {
             let mut findings = Vec::new();
@@ -466,8 +537,14 @@ pub fn check(design: &Design, source: &mut dyn Source, opts: Options) -> Vec<Hea
                     Ok(Some(l)) => Some(l),
                 },
             };
+            if let Some(code) = &line.lcsc
+                && let Some(c) = source.caveat(code)
+            {
+                f(Severity::Warning, Topic::Stock, c);
+            }
             if let Some(l) = &listing {
-                judge(&line, l, source.name(), opts, &mut f);
+                let per_board = line.lcsc.as_ref().and_then(|c| per_code.get(c)).copied().unwrap_or(0);
+                judge(&line, l, per_board, source.name(), opts, &mut f);
             }
             Health {
                 line,
@@ -478,7 +555,15 @@ pub fn check(design: &Design, source: &mut dyn Source, opts: Options) -> Vec<Hea
         .collect()
 }
 
-fn judge(line: &Line, l: &Listing, src: &str, opts: Options, f: &mut impl FnMut(Severity, Topic, String)) {
+/// `per_board` counts every part on the board that uses this LCSC number, across all lines.
+fn judge(
+    line: &Line,
+    l: &Listing,
+    per_board: u64,
+    src: &str,
+    opts: Options,
+    f: &mut impl FnMut(Severity, Topic, String),
+) {
     let code = &l.code;
     if line.has_mpn_field && squash(&l.mpn) != squash(&line.mpn) {
         f(
@@ -499,8 +584,12 @@ fn judge(line: &Line, l: &Listing, src: &str, opts: Options, f: &mut impl FnMut(
         );
     }
 
-    let per_board = line.references.len() as u64;
-    let needed = per_board * opts.boards;
+    let needed = per_board.saturating_mul(opts.boards);
+    let shared = if per_board > line.references.len() as u64 {
+        ", counting other lines with the same LCSC number"
+    } else {
+        ""
+    };
     if l.stock == 0 {
         f(
             Severity::Error,
@@ -512,13 +601,27 @@ fn judge(line: &Line, l: &Listing, src: &str, opts: Options, f: &mut impl FnMut(
             Severity::Error,
             Topic::Stock,
             format!(
-                "{src} has {} of {code}; {} boards need {needed} ({per_board} each)",
+                "{src} has {} of {code}; {} boards need {needed} ({per_board} each{shared})",
                 l.stock, opts.boards
             ),
         );
     }
 
+    if l.package.is_empty() {
+        let sev = if line.commodity {
+            Severity::Info
+        } else {
+            Severity::Unknown
+        };
+        f(
+            sev,
+            Topic::SecondSource,
+            format!("{src} gives no package for {code}, so similar parts can't be matched to it"),
+        );
+        return;
+    }
     let maker = squash(&l.manufacturer);
+    let package = squash(&l.package);
     let others: Vec<&Similar> = l
         .similar
         .iter()
@@ -526,7 +629,7 @@ fn judge(line: &Line, l: &Listing, src: &str, opts: Options, f: &mut impl FnMut(
             squash(&s.manufacturer) != maker
                 && s.status == "normal"
                 && s.stock >= needed.max(1)
-                && (s.package.is_empty() || l.package.is_empty() || squash(&s.package) == squash(&l.package))
+                && squash(&s.package) == package
         })
         .collect();
     if others.is_empty() {

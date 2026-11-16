@@ -294,3 +294,99 @@ fn bad_or_missing_lcsc_numbers_are_unknown() {
     );
     assert!(r[0].findings[0].message.contains("LCSC-123"));
 }
+
+#[test]
+fn stock_covers_every_line_that_shares_an_lcsc_number() {
+    let mut a = part("R1", "Device:R", "", "C1");
+    a.value = "10k".into();
+    let mut b = part("R2", "Device:R", "", "C1");
+    b.value = "10K".into();
+    let l = listing("C1", "R10K", "Acme", 15, "normal", vec![]);
+    let r = run(vec![a, b], vec![("C1", Some(l))], 10);
+    assert_eq!(r.len(), 2);
+    assert!(
+        errors(&r)
+            .iter()
+            .all(|e| e.contains("10 boards need 20 (2 each, counting other lines")),
+        "{:?}",
+        errors(&r)
+    );
+    assert_eq!(errors(&r).len(), 2);
+}
+
+#[test]
+fn only_plain_resistors_and_capacitors_are_commodities() {
+    let l = listing("C1", "X1", "Acme", 1000, "normal", vec![]);
+    let r = run(vec![part("Y1", "Device:Crystal", "X1", "C1")], vec![("C1", Some(l))], 1);
+    assert!(
+        r[0].findings
+            .iter()
+            .any(|f| f.severity == Severity::Warning && f.topic == Topic::SecondSource)
+    );
+}
+
+#[test]
+fn one_mpn_field_in_a_line_is_enough_to_compare() {
+    // A0 has no MPN field and its value happens to equal the other's MPN, so both land on one line.
+    let mut a = part("A0", "X:Y", "", "C1");
+    a.value = "WRONG".into();
+    let b = part("A1", "X:Y", "WRONG", "C1");
+    let l = listing("C1", "RIGHT", "Acme", 1000, "normal", vec![]);
+    let r = run(vec![a, b], vec![("C1", Some(l))], 1);
+    assert_eq!(r.len(), 1);
+    assert_eq!(errors(&r), ["A0: LCSC C1 is Acme RIGHT, but the MPN field says WRONG"]);
+}
+
+#[test]
+fn a_missing_package_is_unknown_not_a_match() {
+    let mut l = listing(
+        "C1",
+        "A",
+        "Acme",
+        1000,
+        "normal",
+        vec![similar("C2", "Other", 1000, "")],
+    );
+    let r = run(vec![part("U1", "X:Y", "A", "C1")], vec![("C1", Some(l.clone()))], 1);
+    assert!(
+        r[0].findings
+            .iter()
+            .any(|f| f.severity == Severity::Warning && f.topic == Topic::SecondSource)
+    );
+    l.package.clear();
+    let r = run(vec![part("U1", "X:Y", "A", "C1")], vec![("C1", Some(l))], 1);
+    assert!(
+        r[0].findings
+            .iter()
+            .any(|f| f.severity == Severity::Unknown && f.topic == Topic::SecondSource)
+    );
+}
+
+fn temp_cache(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("gerberus-bom-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+#[test]
+fn a_damaged_cache_file_is_reported_offline() {
+    let dir = temp_cache("damaged");
+    std::fs::write(dir.join("C1.json"), "{\"fetched\": 1, \"listing\": ").unwrap();
+    let mut s = Lcsc::new(Some(dir.clone()), Duration::ZERO, true);
+    assert!(s.listing("C1").unwrap_err().contains("damaged"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_failed_lookup_falls_back_to_an_old_answer_with_a_warning() {
+    let dir = temp_cache("stale");
+    std::fs::copy(root("tests/fixtures/lcsc/C1525.json"), dir.join("C1525.json")).unwrap();
+    let mut s = Lcsc::new(Some(dir.clone()), Duration::ZERO, false);
+    s.endpoint = "http://127.0.0.1:9/?productCode=".into();
+    let l = s.listing("C1525").unwrap().unwrap();
+    assert_eq!(l.mpn, "CL05B104KO5NNNC");
+    assert!(s.caveat("C1525").unwrap().contains("fresh lookup failed"));
+    assert!(s.listing("C2").is_err(), "nothing cached and no network is an error");
+    let _ = std::fs::remove_dir_all(dir);
+}

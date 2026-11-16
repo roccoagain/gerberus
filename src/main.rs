@@ -13,7 +13,9 @@ to the schematic if there is one (its files override the shared ones), then any 
 
 `bom` looks up every BOM line by its LCSC part number: stock for --boards boards (default 10), LCSC's listing
 status, and similar parts from other makers. Answers are cached in --cache (default ~/.cache/gerberus/lcsc) for
---max-age hours (default 24); --offline uses only the cache. It exits with status 1 when any line has an error.";
+--max-age hours (default 24); --offline uses only the cache. It exits with status 1 when any line has an error.
+
+Every command exits with status 2 when it can't run (bad arguments, unreadable files).";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -31,7 +33,7 @@ fn main() -> ExitCode {
         Ok(false) => ExitCode::from(1),
         Err(e) => {
             eprintln!("error: {e}");
-            ExitCode::FAILURE
+            ExitCode::from(2)
         }
     }
 }
@@ -118,11 +120,16 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
                     .map_err(|_| format!("--max-age needs a number of hours, not {h:?}"))?;
                 it.next();
             }
+            ("--boards" | "--cache" | "--max-age", None) => return Err(format!("{a} needs a value\n{USAGE}")),
             _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
         }
     }
+    let max_age = max_age_hours
+        .checked_mul(3600)
+        .map(std::time::Duration::from_secs)
+        .ok_or(format!("--max-age {max_age_hours} is too large"))?;
     let design = gerberus::kicad::load(path)?;
-    let mut source = Lcsc::new(cache, std::time::Duration::from_secs(max_age_hours * 3600), offline);
+    let mut source = Lcsc::new(cache, max_age, offline);
     let report = check(&design, &mut source, opts);
     let mut count = std::collections::BTreeMap::new();
     for h in &report {

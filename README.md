@@ -36,7 +36,8 @@ field at LCSC and reports:
 Similar parts are LCSC's suggestions and are shown as candidates only: nobody has checked their pinout or
 ratings. LCSC needs no API key, but it can't tell whether the manufacturer has marked a part NRND or EOL, so
 manufacturer lifecycle is reported as unknown. Answers are cached in `~/.cache/gerberus/lcsc` for 24 hours;
-`--offline` uses only the cache. The command exits with status 1 when any line has an error.
+`--offline` uses only the cache; when a fresh lookup fails, an older cached answer is used with a warning. The
+command exits with status 1 when any line has an error and 2 when it can't run.
 
 ## Tests
 
