@@ -1111,6 +1111,52 @@ fn no_inputs_assumes_only_ground() {
     assert_eq!(r.by_rule("esd").count(), 0);
 }
 
+/// A weakly rated pin can't fail a connector's net while a part with no part file sits on it: that part may be
+/// the clamp (the amp board's PESD5V0S1BAF, whose part number no file covers).
+#[test]
+fn esd_weak_pin_beside_an_undescribed_part_is_unknown() {
+    let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    let swdio = d.components["J2"].pins["2"].net;
+    let gnd = net(&d, "GND");
+    // A resistor or a module with no part file can't be the clamp: the pin still FAILs.
+    let side = new_net(&mut d, "/SIDE");
+    add(
+        &mut d,
+        "R99",
+        "Device:R",
+        "22",
+        None,
+        vec![pin("1", PinKind::Passive, swdio), pin("2", PinKind::Passive, side)],
+    );
+    add(
+        &mut d,
+        "A99",
+        "Module:Thing",
+        "MOD",
+        Some("MYSTERY-MODULE"),
+        vec![pin("1", PinKind::Bidirectional, swdio), pin("2", PinKind::Passive, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J2.2")).collect();
+    assert_eq!(f[0].verdict, Verdict::Fail, "{}", f[0].message);
+    add(
+        &mut d,
+        "D99",
+        "Device:D_TVS",
+        "ESD",
+        Some("MYSTERY-ESD"),
+        vec![pin("1", PinKind::Passive, swdio), pin("2", PinKind::Passive, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J2.2")).collect();
+    assert_eq!(f[0].verdict, Verdict::Unknown, "{}", f[0].message);
+    assert!(
+        f[0].message.contains("D99 (ESD)") && f[0].message.contains("U2.PA13"),
+        "{}",
+        f[0].message
+    );
+}
+
 /// A TVS that gives only a minimum breakdown or a clamping voltage still clamps a connector's net: USB ESD arrays
 /// like the USBLC6-2SC6 give no maximum breakdown, and the sniffer's UART pin was failing with one beside it.
 #[test]
