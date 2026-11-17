@@ -117,8 +117,16 @@ fn pascal(data: &[u8], pos: &mut usize) -> Option<String> {
 /// Newer files write some pins as binary records. Layout as read by KiCad's Altium importer.
 fn parse_binary_pin(data: &[u8]) -> Option<Record> {
     let mut f = HashMap::new();
-    let i32_at = |p: usize| data.get(p..p + 4).map(|b| i32::from_le_bytes(b.try_into().unwrap()));
-    let i16_at = |p: usize| data.get(p..p + 2).map(|b| i16::from_le_bytes(b.try_into().unwrap()));
+    let i32_at = |p: usize| {
+        data.get(p..p + 4)
+            .and_then(|b| b.try_into().ok())
+            .map(i32::from_le_bytes)
+    };
+    let i16_at = |p: usize| {
+        data.get(p..p + 2)
+            .and_then(|b| b.try_into().ok())
+            .map(i16::from_le_bytes)
+    };
     if i32_at(0)? != 2 {
         return None;
     }

@@ -1,0 +1,5 @@
+# Every text file checks out with LF on every platform: files embedded with include_str! (skills, parts) ship
+# byte for byte the same from a Windows build.
+* text=auto eol=lf
+# Board files and expected outputs are compared byte for byte, so git must not touch their line endings.
+tests/fixtures/** -text

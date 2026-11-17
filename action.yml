@@ -32,7 +32,8 @@ runs:
       shell: bash
       env:
         VERSION: ${{ inputs.version }}
-      run: |
+      # The PATH entry is the installer's fixed bin directory, not an input.
+      run: | # zizmor: ignore[github-env]
         if [ "$VERSION" = latest ]; then
           url=https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.sh
         else

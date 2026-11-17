@@ -86,11 +86,18 @@ fn a_pdf_named_after_the_file_is_found() {
     assert!(saved_for(&part, "SM04B-GHS-TB(LF)(SN)").is_some());
     // An exact match wins over one in another letter case.
     std::fs::write(dir.join("datasheets/sm04b-ghs-tb_lf__sn_.pdf"), b"x").unwrap();
-    std::fs::write(dir.join("datasheets/SM04B-GHS-TB_LF__SN_.pdf"), b"x").unwrap();
-    assert_eq!(
-        saved_for(&part, "SM04B-GHS-TB(LF)(SN)").unwrap(),
-        dir.join("datasheets/SM04B-GHS-TB_LF__SN_.pdf")
-    );
+    let exact = dir.join("datasheets/SM04B-GHS-TB_LF__SN_.pdf");
+    if exact.exists() {
+        // A case-insensitive file system (Windows, macOS by default): both names are the one file, which is found.
+        let found = saved_for(&part, "SM04B-GHS-TB(LF)(SN)").unwrap();
+        assert_eq!(
+            found.file_name().unwrap().to_ascii_lowercase(),
+            "sm04b-ghs-tb_lf__sn_.pdf"
+        );
+    } else {
+        std::fs::write(&exact, b"x").unwrap();
+        assert_eq!(saved_for(&part, "SM04B-GHS-TB(LF)(SN)").unwrap(), exact);
+    }
     std::fs::remove_dir_all(&dir).unwrap();
 }
 

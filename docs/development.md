@@ -24,11 +24,20 @@ CI (`.github/workflows/ci.yml`) runs on pushes to main, on every pull request, a
 
 - `cargo fmt --check` (`rustfmt.toml`) and `cargo clippy --all-targets -- -D warnings`, with the lint levels in the
   `[lints]` table of `Cargo.toml`: clippy's pedantic group, minus the lints listed there as noise for this code.
-- `cargo test` with every proxy pointed at a closed port, so a test that reaches for the network fails.
+  A one-off exception is `#[expect(lint, reason = "...")]`, never `#[allow]`: it fails once the code no longer
+  needs it. Shipped code may not `unwrap()` (a bad board file must give an error, not a crash); tests may.
+- `cargo test` with every proxy pointed at a closed port, so a test that reaches for the network fails. The tests
+  also run on macOS and Windows, which releases ship for.
 - `cargo check` on the oldest supported Rust (`rust-version` in `Cargo.toml`). Day-to-day builds use the toolchain
   pinned in `rust-toolchain.toml`.
 - `cargo deny check` (`deny.toml`): RustSec advisories, permissive licenses only, crates.io only.
 - Line coverage with `cargo llvm-cov`, shown in the job summary and failing below 80% (about 86% today).
+- `cargo machete`: no unused dependencies.
+- `CI OK` passes only when every job above passed; it is the one check the main ruleset requires. Add new jobs
+  to its `needs`.
+- `actionlint` and `zizmor` on the workflows and `action.yml`: mistakes, script injection, unpinned actions.
+  Actions are pinned to commit hashes; Dependabot (`.github/dependabot.yml`) proposes weekly updates for them and
+  for `Cargo.lock`, each a week after release.
 
 To run the formatting and clippy checks before each commit (on the working tree, not only what is staged), turn
 on the hook once per clone:

@@ -60,7 +60,6 @@ fn sig(x: f64) -> String {
     if x == 0.0 {
         return "0".into();
     }
-    #[allow(clippy::cast_possible_truncation)]
     let digits = (3 - x.abs().log10().floor() as i32).max(0);
     let s = format!("{x:.*}", usize::try_from(digits).unwrap_or(0));
     if s.contains('.') {
@@ -586,7 +585,6 @@ impl Ctx<'_> {
         held || input
     }
 
-    #[allow(clippy::too_many_lines)]
     fn total(&self, net: usize, st: &mut State) -> Load {
         let (design, lib, volts) = (self.design, self.lib, self.volts);
         if let Some(l) = &st.totals[net] {

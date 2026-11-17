@@ -1173,7 +1173,10 @@ const EQUIVALENT_LOOKUPS: usize = 8;
 
 /// `per_board` counts every part on the board that uses this distributor number, across all lines. `want` is
 /// what the line's resistor or capacitor should be, when it is one and the source is LCSC.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "unrelated inputs; a one-use struct would only rename them"
+)]
 fn judge(
     line: &Line,
     l: &Listing,

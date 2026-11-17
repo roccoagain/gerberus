@@ -75,11 +75,18 @@ fn missing_part_file_is_listed_with_its_references() {
     assert_eq!(item.references, ["U4"]);
     assert_eq!(
         item.file,
-        Path::new("board/parts/TCAN1044AVDDFRQ1.toml").display().to_string()
+        Path::new("board/parts")
+            .join("TCAN1044AVDDFRQ1.toml")
+            .display()
+            .to_string()
     );
     assert!(item.unknown >= 1);
     // It names the file to save the datasheet as.
-    let pdf = Path::new("board/datasheets/TCAN1044AVDDFRQ1.pdf").display().to_string();
+    let pdf = Path::new("board")
+        .join("datasheets")
+        .join("TCAN1044AVDDFRQ1.pdf")
+        .display()
+        .to_string();
     assert!(item.notes.iter().any(|n| n.contains(&pdf)), "{:?}", item.notes);
     assert!(
         item.title.contains("write a part file for TCAN1044AVDDFRQ1"),

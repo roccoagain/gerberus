@@ -49,6 +49,10 @@ cast_sign_loss = "allow"
 float_cmp = "allow"
 struct_field_names = "allow"
 return_self_not_must_use = "allow"
+# Every lint exception is an `#[expect(..., reason = "...")]`: it says why, and it fails once the code no
+# longer needs it, so stale exceptions don't pile up.
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
 # Leftovers that should never reach main.
 dbg_macro = "warn"
 todo = "warn"

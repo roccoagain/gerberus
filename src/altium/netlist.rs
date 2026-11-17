@@ -335,15 +335,16 @@ fn channel_designator(format: &str, designator: &str, room: &str, index: usize) 
     ];
     let mut out = String::new();
     let mut rest = format;
-    'outer: while !rest.is_empty() {
+    'outer: while let Some(c) = rest.chars().next() {
         for (t, v) in &tokens {
-            if rest.len() >= t.len() && rest[..t.len()].eq_ignore_ascii_case(t) {
+            // `get` rather than slicing: the format can hold non-ASCII text, and a token's length may not end on a
+            // character boundary there.
+            if rest.get(..t.len()).is_some_and(|head| head.eq_ignore_ascii_case(t)) {
                 out.push_str(v);
                 rest = &rest[t.len()..];
                 continue 'outer;
             }
         }
-        let c = rest.chars().next().unwrap();
         out.push(c);
         rest = &rest[c.len_utf8()..];
     }
@@ -379,7 +380,10 @@ fn build(project: &Project, docs: &[(PathBuf, SchDoc)], mut warnings: Vec<String
     }
 
     let mut instances: Vec<Instance> = Vec::new();
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "unrelated inputs; a one-use struct would only rename them"
+    )]
     fn place(
         doc: usize,
         key: String,
@@ -1377,4 +1381,19 @@ fn items_in_group(items: &[Item], uf: &mut UnionFind, nw: usize, root: usize) ->
         .collect();
     out.sort();
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::channel_designator;
+
+    #[test]
+    fn channel_format_with_non_ascii_text() {
+        // "µ" is two bytes, so the 9-byte "$RoomName" ends inside one; this used to panic on a bad slice.
+        assert_eq!(channel_designator("µµµµµ", "R12", "Amp", 2), "µµµµµ");
+        assert_eq!(
+            channel_designator("$ComponentPrefixµµµµµ$ChannelAlpha", "R12", "Amp", 2),
+            "RµµµµµB"
+        );
+    }
 }

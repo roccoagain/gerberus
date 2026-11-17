@@ -563,7 +563,10 @@ fn subject(f: &Finding) -> (&str, &str, &str) {
 /// findings in that fault case, `normal` the findings of normal operation, and `volts` the case's net
 /// voltages. Only what the reversal makes worse counts: a check that already fails or can't be made in normal
 /// operation says nothing about the reversal.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "unrelated inputs; a one-use struct would only rename them"
+)]
 pub fn reverse_polarity(
     design: &Design,
     lib: &Library,

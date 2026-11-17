@@ -79,9 +79,7 @@ impl Rng {
         self.0 ^= self.0 << 25;
         self.0 ^= self.0 >> 27;
         let x = self.0.wrapping_mul(0x2545_f491_4f6c_dd1d);
-        #[allow(clippy::cast_precision_loss)]
-        let f = (x >> 11) as f64 / (1u64 << 53) as f64;
-        f
+        (x >> 11) as f64 / (1u64 << 53) as f64
     }
 
     /// Uniform in `[lo, hi]`.
@@ -137,7 +135,6 @@ fn sig(x: f64) -> String {
     if x.abs() < 1e-6 {
         return "0".into();
     }
-    #[allow(clippy::cast_possible_truncation)]
     let digits = (3 - x.abs().log10().floor() as i32).max(0);
     let s = format!("{x:.*}", usize::try_from(digits).unwrap_or(0));
     if s.contains('.') {
@@ -348,7 +345,6 @@ fn value_min(r: &Range) -> Option<f64> {
 }
 
 /// The `hot-plug` rule: the peak voltage across every pin limit, over every run, against the limit.
-#[allow(clippy::too_many_lines)]
 pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy) -> Vec<Finding> {
     let mut out = vec![];
     let net_name = |n: usize| design.nets[n].name.as_str();
