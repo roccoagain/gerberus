@@ -1,0 +1,77 @@
+mpn = "TPS3808EG50DBVR"
+manufacturer = "Texas Instruments"
+description = "supervisor, 4.65 V SENSE threshold (5 V rail), programmable delay, open-drain RESET, SOT-23-6 (DBV)"
+class = "ic"
+temperature = { min = -40, max = 125, page = 5, note = "recommended TJ -40 to 125 C; footnote 2 of the absolute maximum ratings: TJ = TA, as the device dissipates little power" }
+theta_ja = { value = 210.8, page = 5, note = "RθJA, DBV (SOT23-6)" }
+tj_max = { value = 125, page = 5, note = "recommended operating conditions TJ max; absolute maximum is 150 C" }
+
+[datasheet]
+title = "TPS3808E Low-Quiescent-Current, Programmable-Delay Supervisory Circuit"
+document = "SNVSCE0B, May 2023, revised January 2024"
+url = "https://www.ti.com/lit/ds/symlink/tps3808e.pdf"
+# TPS3808EG50DBVR is listed in the package option addendum (PDF page 19, marking EG50); TPS3808EG50 has
+# VIT = 4.65 V for a 5 V rail (page 3). This is the TPS3808E, not the TPS3808: its own ratings (6.5 V abs max,
+# 6 V recommended) are lower than the older part's.
+
+# Table 5-1 (page 4), DBV SOT-23. RESET and MR are active low (overbars); the symbol calls them RESET_N and MR_N.
+[pins]
+1 = "RESET"
+2 = "GND"
+3 = "MR"
+4 = "CT"
+5 = "SENSE"
+6 = "VDD"
+
+[[limit]]
+pins = ["VDD"]
+to = "GND"
+abs_max = { min = -0.3, max = 6.5, page = 5, note = "VDD" }
+recommended = { min = 1.7, max = 6, page = 5, note = "VDD supply pin voltage" }
+
+[[limit]]
+pins = ["SENSE"]
+to = "GND"
+abs_max = { min = -0.3, max = 6.5, page = 5, note = "VSENSE" }
+recommended = { min = 0, max = 6, page = 5, note = "VSENSE input pin voltage" }
+
+[[limit]]
+pins = ["MR"]
+to = "GND"
+abs_max = { min = -0.3, max = 6.5, page = 5, note = "VMR" }
+recommended = { min = 0, max = 6, page = 5, note = "VMR; MR has an internal 90 kΩ pull-up to VDD (page 4)" }
+
+[[limit]]
+pins = ["RESET"]
+to = "GND"
+abs_max = { min = -0.3, max = 6.5, page = 5, note = "VRESET; open-drain output, may be pulled above VDD (page 4)" }
+recommended = { min = 0, max = 6, page = 5, note = "VRESET output pin voltage" }
+
+[[limit]]
+pins = ["CT"]
+to = "GND"
+abs_max = { min = -0.3, max = 6.5, page = 5, note = "VCT" }
+recommended = { min = { unknown = "the recommended operating conditions give only a maximum for VCT" }, max = { pin = "VDD" }, page = 5, note = "VCT max = VDD" }
+
+[[limit]]
+quantity = "current"
+pins = ["RESET"]
+to = "GND"
+abs_max = { min = -0.005, max = 0.005, page = 5, note = "IRESET ±5 mA" }
+recommended = { min = 0, max = 0.005, page = 5, note = "IRESET output pin current, 0 to 5 mA" }
+
+[[supply]]
+pins = ["VDD"]
+current = { min = 0, max = 0.00006817, page = 6, derived = "0 .. 0.0000015 + 6 / 90000; IDD max 1.5 µA at VDD = 6 V with MR open, plus 6 V across the internal MR pull-up when MR is held low", note = "the MR pull-up is given only as 90 kΩ typical (page 5), so this adds a typical share to a maximum" }
+
+[[esd]]
+model = "hbm"
+volts = 2000
+page = 5
+note = "HBM per ANSI/ESDA/JEDEC JS-001"
+
+[[esd]]
+model = "cdm"
+volts = 500
+page = 5
+note = "CDM per JEDEC JESD22-C101"
