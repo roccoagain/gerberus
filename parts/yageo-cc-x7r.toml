@@ -1,0 +1,89 @@
+# Every Yageo CC X7R general-purpose chip capacitor, from its part number: CC0603KRX7R9BB104 is size 0603,
+# tolerance K (±10 %), packing R (paper reel, 7 inch), X7R, voltage 9 (50 V), process BB, 104 (100 nF).
+# The datasheet's selection tables (which capacitance comes in which size and voltage) aren't checked: a part
+# number it decodes is rated by its voltage code.
+family = "Yageo CC X7R"
+manufacturer = "Yageo"
+description = "X7R MLCC"
+class = "capacitor"
+mpn = "CC{size}{tolerance}{packing}X7R{voltage}BB{value}"
+
+[datasheet]
+title = "Surface-Mount Ceramic Multilayer Capacitors, General Purpose & High Capacitance, Class 2, X7R, 6.3 V to 250 V"
+document = "Product Specification, November 19, 2024 V.26"
+url = "https://datasheet.lcsc.com/datasheet/pdf/23ccee80ee542e7cf156a772bb589942.pdf"
+
+[field.size]
+page = 2
+codes = ["0201", "0402", "0603", "0805", "1206", "1210", "1812", "2220"]
+
+[field.tolerance]
+page = 2
+codes = { J = 0.05, K = 0.1, M = 0.2 }
+
+[field.packing]
+page = 2
+codes = ["R", "K", "P", "F"]
+
+[field.voltage]
+page = 2
+codes = ["5", "6", "7", "8", "9", "0", "A", "Y"]
+
+[field.value]
+page = 2
+kind = "capacitance-pf"
+
+# (4) Rated voltage, page 2.
+[[rating]]
+when = { voltage = ["5"] }
+voltage = 6.3
+page = 2
+note = "voltage code 5 = 6.3 V"
+
+[[rating]]
+when = { voltage = ["6"] }
+voltage = 10
+page = 2
+note = "voltage code 6 = 10 V"
+
+[[rating]]
+when = { voltage = ["7"] }
+voltage = 16
+page = 2
+note = "voltage code 7 = 16 V"
+
+[[rating]]
+when = { voltage = ["8"] }
+voltage = 25
+page = 2
+note = "voltage code 8 = 25 V"
+
+[[rating]]
+when = { voltage = ["9"] }
+voltage = 50
+page = 2
+note = "voltage code 9 = 50 V"
+
+[[rating]]
+when = { voltage = ["0"] }
+voltage = 100
+page = 2
+note = "voltage code 0 = 100 V"
+
+[[rating]]
+when = { voltage = ["A"] }
+voltage = 200
+page = 2
+note = "voltage code A = 200 V"
+
+[[rating]]
+when = { voltage = ["Y"] }
+voltage = 250
+page = 2
+note = "voltage code Y = 250 V"
+
+# Table 12, page 14.
+[[rating]]
+temperature = { min = -55, max = 125 }
+page = 14
+note = "X7R operating temperature range"

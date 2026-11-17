@@ -279,8 +279,11 @@ codes = ["0402", "0603", "0805"]
 page = 2
 codes = { B = 0.001, D = 0.005, F = 0.01, J = 0.05 }
 
-[field.value]                                       # the value: "resistance" (4K7, 97R6, 1M) or
-page = 2                                            # "capacitance-pf" (104 = 100 nF, 1R5 = 1.5 pF)
+[field.value]                                       # the value: "resistance" (4K7, 97R6, 1M),
+page = 2                                            # "resistance-digits" (1001 = 1 kohm, 0103 = 10 kohm,
+                                                    # 470K = 4.7 ohm: three figures, then a power of ten
+                                                    # 0-6 or J-P for 10^-1 to 10^-6) or
+                                                    # "capacitance-pf" (104 = 100 nF, 1R5 = 1.5 pF)
 kind = "resistance"
 
 [[rating]]                                          # a row of the ratings table, for the codes in `when`
@@ -316,8 +319,11 @@ jumper isn't rated, since it has a current rating rather than a power one.
 A part file written by hand for the same part number always wins, wherever it is (a built-in file beats a
 board's own family); of two families, the one in the later folder wins. `gerberus part show` runs the same checks
 as `check` on what it prints. `cargo test` checks that every hand-written
-file a family also decodes agrees with it. The built-in families are Yageo RC_L resistors (`yageo-rc.toml`) and
-Samsung CL capacitors (`samsung-cl.toml`).
+file a family also decodes agrees with it. The built-in families are Yageo RC_L resistors (`yageo-rc.toml`),
+UNI-ROYAL thick-film resistors (`uniroyal-thick-film.toml`, such as 0402WGF1001TCE, most of the JLCPCB basic
+resistors), Samsung CL capacitors (`samsung-cl.toml`), Yageo CC X7R capacitors (`yageo-cc-x7r.toml`) and
+Fenghua general MLCCs up to 50 V (`fenghua-general.toml`, such as 0603B104K500NT). The capacitor families rate a
+part by its voltage code; they don't check that the datasheet's capacitance tables list that value.
 
 ### Derating policy
 

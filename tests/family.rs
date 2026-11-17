@@ -32,6 +32,81 @@ fn values_decode() {
         assert_eq!(c(bad), None, "{bad}");
     }
     assert_eq!(c("475"), Some(4_700_000.0));
+    let d = |s| parse_value(ValueKind::ResistanceDigits, s);
+    assert_eq!(d("1001"), Some(1e3));
+    assert_eq!(d("0103"), Some(10e3));
+    assert_eq!(d("4701"), Some(4.7e3));
+    assert_eq!(d("100J"), Some(10.0));
+    assert_eq!(d("470K"), Some(4.7));
+    assert_eq!(d("100L"), Some(0.1));
+    assert_eq!(d("1004"), Some(1e6));
+    assert_eq!(d("1005"), Some(10e6));
+    assert_eq!(d("0000"), Some(0.0));
+    for bad in ["100", "10001", "1007", "100Q", "10K0", "1R00"] {
+        assert_eq!(d(bad), None, "{bad}");
+    }
+}
+
+#[test]
+fn uniroyal_part_numbers_decode() {
+    let lib = builtin();
+    let f = family(&lib, "UNI-ROYAL thick film");
+    let d = f.decode("0402WGF1001TCE").unwrap().unwrap();
+    assert_eq!(d.codes["size"], "0402");
+    assert_eq!(d.codes["power"], "WG");
+    assert_eq!(d.value, Some(1e3));
+    // 10 kohm at 1/8 W: sqrt(0.125 x 10000) = 35.4 V, below 0805's 150 V.
+    let p = f.part("0805W8F1002T5E").unwrap().unwrap();
+    assert!(p.problems().is_empty(), "{:?}", p.problems());
+    let v = p.limits.iter().find(|l| l.quantity == Quantity::Voltage).unwrap();
+    assert_eq!(v.recommended.values(), Some((-35.355, 35.355)));
+    let w = p.limits.iter().find(|l| l.quantity == Quantity::Power).unwrap();
+    assert_eq!(w.recommended.values(), Some((0.0, 0.125)));
+    assert_eq!(p.tcr.as_ref().unwrap().ppm, 100.0);
+    assert_eq!(p.temperature.as_ref().map(|t| (t.min, t.max)), Some((-55.0, 155.0)));
+    // A 5 % value starts with 0: 0103 is 10 kohm.
+    let p = f.part("0402WGJ0103TCE").unwrap().unwrap();
+    assert_eq!(p.tolerance.as_ref().unwrap().value, 0.05);
+    // 1 Mohm on a 0603: sqrt(0.1 x 1e6) = 316 V, capped at 75 V.
+    let p = f.part("0603WAF1004T5E").unwrap().unwrap();
+    let v = p.limits.iter().find(|l| l.quantity == Quantity::Voltage).unwrap();
+    assert_eq!(v.recommended.values(), Some((-75.0, 75.0)));
+    // 0805 below 0.1 ohm is the 1/4 W code, with its own TCR rows.
+    let p = f.part("0805W4F500MT5E").unwrap().unwrap();
+    let w = p.limits.iter().find(|l| l.quantity == Quantity::Power).unwrap();
+    assert_eq!(w.recommended.values(), Some((0.0, 0.25)));
+    assert_eq!(p.tcr.as_ref().unwrap().ppm, 800.0);
+    // TCR boundaries on a 0402: 10 ohm is in the 1-10 ohm row.
+    let tcr = |mpn: &str| f.part(mpn).unwrap().unwrap().tcr.unwrap().ppm;
+    assert_eq!(tcr("0402WGF100JTCE"), 200.0);
+    assert_eq!(tcr("0402WGF102JTCE"), 100.0);
+    // A jumper is named as one, not as a value outside the range table.
+    let e = f.part("0402WGF0000TCE").unwrap().unwrap_err();
+    assert!(e.contains("jumper"), "{e}");
+    // 01005: size code 0105, 1/32 W, 15 V, -55 to 125 °C, its own TCR bands.
+    let p = f.part("0105WHF1001TCE").unwrap().unwrap();
+    let w = p.limits.iter().find(|l| l.quantity == Quantity::Power).unwrap();
+    assert_eq!(w.recommended.values(), Some((0.0, 0.03125)));
+    assert_eq!(p.temperature.as_ref().map(|t| (t.min, t.max)), Some((-55.0, 125.0)));
+    assert_eq!(p.tcr.as_ref().unwrap().ppm, 200.0);
+    assert_eq!(f.part("0105WHJ0100TCE").unwrap().unwrap().tcr.unwrap().ppm, 300.0);
+    assert!(f.part("0105WHF0100TCE").unwrap().is_ok());
+    assert!(f.part("0105WHF910KTCE").unwrap().is_err());
+    // Not rated: the wrong power code for the size, a jumper, 0805 1/4 W at 10 ohm, ±0.5 % below 1 ohm, 0201
+    // at ±0.5 %, 0805 1/8 W at 10 Mohm (the range stops below it).
+    for mpn in [
+        "0402WAF1001TCE",
+        "0402WGF0000TCE",
+        "0805W4F100JT5E",
+        "0603WAD470LT5E",
+        "0201WMD1001TCE",
+        "0805W8F1005T5E",
+    ] {
+        assert!(f.part(mpn).unwrap().is_err(), "{mpn} was rated");
+    }
+    // Not this family's: no E at the end, an unknown size.
+    assert!(f.decode("0402WGF1001TC").is_none());
+    assert!(f.decode("0404WGF1001TCE").is_none());
 }
 
 #[test]
@@ -128,6 +203,63 @@ fn samsung_part_numbers_decode() {
     assert!(f.decode("CL10A106MP8NNNX").is_none());
 }
 
+#[test]
+fn yageo_cc_and_fenghua_part_numbers_decode() {
+    let lib = builtin();
+    let volts = |p: &gerberus::limits::Part| {
+        p.limits
+            .iter()
+            .find(|l| l.quantity == Quantity::Voltage)
+            .and_then(|l| l.recommended.values())
+    };
+    let y = family(&lib, "Yageo CC X7R");
+    let d = y.decode("CC0402KRX7R7BB104").unwrap().unwrap();
+    assert_eq!(d.codes["voltage"], "7");
+    let p = y.part("CC0402KRX7R7BB104").unwrap().unwrap();
+    assert!(p.problems().is_empty(), "{:?}", p.problems());
+    assert_eq!(volts(&p), Some((-16.0, 16.0)));
+    assert_eq!(p.tolerance.as_ref().unwrap().value, 0.1);
+    assert_eq!(p.temperature.as_ref().map(|t| (t.min, t.max)), Some((-55.0, 125.0)));
+    assert_eq!(volts(&y.part("CC1206KKX7R5BB106").unwrap().unwrap()), Some((-6.3, 6.3)));
+    assert_eq!(
+        volts(&y.part("CC1210KKX7RYBB104").unwrap().unwrap()),
+        Some((-250.0, 250.0))
+    );
+    // NP0 is another datasheet, and B isn't a voltage code.
+    assert!(y.decode("CC0402JRNPO9BN101").is_none());
+    assert!(y.decode("CC0402KRX7RBBB104").is_none());
+
+    let f = family(&lib, "Fenghua general MLCC");
+    let p = f.part("0603B104K500NT").unwrap().unwrap();
+    assert!(p.problems().is_empty(), "{:?}", p.problems());
+    assert_eq!(volts(&p), Some((-50.0, 50.0)));
+    assert_eq!(p.temperature.as_ref().map(|t| (t.min, t.max)), Some((-55.0, 125.0)));
+    // X5R to 85 °C, X6S to 105 °C; 6R3 is 6.3 V, 250 is 25 V.
+    let p = f.part("0402X105K6R3NT").unwrap().unwrap();
+    assert_eq!(volts(&p), Some((-6.3, 6.3)));
+    assert_eq!(p.temperature.as_ref().map(|t| t.max), Some(85.0));
+    let p = f.part("0805DS106K250NT").unwrap().unwrap();
+    assert_eq!(volts(&p), Some((-25.0, 25.0)));
+    assert_eq!(p.temperature.as_ref().map(|t| t.max), Some(105.0));
+    // A picofarad tolerance (C = +/-0.25 pF) gives no fraction.
+    assert!(f.part("0402CG1R0C500NT").unwrap().unwrap().tolerance.is_none());
+    // The datasheet's own examples (page 30): the two-letter dielectrics aren't read as B plus a value.
+    for (mpn, code) in [
+        ("0402BS104K250NT", "BS"),
+        ("0402BT104K250NT", "BT"),
+        ("0402DS104K250NT", "DS"),
+        ("0402X104K250NT", "X"),
+    ] {
+        let d = f.decode(mpn).unwrap().unwrap();
+        assert_eq!(d.codes["dielectric"], code, "{mpn}");
+        assert_eq!(d.codes["value"], "104", "{mpn}");
+    }
+    // Not this family's: the code scheme goes above 50 V, but this datasheet's tables stop there; and the
+    // termination must be N.
+    assert!(f.decode("0603B104K101NT").is_none());
+    assert!(f.decode("0603B104K500XT").is_none());
+}
+
 /// A family in a board's own parts folder replaces the built-in one; a part file anywhere beats a family.
 #[test]
 fn family_precedence() {
@@ -215,9 +347,23 @@ fn families_agree_with_hand_written_part_files() {
             }
             let temp = |p: &gerberus::limits::Part| p.temperature.as_ref().map(|t| (t.min, t.max));
             assert_eq!(temp(&made), temp(by_hand), "{mpn}: temperature");
+            let power = |p: &gerberus::limits::Part| {
+                p.limits
+                    .iter()
+                    .find(|l| l.quantity == Quantity::Power)
+                    .and_then(|l| l.recommended.values())
+            };
+            if power(&made).is_some() {
+                assert_eq!(power(&made), power(by_hand), "{mpn}: power");
+            }
+            let tcr = |p: &gerberus::limits::Part| p.tcr.as_ref().map(|t| t.ppm);
+            if tcr(&made).is_some() {
+                assert_eq!(tcr(&made), tcr(by_hand), "{mpn}: tcr");
+            }
             assert!(matches!(made.limits[0].recommended, Range::Known { page: Some(_), .. }));
         }
     }
-    // The six Samsung CL files, less CL05B104KB54PNC, whose codes 4 and P the 2015 catalogue doesn't list.
-    assert!(compared >= 5, "only {compared} parts compared");
+    // The six Samsung CL files, less CL05B104KB54PNC, whose codes 4 and P the 2015 catalogue doesn't list, and
+    // the nine UNI-ROYAL files, the two Yageo CC and the one Fenghua file.
+    assert!(compared >= 17, "only {compared} parts compared");
 }
