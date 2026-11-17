@@ -1,0 +1,46 @@
+mpn = "IRF4905PBF"
+manufacturer = "Infineon Technologies"
+description = "55 V 74 A P-channel MOSFET, TO-220AB"
+class = "ic"
+theta_ja = { value = 62, page = 1, note = "RθJA junction-to-ambient max, TO-220AB free air (no heatsink)" }
+tj_max = { value = 175, page = 1, note = "TJ operating junction and storage temperature range, -55 to +175 °C" }
+
+[datasheet]
+title = "IRF4905PbF HEXFET Power MOSFET"
+document = "PD - 94816, 11/6/03 (International Rectifier, now Infineon)"
+url = "https://datasheet.lcsc.com/datasheet/pdf/d425166591a04605a1c3bb16ef89697a.pdf?productCode=C2564"
+
+# TO-220AB lead assignments on page 8 (HEXFET column): 1 gate, 2 drain, 3 source, 4 (the tab) drain. The
+# footprint has no pad for the tab, which is tied to D inside the package, so it isn't listed.
+[pins]
+1 = "G"
+2 = "D"
+3 = "S"
+
+# The absolute maximum ratings table on page 1 has no VDS row. The rated voltage is the page-1 heading
+# VDSS = -55 V, which matches the guaranteed V(BR)DSS minimum of -55 V (VGS = 0 V, ID = -250 µA, TJ = 25 °C) on
+# page 2. That minimum is at TJ = 25 °C only; the temperature coefficient (-0.05 V/°C) is typical, so nothing
+# guarantees -55 V at other temperatures.
+[[limit]]
+pins = ["D"]
+to = "S"
+abs_max = { min = -55, max = { unknown = "a positive VDS forward-biases the body diode; it is limited by current (IS), not voltage" }, page = 2, note = "V(BR)DSS min -55 V at VGS = 0 V, ID = -250 µA, TJ = 25 °C; page 1 also prints VDSS = -55 V, and its absolute maximum table has no VDS row" }
+recommended = { unknown = "no recommended operating conditions are given" }
+
+[[limit]]
+pins = ["G"]
+to = "S"
+abs_max = { min = -20, max = 20, page = 1, note = "VGS gate-to-source voltage ±20 V" }
+recommended = { unknown = "no recommended operating conditions are given" }
+
+# The body diode conducts from drain to source. With the gate driven, the channel bypasses it, so the drop can
+# be close to 0 V; the datasheet gives only its maximum. gerberus reads a forward drive as setting the source
+# net from the drain, which fits the reverse-polarity switch this part is used as on the amp board (Q101:
+# supply into D, load on S), not a high-side switch fed at S. ID (-74 A at TC = 25 °C, -52 A at TC = 100 °C),
+# IS (-74 A), PD (200 W at TC = 25 °C, derated 1.3 W/°C) and RθJC (0.75 °C/W) aren't listed: no rule uses
+# them yet, and PD assumes an infinite heatsink.
+[[drive]]
+kind = "forward"
+pin = "D"
+to = "S"
+range = { min = { unknown = "only a maximum is given, and the channel can bypass the diode" }, max = 1.6, page = 2, note = "VSD diode forward voltage magnitude, TJ = 25 °C, IS = -38 A, VGS = 0 V (printed -1.6 V for this P-channel part)" }

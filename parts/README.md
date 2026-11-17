@@ -463,7 +463,7 @@ against the PDF at that URL.
 | can-encoder rev 1 | AP63200WU-7, STM32G0B1KBT6TR, MT6701CT-STD-R, TCAN330GDCNR, NUP2105LT1G, SMAJ18A, B5819W SL, KT-0805G, SM04B-GHS-TB, OT201616MJBA4SL, FNR4030S6R8MT, GRM21BR61H106KE43L, 0402CG101J500NT, CL05B104KO5NNNC, CL21A226MAQNNNE, CL05A105KA5NQNC, 0402WGF4702TCE, 0402WGF1502TCE, 0402WGF1001TCE, 0402WGF1200TCE, 0402WGF1002TCE |
 | kitchen-sink | the parts above, plus USB4105-GF-A, 0402WGF5101TCE, TPD1E05U06DPYR and TVS0500DRVR |
 | audio board rev 2 (B1narySolutions/amp-hardware, not a fixture) | TLV9061QDBVRQ1, AO3401A, 2N7002NXAKR, PESD5V0S1BA, SJ3-35063AG |
-| amp board (B1narySolutions/amp-hardware, not a fixture) | TPA3118D2DAPR, TPA6130A2RTJR, TPS3808EG50DBVR, NSVBAT54HT1G, BZT52C12-TP, MPZ1608S221ATA00, SRP1038A-100M, SJ3-35063AG, PJ-102AH |
+| amp board (B1narySolutions/amp-hardware, not a fixture) | TPA3118D2DAPR, TPA6130A2RTJR, TPS3808EG50DBVR, AO3401A, NSVBAT54HT1G, BZT52C12-TP, MPZ1608S221ATA00, SRP1038A-100M, SJ3-35063AG, PJ-102AH, IRF4905PBF |
 | TI parts, on no board yet | TPS3808G50DBVR (the amp board uses its E successor) |
 | JLCPCB basic and common parts, on no board yet | AO3400A, AMS1117-3.3, USBLC6-2SC6, LM358DR2G; the resistor and capacitor families above |
 
@@ -495,8 +495,9 @@ Found by the blind second reading of every file (November 2026):
   3.3 V, assuming none drives above 3.3 V. Two more assumptions aren't checked: the probe only senses the
   board's VCC pin and doesn't power the board through it, and the board is powered while a probe is connected.
   A fixed 3.3 V probe on an unpowered board would drive its pins far above VDD + 0.3 V.
-- **MOSFETs** have no model of their channel. AO3401A's body diode is a `forward` drive from D to S, which fits
-  its use as a reverse-polarity switch (supply into D) and would be wrong in a high-side switch fed at S;
+- **MOSFETs** have no model of their channel. AO3401A's and IRF4905PBF's body diodes are a `forward` drive from D
+  to S, which fits their use as reverse-polarity switches (supply into D) and would be wrong in a high-side switch
+  fed at S;
   2N7002NXAKR and AO3400A have no drive and no channel, so a drain net they alone switch comes out UNKNOWN.
 - **TPS3808EG50DBVR** (TPS3808E datasheet SNVSCE0B): RESET is open drain, which no drive kind describes, so the
   net it pulls low comes out UNKNOWN. The CT pin's recommended minimum isn't given, and the supply current
