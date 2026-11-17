@@ -354,20 +354,22 @@ fn compute_with(design: &Design, lib: &Library, inputs: &BoardInputs, channels: 
     let mut shorts: Vec<Short> = vec![];
     for (r, c) in &design.components {
         let nets: Vec<usize> = c.pins.values().map(|p| p.net).collect();
-        if let [a, b] = nets[..]
-            && !c.dnp
+        if !c.dnp
             && let Some(what) = short_kind(c)
         {
-            shorts.push(Short {
-                via: format!("{what} {r}"),
-                note: if what == "fuse" {
-                    ", a DC short while it is intact".into()
-                } else {
-                    ", a DC short".into()
-                },
-                a,
-                b,
-            });
+            // A net tie with more than two pins joins every net it touches to the first.
+            for &b in nets.iter().skip(1).filter(|&&b| b != nets[0]) {
+                shorts.push(Short {
+                    via: format!("{what} {r}"),
+                    note: if what == "fuse" {
+                        ", a DC short while it is intact".into()
+                    } else {
+                        ", a DC short".into()
+                    },
+                    a: nets[0],
+                    b,
+                });
+            }
         }
     }
     let mut beads: BTreeMap<usize, Vec<(usize, usize)>> = BTreeMap::new();
@@ -881,16 +883,22 @@ fn is_capacitor(lib: &Library, c: &Component) -> bool {
 
 /// A two-pin part that is a DC short, and what it is: a ferrite bead, a net tie (`Device:NetTie*`, `NT1`) or a
 /// fuse (`Device:Fuse*`, `Device:Polyfuse*`, `F1`).
-fn short_kind(c: &Component) -> Option<&'static str> {
+pub fn short_kind(c: &Component) -> Option<&'static str> {
+    let letters: String = c
+        .reference
+        .chars()
+        .take_while(char::is_ascii_alphabetic)
+        .collect::<String>()
+        .to_ascii_uppercase();
+    let symbol = c.lib_id.rsplit(':').next().unwrap_or("");
+    if c.pins.len() >= 2 && (symbol.starts_with("NetTie") || (letters == "NT" && c.pins.len() == 2)) {
+        return Some("net tie");
+    }
     if c.pins.len() != 2 {
         return None;
     }
-    let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
-    let symbol = c.lib_id.rsplit(':').next().unwrap_or("");
     if is_bead(c) {
         Some("ferrite bead")
-    } else if symbol.starts_with("NetTie") || letters == "NT" {
-        Some("net tie")
     } else if c.lib_id.starts_with("Device:Fuse") || c.lib_id.starts_with("Device:Polyfuse") || letters == "F" {
         Some("fuse")
     } else {
@@ -910,14 +918,13 @@ fn is_inductor_symbol(c: &Component) -> bool {
 }
 
 /// A two-pin part a net's voltage passes through, for the fallback range: resistors, inductors and ferrite
-/// beads (and so LEDs, `Device:L*`), net ties and fuses, and jumpers and two-pin switches, which may be closed.
+/// beads (and so LEDs, `Device:L*`), net ties and fuses, and jumpers. Not switches: an open one is as likely.
 fn is_link(lib: &Library, c: &Component) -> bool {
     c.pins.len() == 2
         && (c.lib_id.starts_with("Device:R")
             || is_inductor_symbol(c)
             || short_kind(c).is_some()
             || c.lib_id.starts_with("Jumper:")
-            || c.lib_id.starts_with("Switch:")
             || matches!(class_of(lib, c), Some(Class::Resistor | Class::Inductor | Class::Led)))
 }
 

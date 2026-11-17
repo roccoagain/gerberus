@@ -54,13 +54,19 @@ pub struct Plan {
     pub stages: Vec<Stage>,
     /// Ground, to clip the meter's other lead to.
     pub ground: Option<String>,
+    /// Inputs left out of the plan, and why.
+    pub skipped: Vec<String>,
 }
 
 /// Works out the plan. `th` is the design's loads (`thermal::compute`).
 pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, th: &Thermal) -> Plan {
     let net_of = |r: &str, p: &str| design.components.get(r)?.pins.get(p).map(|p| p.net);
-    let ground = (0..design.nets.len())
-        .find(|&n| v.nets[n].span == Span::exact(0.0) && !design.nets[n].pins.is_empty())
+    // Ground: the net the supplies are measured from.
+    let ground = inputs
+        .inputs
+        .iter()
+        .filter(|i| i.fault.is_none())
+        .find_map(|i| net_of(&i.to.reference, &i.to.pin))
         .map(|n| probe(design, lib, n));
     // Rails: nets something holds (an input, a regulator, a diode or bead from one) that power a part or are a
     // regulator's output.
@@ -85,25 +91,37 @@ pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, 
     };
     let mut seen: BTreeSet<usize> = BTreeSet::new();
     let mut stages = vec![];
-    let supplies: Vec<_> = inputs
-        .inputs
-        .iter()
-        .filter(|i| i.fault.is_none() && i.min > 0.0)
-        .collect();
-    for i in supplies {
+    let mut skipped = vec![];
+    for i in inputs.inputs.iter().filter(|i| i.fault.is_none()) {
         let (Some(pn), Some(_)) = (net_of(&i.pin.reference, &i.pin.pin), net_of(&i.to.reference, &i.to.pin)) else {
             continue;
         };
         let crate::inputs::Max::Value(max) = i.max else {
+            skipped.push(format!(
+                "{}: its maximum follows another pin, so it isn't a bench supply setting",
+                i.name
+            ));
             continue;
         };
+        // A supply never reaches 0 V: positive (min above 0) or negative (max below 0).
+        if !(i.min > 0.0 || max < 0.0) {
+            if i.min < 0.0 || max > 0.0 {
+                skipped.push(format!(
+                    "{}: its range ({} to {max} V) reaches 0 V, so it isn't taken as a supply",
+                    i.name, i.min
+                ));
+            }
+            continue;
+        }
         // Rails fed from this input, breadth first along what each rail's range was worked out from.
         let mut rails = vec![];
         let mut queue = VecDeque::from([pn]);
         let mut local = BTreeSet::from([pn]);
+        // Every net fed from it is followed (a fuse or diode before the first regulator, say), but only rails are
+        // listed.
         while let Some(n) = queue.pop_front() {
             for m in 0..design.nets.len() {
-                if local.contains(&m) || seen.contains(&m) || !is_rail(m) {
+                if local.contains(&m) || seen.contains(&m) || v.nets[m].driver != Driver::Strong {
                     continue;
                 }
                 let from: Vec<usize> = v.nets[m].why.iter().flat_map(|w| w.from.iter().copied()).collect();
@@ -112,6 +130,9 @@ pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, 
                 }
                 local.insert(m);
                 queue.push_back(m);
+                if !is_rail(m) {
+                    continue;
+                }
                 let warning = v
                     .regulators
                     .iter()
@@ -150,7 +171,11 @@ pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, 
             rails,
         });
     }
-    Plan { stages, ground }
+    Plan {
+        stages,
+        ground,
+        skipped,
+    }
 }
 
 /// Where to probe a net: a test point, else a connector pin, else the first part pin on it.
@@ -189,8 +214,12 @@ pub fn render(design: &Design, p: &Plan) -> String {
     if p.stages.is_empty() {
         let _ = writeln!(
             out,
-            "No supply inputs: inputs.toml has no [[input]] with a minimum above 0 V, so there is nothing to power up."
+            "No supply inputs: inputs.toml has no [[input]] whose range stays above or below 0 V, so there is nothing \
+             to power up."
         );
+        for s in &p.skipped {
+            let _ = writeln!(out, "   - {s}");
+        }
         return out;
     }
     let mut step = 1;
@@ -258,6 +287,12 @@ pub fn render(design: &Design, p: &Plan) -> String {
                 let _ = writeln!(out, "   note: {w}");
             }
             step += 1;
+        }
+    }
+    if !p.skipped.is_empty() {
+        let _ = writeln!(out, "\nLeft out of the plan:");
+        for s in &p.skipped {
+            let _ = writeln!(out, "   - {s}");
         }
     }
     if p.stages.len() > 1 {

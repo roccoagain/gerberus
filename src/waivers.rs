@@ -74,6 +74,11 @@ impl Waivers {
                     "{at}: `proposed` is empty; say who proposed it, or delete the line to approve it"
                 ));
             }
+            if w.proposed.is_some() && w.by.is_some() {
+                out.push(format!(
+                    "{at}: it has both `proposed` and `by`; a person approves it by deleting `proposed`"
+                ));
+            }
             if w.contains.as_deref().is_some_and(|c| c.trim().is_empty()) {
                 out.push(format!(
                     "{at}: `contains` is empty; leave it out to match every finding"
@@ -100,7 +105,8 @@ impl Waivers {
             for &i in &hits {
                 used[i] = true;
             }
-            for &i in hits.iter().filter(|&&i| self.waiver[i].proposed.is_some()) {
+            let approved = hits.iter().any(|&i| self.waiver[i].proposed.is_none());
+            for &i in hits.iter().filter(|&&i| !approved && self.waiver[i].proposed.is_some()) {
                 let w = &self.waiver[i];
                 let _ = write!(
                     f.message,

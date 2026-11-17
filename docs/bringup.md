@@ -11,7 +11,7 @@ The plan has these steps:
 
 1. **Check for shorts.** With nothing connected, measure the resistance from each supply input and rail to
    ground.
-2. **Power each supply input on its own.** An input counts as a supply when its minimum is above 0 V. Each one
+2. **Power each supply input on its own.** An input counts as a supply when its range stays above 0 V (or below it, for a negative supply); the plan lists the inputs it leaves out, and why. A DC signal input that never reaches 0 V would count too, so check the list. Each one
    is a step:
    - Set the bench supply inside the input's range.
    - Set the current limit just above what the board's parts draw from it, when every part gives its supply

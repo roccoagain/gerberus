@@ -480,7 +480,6 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
             || lib_id.starts_with("Device:Fuse")
             || lib_id.starts_with("Device:Polyfuse")
             || lib_id.starts_with("Device:NetTie")
-            || lib_id.starts_with("Switch:")
             || ferrite;
         if two && short {
             // Closed: the worst case for stress, as nothing is cut off.

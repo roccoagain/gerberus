@@ -661,10 +661,10 @@ fn a_floating_gate_leaves_its_channel_maybe_on() {
     assert_eq!(q8.state, ChannelState::Maybe, "{}", q8.reason);
 }
 
-/// A fuse and a net tie are DC shorts, so the net past them takes the driven net's range; a two-pin switch may
-/// be closed, so the net past it is pulled toward the driven one.
+/// A fuse and a net tie are DC shorts, so the net past them takes the driven net's range. A switch may as well be
+/// open, so it doesn't pull the net past it: that net is no better known than with nothing there.
 #[test]
-fn fuses_net_ties_and_switches_pass_a_rail_through() {
+fn fuses_and_net_ties_pass_a_rail_through_but_switches_dont() {
     use gerberus::design::Net;
     let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
     for name in ["FUSED", "TIED", "SWITCHED"] {
@@ -691,10 +691,52 @@ fn fuses_net_ties_and_switches_pass_a_rail_through() {
         "{}",
         text(&v, &d, "TIED")
     );
-    assert_eq!(span(&d, &v, "SWITCHED"), span(&d, &v, "+3V3"));
+    assert_ne!(span(&d, &v, "SWITCHED"), span(&d, &v, "+3V3"));
     assert!(
-        text(&v, &d, "SWITCHED").contains("pulled through SW9"),
+        text(&v, &d, "SWITCHED").contains("UNKNOWN"),
         "{}",
         text(&v, &d, "SWITCHED")
     );
+}
+
+/// A net tie with three pins joins all three nets.
+#[test]
+fn a_three_pin_net_tie_joins_every_net() {
+    use gerberus::design::{Component, Net, Pin, PinKind};
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let mut c = Component {
+        reference: "NT8".into(),
+        value: "X".into(),
+        lib_id: "Device:NetTie_3".into(),
+        in_bom: true,
+        on_board: true,
+        ..Default::default()
+    };
+    for (num, name) in [("1", "+5V"), ("2", "TIE_A"), ("3", "TIE_B")] {
+        let i = d.nets.iter().position(|n| n.name == name).unwrap_or_else(|| {
+            d.nets.push(Net {
+                name: name.into(),
+                pins: vec![],
+                labels: vec![],
+            });
+            d.nets.len() - 1
+        });
+        c.pins.insert(
+            num.into(),
+            Pin {
+                number: num.into(),
+                name: String::new(),
+                kind: PinKind::Passive,
+                no_connect: false,
+                net: i,
+                stack: None,
+            },
+        );
+        d.nets[i].pins.push(("NT8".into(), num.into()));
+    }
+    d.components.insert("NT8".into(), c);
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    assert_eq!(span(&d, &v, "TIE_A"), span(&d, &v, "+5V"));
+    assert_eq!(span(&d, &v, "TIE_B"), span(&d, &v, "+5V"));
 }

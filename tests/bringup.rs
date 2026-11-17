@@ -58,3 +58,65 @@ fn the_plan_says_what_to_set_and_expect() {
     assert!(text.contains("- +3V3 at"), "{text}");
     assert!(text.contains("Power one input at a time"), "{text}");
 }
+
+/// A fuse in front of the input diode doesn't hide the load behind it: VBUS still counts what is past the fuse,
+/// and the rails past it are still in the plan.
+#[test]
+fn a_fuse_before_the_rails_hides_nothing() {
+    use gerberus::design::{Component, Net, Pin, PinKind};
+    let d0 = root("tests/fixtures/can-encoder");
+    let mut d = kicad::load(&d0.join("can-encoder.kicad_sch")).unwrap();
+    let inputs = BoardInputs::load(&d0.join("inputs.toml")).unwrap();
+    let mut lib = Library::load_dir(&root("parts")).unwrap();
+    lib.expand_families(&d);
+    let summary = |d: &gerberus::design::Design| {
+        let v = compute(d, &lib, &inputs);
+        let th = gerberus::thermal::compute(d, &lib, &inputs, &v);
+        let vbus = d.nets.iter().position(|n| n.name == "VBUS").unwrap();
+        let p = plan(d, &lib, &inputs, &v, &th);
+        (th.loads[vbus].missing.len(), rails_by_name(d, &p).len())
+    };
+    let before = summary(&d);
+    assert!(before.0 > 0 && before.1 > 0, "{before:?}");
+    // Move D1's anode onto a new net FUSED, and put F9 from VBUS to it.
+    d.nets.push(Net {
+        name: "FUSED".into(),
+        pins: vec![],
+        labels: vec![],
+    });
+    let fused = d.nets.len() - 1;
+    let vbus = d.nets.iter().position(|n| n.name == "VBUS").unwrap();
+    let anode = d.components["D1"]
+        .pins
+        .iter()
+        .find(|(_, p)| p.net == vbus)
+        .map(|(k, _)| k.clone())
+        .unwrap();
+    d.nets[vbus].pins.retain(|(r, p)| !(r == "D1" && *p == anode));
+    d.nets[fused].pins.push(("D1".into(), anode.clone()));
+    d.components.get_mut("D1").unwrap().pins.get_mut(&anode).unwrap().net = fused;
+    let mut f = Component {
+        reference: "F9".into(),
+        value: "F".into(),
+        lib_id: "Device:Fuse".into(),
+        in_bom: true,
+        on_board: true,
+        ..Default::default()
+    };
+    for (num, net) in [("1", vbus), ("2", fused)] {
+        f.pins.insert(
+            num.into(),
+            Pin {
+                number: num.into(),
+                name: String::new(),
+                kind: PinKind::Passive,
+                no_connect: false,
+                stack: None,
+                net,
+            },
+        );
+        d.nets[net].pins.push(("F9".into(), num.into()));
+    }
+    d.components.insert("F9".into(), f);
+    assert_eq!(summary(&d), before);
+}

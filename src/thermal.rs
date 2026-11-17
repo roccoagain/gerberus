@@ -170,6 +170,7 @@ fn is_series_link(lib: &Library, c: &Component) -> bool {
     c.pins.len() == 2
         && ((c.lib_id.starts_with("Device:L") && !c.lib_id.starts_with("Device:LED"))
             || c.lib_id.starts_with("Device:Ferrite")
+            || crate::voltage::short_kind(c).is_some()
             || c.lib_id.starts_with("Device:Fuse")
             || c.lib_id.starts_with("Jumper:")
             || class == Some(Class::Inductor))
@@ -823,8 +824,12 @@ impl Ctx<'_> {
                 (false, true) => nets[0],
                 _ => continue,
             };
+            // A net past a DC short (bead, fuse, net tie) takes this net's range, so it counts as driven, but
+            // everything on it still draws through the short.
+            let through_short =
+                crate::voltage::short_kind(c).is_some() && volts.nets[other].why.iter().any(|w| w.from.contains(&net));
             if !is_ground(volts, other) && !st.stack.contains(&other) {
-                if self.fed_from(other, net) {
+                if through_short || self.fed_from(other, net) {
                     let fed = self.total(other, st);
                     if !fed.parts.is_empty() || !fed.missing.is_empty() {
                         load.take(&fed, &format!("{reference} to {}", design.nets[other].name));
