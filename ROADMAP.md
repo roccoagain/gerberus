@@ -63,7 +63,7 @@ Behaviour Gerberus doesn't model yet:
 
 ## v1.0 — Workflow
 
-- [ ] Electrical diff between board revisions. *(Copies: Altium / Cadence design compare)*
+- [x] Electrical diff between board revisions (`gerberus diff`). *(Copies: Altium / Cadence design compare)*
 - [ ] MCP server so AI agents can query nets, run checks and explain findings. *(New: no paid tool is built for agents)*
 - [ ] CI integration and a pass/fail badge for the README.
 

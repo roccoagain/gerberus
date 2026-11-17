@@ -77,6 +77,7 @@ settles. [More](docs/doctor.md)
 | Command | What it checks |
 | --- | --- |
 | `gerberus check` | Every pin against its datasheet limits at its net's worst-case voltage, TVS diodes, capacitor voltage, resistor power, undriven inputs, regulator headroom, junction temperature, ESD protection on connectors, and a supply connected backwards. [More](docs/voltage-checks.md) |
+| `gerberus diff` | What changed between two revisions, or against a git tag: parts, connections made or broken, and new or fixed findings. [More](docs/diff.md) |
 | `gerberus stress` | Plugging the board in, simulated in SPICE with part tolerances: voltage spikes on every pin. [More](docs/stress.md) |
 | `gerberus signal` | Audio and analog signals through the board in SPICE: where an op-amp clips, and what each IC pin sees. [More](docs/signal.md) |
 | `gerberus bringup` | A first-power checklist: which supply to connect first, the current limit to set, and the voltage to expect on each rail and where to probe it. [More](docs/bringup.md) |

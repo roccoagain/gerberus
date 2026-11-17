@@ -6,6 +6,7 @@ pub mod bringup;
 pub mod datasheet;
 pub mod design;
 pub mod diag;
+pub mod diff;
 pub mod doctor;
 pub mod family;
 pub mod init;
