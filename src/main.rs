@@ -92,7 +92,9 @@ one for a part the library, a part family or the symbol's own rating already cov
 one for a part number another file in the board's part folders already defines.
 
 `datasheet` checks part files against their datasheets (see .claude/skills/datasheet-to-part). `verify` downloads each
-file's datasheet (cached in --cache, default ~/.cache/gerberus/datasheets), or reads --pdf, and looks for every
+file's datasheet (cached in --cache, default ~/.cache/gerberus/datasheets), or reads --pdf, or a PDF saved in the
+board's datasheets/ folder (beside parts/, named after the part number or the part file, with .pdf; read
+before any download), and looks for every
 cited value on its page: in the right MIN/TYP/MAX column, in the right unit, on a row that names the pin. It
 needs poppler's `pdftotext`. --all also lists confirmed values. It exits with status 1 when a value is missing
 or mismatched. `blank` prints the part file with every datasheet value replaced by \"?\", for a second reader to
@@ -1006,12 +1008,20 @@ fn datasheet(sub: &str, rest: &[String]) -> Result<bool, String> {
                         gerberus::part_new::NOT_READ
                     );
                 }
+                // A PDF saved in the board's datasheets/ folder comes before a download.
+                let saved = || datasheet::saved_for(f, &part.mpn);
                 let pdf = match (&pdf, &part.datasheet) {
                     (Some(p), _) => p.clone(),
+                    (None, Some(_)) if saved().is_some() => {
+                        let p = saved().unwrap_or_default();
+                        println!("{}: reading the saved copy {}, not the url", part.mpn, p.display());
+                        p
+                    }
                     (None, Some(d)) if d.url.trim().is_empty() => {
                         return Err(format!(
-                            "{}: [datasheet] has no url; fill it in, or give the PDF with --pdf",
-                            f.display()
+                            "{}: [datasheet] has no url; fill it in, save the PDF as {}, or give it with --pdf",
+                            f.display(),
+                            datasheet::save_as(f, &part.mpn).display()
                         ));
                     }
                     (None, Some(d)) => {

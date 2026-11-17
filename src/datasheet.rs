@@ -1915,6 +1915,82 @@ pub fn lcsc_pdf_link(html: &str) -> Option<String> {
     None
 }
 
+/// The folder a board keeps its datasheet PDFs in, beside its `parts/` folder. `datasheet verify` reads a part's
+/// PDF from there before it downloads anything, and `doctor` says what name to save each one under.
+pub const FOLDER: &str = "datasheets";
+
+/// The name a part's datasheet is saved under: the part number, cleaned as a part file's name is, with `.pdf`.
+pub fn saved_name(mpn: &str) -> String {
+    let toml = crate::doctor::file_name(mpn);
+    format!("{}.pdf", toml.strip_suffix(".toml").unwrap_or(&toml))
+}
+
+/// The first of `names` saved in `dir`: an exact match first, then one in any letter case.
+pub fn saved_in(dir: &Path, names: &[String]) -> Option<PathBuf> {
+    let files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .collect();
+    let name = |p: &PathBuf| p.file_name().and_then(|n| n.to_str()).map(str::to_string);
+    names.iter().find_map(|want| {
+        files
+            .iter()
+            .find(|p| name(p).as_deref() == Some(want.as_str()))
+            .or_else(|| {
+                files
+                    .iter()
+                    .find(|p| name(p).is_some_and(|n| n.eq_ignore_ascii_case(want)))
+            })
+            .cloned()
+    })
+}
+
+/// The folder datasheets go in for part files kept in `parts`: `datasheets/` beside it. A folder named only by
+/// `.` or `..` is resolved first, so `parts/` itself still finds the board's folder.
+pub fn folder_beside(parts: &Path) -> PathBuf {
+    let named = matches!(parts.components().next_back(), Some(std::path::Component::Normal(_)));
+    let parts = if named {
+        parts.to_path_buf()
+    } else {
+        std::fs::canonicalize(if parts.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            parts
+        })
+        .unwrap_or_else(|_| parts.to_path_buf())
+    };
+    match parts.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.join(FOLDER),
+        _ => PathBuf::from(FOLDER),
+    }
+}
+
+/// The datasheet saved for the part file at `part_file`, whose part number is `mpn`: named after the part number
+/// or after the file, in `datasheets/` beside the file's folder or in a `datasheets/` inside it.
+pub fn saved_for(part_file: &Path, mpn: &str) -> Option<PathBuf> {
+    let dir = part_file.parent().unwrap_or(Path::new(""));
+    let mut names = vec![saved_name(mpn)];
+    if let Some(stem) = part_file.file_stem().and_then(|s| s.to_str()) {
+        let by_file = format!("{stem}.pdf");
+        if !names.contains(&by_file) {
+            names.push(by_file);
+        }
+    }
+    let inside = if dir.as_os_str().is_empty() {
+        PathBuf::from(FOLDER)
+    } else {
+        dir.join(FOLDER)
+    };
+    saved_in(&folder_beside(dir), &names).or_else(|| saved_in(&inside, &names))
+}
+
+/// Where to save the datasheet for the part file at `part_file`: the name `verify` looks for first.
+pub fn save_as(part_file: &Path, mpn: &str) -> PathBuf {
+    folder_beside(part_file.parent().unwrap_or(Path::new(""))).join(saved_name(mpn))
+}
+
 /// Downloads a datasheet into `cache` (or returns the copy already there) and gives its path.
 pub fn fetch(url: &str, cache: &Path) -> Result<PathBuf, String> {
     let path = cache.join(cache_name(url));

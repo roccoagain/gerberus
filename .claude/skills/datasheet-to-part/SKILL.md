@@ -12,6 +12,10 @@ which datasheet number goes where.
 
 ## 1. Get the datasheet
 
+If the board has a `datasheets/` folder beside its `parts/` folder, look there first: `<MPN>.pdf` is the PDF
+someone already saved for the part, and `gerberus datasheet verify` reads it before downloading anything. Save a
+PDF you download there under that name too, so the next reader and `verify` use the same copy.
+
 Use the manufacturer's current datasheet when the host is reachable; otherwise LCSC's copy
 (`https://www.lcsc.com/datasheet/<LCSC#>.pdf`; `gerberus datasheet verify` follows its link to the PDF). Note the
 document number and revision in `[datasheet]`. LCSC copies can be older revisions, and TI copies there may be cut
