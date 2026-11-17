@@ -33,8 +33,9 @@ page = 4
 codes = ["A", "B", "C", "D", "F", "G", "J", "K", "M"]
 values = { F = 0.01, G = 0.02, J = 0.05, K = 0.1, M = 0.2 }
 
-# Two significant digits and a number of zeros, R for the decimal point: 500 = 50 V. Only the voltages the
-# capacitance tables (pages 6 to 15, up to 50 V) give are listed.
+# Two significant digits and a number of zeros, R for the decimal point: 500 = 50 V. The code goes higher (page 4
+# gives 201 = 200 V as an example), but this datasheet's capacitance tables (pages 6 to 15, "Ur <= 50V") only
+# give 6.3, 10, 16, 25 and 50 V, so only those are listed.
 [field.voltage]
 page = 4
 codes = ["6R3", "100", "160", "250", "500"]

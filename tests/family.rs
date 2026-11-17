@@ -243,7 +243,19 @@ fn yageo_cc_and_fenghua_part_numbers_decode() {
     assert_eq!(p.temperature.as_ref().map(|t| t.max), Some(105.0));
     // A picofarad tolerance (C = +/-0.25 pF) gives no fraction.
     assert!(f.part("0402CG1R0C500NT").unwrap().unwrap().tolerance.is_none());
-    // Not this family's: 100 V isn't in this datasheet, and the termination must be N.
+    // The datasheet's own examples (page 30): the two-letter dielectrics aren't read as B plus a value.
+    for (mpn, code) in [
+        ("0402BS104K250NT", "BS"),
+        ("0402BT104K250NT", "BT"),
+        ("0402DS104K250NT", "DS"),
+        ("0402X104K250NT", "X"),
+    ] {
+        let d = f.decode(mpn).unwrap().unwrap();
+        assert_eq!(d.codes["dielectric"], code, "{mpn}");
+        assert_eq!(d.codes["value"], "104", "{mpn}");
+    }
+    // Not this family's: the code scheme goes above 50 V, but this datasheet's tables stop there; and the
+    // termination must be N.
     assert!(f.decode("0603B104K101NT").is_none());
     assert!(f.decode("0603B104K500XT").is_none());
 }

@@ -560,9 +560,14 @@ fn temperature_line(t: &mut String, row: Option<&Rating>) {
     if let Some(r) = row
         && let Some(tr) = &r.temperature
     {
+        let note = r
+            .note
+            .as_ref()
+            .map(|n| format!(", note = {}", q(n)))
+            .unwrap_or_default();
         let _ = writeln!(
             t,
-            "temperature = {{ min = {}, max = {}, page = {} }}",
+            "temperature = {{ min = {}, max = {}, page = {}{note} }}",
             tr.min, tr.max, r.page
         );
     }
