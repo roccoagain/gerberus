@@ -44,6 +44,10 @@ pub struct Signal {
     /// The band, in hertz: 20 Hz to 20 kHz when it isn't given.
     #[serde(default = "audio_band")]
     pub frequency: [f64; 2],
+    /// The source reaches the pin through a capacitor, so the board sets the pin's DC bias. Otherwise the pin is
+    /// held at the DC of `to`, as a DC-coupled source (a pickup, a line driver into a DC path) would.
+    #[serde(default)]
+    pub ac_coupled: bool,
     pub source: String,
 }
 

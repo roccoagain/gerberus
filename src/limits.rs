@@ -82,6 +82,8 @@ pub struct OpAmp {
     /// datasheet's output swing from rail.
     pub swing: Option<Rated>,
 }
+
+/// One datasheet number with its page.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rated {

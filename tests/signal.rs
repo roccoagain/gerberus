@@ -138,9 +138,10 @@ fn clipping(f: &[gerberus::rules::Finding]) -> &gerberus::rules::Finding {
 fn a_stage_with_room_passes() {
     let (d, f, l) = run(1.0);
     let out = d.nets.iter().position(|n| n.name == "OUT").unwrap();
-    let lv = l.corners[0].1[&out];
-    assert!((lv.bias - 2.5).abs() < 1e-3, "{lv:?}");
-    assert!((lv.peak - 2.0).abs() < 0.01, "{lv:?}");
+    let gnd = d.nets.iter().position(|n| n.name == "GND").unwrap();
+    let (lo, hi) = l.dc(out, gnd).unwrap();
+    assert!((lo - 2.5).abs() < 1e-3 && (hi - 2.5).abs() < 1e-3, "{lo} {hi}");
+    assert!((l.peak[&out] - 2.0).abs() < 0.01, "{:?}", l.peak);
     let c = clipping(&f);
     assert_eq!(c.verdict, Verdict::Pass, "{}", c.message);
     assert!(c.message.contains("p10"), "{}", c.message);
@@ -196,4 +197,110 @@ fn no_signals_says_what_to_add() {
     let v = compute(&d, &lib, &i);
     let e = levels(&d, &lib, &i, &v).unwrap_err();
     assert!(e.contains("[[signal]]"), "{e}");
+}
+
+fn net(d: &Design, name: &str) -> usize {
+    d.nets.iter().position(|n| n.name == name).unwrap()
+}
+
+/// Moves `r.pin` to the net `to`.
+fn rewire(d: &mut Design, r: &str, pin: &str, to: &str) {
+    let to = net(d, to);
+    let p = d.components.get_mut(r).unwrap().pins.get_mut(pin).unwrap();
+    let from = p.net;
+    p.net = to;
+    d.nets[from].pins.retain(|(x, y)| !(x == r && y == pin));
+    d.nets[to].pins.push((r.into(), pin.into()));
+}
+
+fn run_on(d: &Design, i: &BoardInputs) -> (Vec<gerberus::rules::Finding>, gerberus::signal::Levels) {
+    let lib = Library::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("parts")).unwrap();
+    let v = compute(d, &lib, i);
+    let l = levels(d, &lib, i, &v).unwrap();
+    (check(d, &lib, &l), l)
+}
+
+/// A supply anywhere in 4.5 to 5.5 V moves VREF, and the output with it, by every mix of its ends.
+#[test]
+fn a_rail_range_moves_the_bias() {
+    let d = stage();
+    let mut i = inputs(1.0);
+    i.inputs[0].min = 4.5;
+    i.inputs[0].max = gerberus::inputs::Max::Value(5.5);
+    let (_, l) = run_on(&d, &i);
+    let (lo, hi) = l.dc(net(&d, "OUT"), net(&d, "GND")).unwrap();
+    assert!((lo - 2.25).abs() < 1e-3 && (hi - 2.75).abs() < 1e-3, "{lo} {hi}");
+    // From +5V it is −2.75 to −2.25 V, not the −3.25 to −1.75 V that taking the two nets apart would give.
+    let (lo, hi) = l.dc(net(&d, "OUT"), net(&d, "+5V")).unwrap();
+    assert!((lo + 2.75).abs() < 1e-3 && (hi + 2.25).abs() < 1e-3, "{lo} {hi}");
+}
+
+/// +IN pulled to ground (0 V, but only through R1) must not be taken as ground: the output then sits at −2.5 V,
+/// past V–, and clips.
+#[test]
+fn a_net_pulled_to_zero_is_not_ground() {
+    let mut d = stage();
+    rewire(&mut d, "R1", "2", "GND");
+    let (f, l) = run_on(&d, &inputs(0.1));
+    assert!(!l.ground.contains(&net(&d, "PLUS")));
+    let c = clipping(&f);
+    assert_eq!(c.verdict, Verdict::Fail, "{}", c.message);
+}
+
+/// With R1 gone only the capacitor reaches +IN, so its bias isn't set: UNKNOWN, not a pass.
+#[test]
+fn an_unbiased_input_is_unknown() {
+    let mut d = stage();
+    d.components.remove("R1");
+    for n in &mut d.nets {
+        n.pins.retain(|(r, _)| r != "R1");
+    }
+    let (f, l) = run_on(&d, &inputs(0.1));
+    assert!(!l.bias.contains_key(&net(&d, "PLUS")));
+    let c = clipping(&f);
+    assert_eq!(c.verdict, Verdict::Unknown, "{}", c.message);
+}
+
+/// An AC-coupled source leaves the pin's bias to the board: J1.1 then sits at whatever the board sets.
+#[test]
+fn an_ac_coupled_source_leaves_the_bias_to_the_board() {
+    let mut d = stage();
+    // Feed the signal straight onto +IN, which R1 biases at VREF.
+    rewire(&mut d, "J1", "1", "PLUS");
+    let mut i = inputs(1.0);
+    i.inputs.retain(|x| x.name != "sig");
+    i.signals[0].ac_coupled = true;
+    let (f, l) = run_on(&d, &i);
+    let (lo, hi) = l.dc(net(&d, "PLUS"), net(&d, "GND")).unwrap();
+    assert!((lo - 2.5).abs() < 1e-3 && (hi - 2.5).abs() < 1e-3, "{lo} {hi}");
+    assert_eq!(clipping(&f).verdict, Verdict::Pass, "{}", clipping(&f).message);
+    // DC-coupled, the source holds +IN at ground's DC instead.
+    i.signals[0].ac_coupled = false;
+    let (_, l) = run_on(&d, &i);
+    let (lo, _) = l.dc(net(&d, "PLUS"), net(&d, "GND")).unwrap();
+    assert!(lo.abs() < 1e-3, "{lo}");
+}
+
+/// A part the simulation leaves open on the signal's path is an UNKNOWN `signal-path` finding.
+#[test]
+fn an_open_part_on_the_path_is_reported() {
+    let mut d = stage();
+    let mut c = d.components["R1"].clone();
+    c.reference = "D1".into();
+    c.lib_id = "Device:D".into();
+    c.value = "1N4148".into();
+    d.components.insert("D1".into(), c);
+    for n in &mut d.nets {
+        if n.pins.iter().any(|(r, _)| r == "R1") {
+            let p = n.pins.iter().find(|(r, _)| r == "R1").unwrap().1.clone();
+            n.pins.push(("D1".into(), p));
+        }
+    }
+    let (f, _) = run_on(&d, &inputs(0.1));
+    let s = f
+        .iter()
+        .find(|f| f.rule == "signal-path")
+        .expect("a signal-path finding");
+    assert_eq!(s.verdict, Verdict::Unknown);
+    assert!(s.message.contains("D1"), "{}", s.message);
 }
