@@ -1,14 +1,16 @@
 //! `waivers.toml`: accepted findings leave the counts with their reason, and a waiver that matches nothing is a
 //! warning.
 
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use gerberus::diag::Show;
 use gerberus::inputs::BoardInputs;
 use gerberus::kicad;
 use gerberus::limits::Library;
 use gerberus::policy::Policy;
-use gerberus::rules::{Verdict, check};
+use gerberus::rules::{Severity, Verdict, check, render};
 use gerberus::voltage::compute;
 use gerberus::waivers::Waivers;
 
@@ -134,4 +136,82 @@ fn check_reads_the_file_next_to_the_schematic() {
     .unwrap();
     assert_eq!(run(&[]).status.code(), Some(2));
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+fn kitchen_sink() -> (
+    gerberus::design::Design,
+    gerberus::voltage::Voltages,
+    gerberus::rules::Report,
+) {
+    let dir = root("tests/fixtures/kitchen-sink");
+    let design = kicad::load(&dir.join("kitchen-sink.kicad_sch")).unwrap();
+    let inputs = BoardInputs::load(&dir.join("inputs.toml")).unwrap();
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&design, &lib, &inputs);
+    let report = check(&design, &lib, &Policy::builtin().unwrap(), &inputs, &v);
+    (design, v, report)
+}
+
+/// Two waivers that match the same finding are both in use: neither is reported as matching nothing.
+#[test]
+fn overlapping_waivers_are_both_used() {
+    let (design, v, report) = kitchen_sink();
+    let target = report
+        .findings
+        .iter()
+        .find(|f| f.verdict != Verdict::Pass && f.case.is_none())
+        .unwrap()
+        .clone();
+    let waivers: Waivers = toml::from_str(&format!(
+        "[[waiver]]\nrule = {:?}\nreference = {:?}\nreason = \"all of them\"\n\n\
+         [[waiver]]\nrule = {:?}\nreference = {:?}\ncontains = {:?}\nreason = \"this one\"\n",
+        target.rule,
+        target.reference,
+        target.rule,
+        target.reference,
+        &target.message[..target.message.len().min(30)],
+    ))
+    .unwrap();
+    let mut waived = report.clone();
+    waivers.apply(&mut waived, "custom.toml");
+    assert!(
+        !waived.findings.iter().any(|f| f.rule == "waiver"),
+        "{:#?}",
+        waived.findings
+    );
+    // The note names the file the waivers came from.
+    let text = render(&design, &v, &waived, &Show::default());
+    assert!(text.contains("waived in custom.toml"), "{text}");
+}
+
+/// A reverse-polarity summary that FAILs only because of its fault case's FAILs is waived with them.
+#[test]
+fn waiving_a_fault_cases_failures_waives_its_summary() {
+    let (_, _, report) = kitchen_sink();
+    let summary = report
+        .findings
+        .iter()
+        .find(|f| f.rule == "reverse-polarity" && f.verdict == Verdict::Fail)
+        .expect("the kitchen sink has a reverse-polarity FAIL")
+        .clone();
+    let case = summary.case.clone().unwrap();
+    let mut toml_text = String::new();
+    for f in report.findings.iter().filter(|f| {
+        f.case.as_ref() == Some(&case)
+            && f.rule != "reverse-polarity"
+            && f.verdict == Verdict::Fail
+            && f.severity == Severity::Error
+    }) {
+        writeln!(
+            toml_text,
+            "[[waiver]]\nrule = {:?}\nreference = {:?}\ncase = {case:?}\nreason = \"bench only\"\n",
+            f.rule, f.reference
+        )
+        .unwrap();
+    }
+    let waivers: Waivers = toml::from_str(&toml_text).unwrap();
+    let mut waived = report.clone();
+    waivers.apply(&mut waived, "waivers.toml");
+    assert!(!waived.findings.contains(&summary), "{toml_text}");
+    assert!(waived.waived.iter().any(|w| w.finding == summary));
 }

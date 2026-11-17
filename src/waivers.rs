@@ -10,7 +10,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::design::Design;
-use crate::rules::{Finding, Report, Severity, Verdict};
+use crate::rules::{Finding, Report, SUMMARY_RULES, Severity, Verdict};
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -76,14 +76,20 @@ impl Waivers {
     /// waiver that matched nothing.
     pub fn apply(&self, report: &mut Report, file: &str) {
         let mut used = vec![false; self.waiver.len()];
+        report.waivers_file = file.to_string();
         let findings = std::mem::take(&mut report.findings);
         for f in findings {
-            let hit = (f.verdict != Verdict::Pass)
-                .then(|| self.waiver.iter().position(|w| w.matches(&f)))
-                .flatten();
-            match hit {
-                Some(i) => {
-                    used[i] = true;
+            // Every waiver that matches counts as used; the first one's reason is kept.
+            let hits: Vec<usize> = if f.verdict == Verdict::Pass {
+                vec![]
+            } else {
+                (0..self.waiver.len()).filter(|&i| self.waiver[i].matches(&f)).collect()
+            };
+            for &i in &hits {
+                used[i] = true;
+            }
+            match hits.first() {
+                Some(&i) => {
                     let w = &self.waiver[i];
                     report.waived.push(Waived {
                         finding: f,
@@ -92,6 +98,35 @@ impl Waivers {
                     });
                 }
                 None => report.findings.push(f),
+            }
+        }
+        // A reverse-polarity summary FAILs because of its fault case's own FAILs; once every one of those is
+        // waived, so is the summary.
+        let all = std::mem::take(&mut report.findings);
+        let settled: Vec<bool> = all
+            .iter()
+            .map(|f| {
+                SUMMARY_RULES.contains(&f.rule)
+                    && f.verdict == Verdict::Fail
+                    && f.case.is_some()
+                    && report.waived.iter().any(|w| w.finding.case == f.case)
+                    && !all.iter().any(|g| {
+                        g.case == f.case
+                            && !SUMMARY_RULES.contains(&g.rule)
+                            && g.verdict == Verdict::Fail
+                            && g.severity == Severity::Error
+                    })
+            })
+            .collect();
+        for (f, settled) in all.into_iter().zip(settled) {
+            if settled {
+                report.waived.push(Waived {
+                    finding: f,
+                    reason: "every failure in this fault case is waived".into(),
+                    by: None,
+                });
+            } else {
+                report.findings.push(f);
             }
         }
         for (w, used) in self.waiver.iter().zip(used) {

@@ -124,6 +124,9 @@ pub struct Report {
     /// Findings a waiver in `waivers.toml` accepted, taken out of `findings` so nothing counts them.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub waived: Vec<crate::waivers::Waived>,
+    /// The file the waivers came from, for the report's note.
+    #[serde(skip)]
+    pub waivers_file: String,
     /// Each fault case's net voltages, which its findings' `nets` index into.
     #[serde(skip)]
     pub cases: Vec<(String, Voltages)>,
@@ -1401,8 +1404,9 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -
             show.style.paint(crate::diag::BLUE, "="),
             show.style.paint(crate::diag::BOLD, "note:"),
             format_args!(
-                "{} waived in waivers.toml, not counted{}",
+                "{} waived in {}, not counted{}",
                 report.waived.len(),
+                report.waivers_file,
                 if show.passes { "" } else { " (--all lists them)" }
             )
         );

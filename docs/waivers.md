@@ -21,10 +21,13 @@ Those findings:
 - are listed with their reason by `check --all` (as `waived[rule]`), and under `waived` in `check --json`;
 - aren't listed by `doctor` as things to add.
 
+A `reverse-polarity` FAIL is the sum of its fault case's FAILs, so once every one of those is waived, the summary
+is waived with them.
+
 A waiver can't hide something by accident:
 
 - `reason` is required, and a waiver for a part the design doesn't have stops `check` with an error.
-- A waiver that matches no failed or unknown finding is a warning (`warning[waiver]`): the finding it was written
+- A waiver that matches no failed or unknown finding (alone or together with another waiver) is a warning (`warning[waiver]`): the finding it was written
   for has gone or changed, so remove the waiver or fix it to match what the report says now.
 - A PASS is never waived, so a waiver can't turn a check off.
 

@@ -762,6 +762,7 @@ fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
     let report = gerberus::rules::Report {
         findings: gerberus::spice::check(&design, &lib, &sweep, &sp),
         waived: vec![],
+        waivers_file: String::new(),
         cases: vec![],
     };
     if json {
