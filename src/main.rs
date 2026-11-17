@@ -18,7 +18,7 @@ const USAGE: &str = "usage:
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
   gerberus part show <MPN> [--parts DIR]...
-  gerberus part new <design> <REF or MPN> [--stdout] [--force]
+  gerberus part new <design> <REF or MPN> [--parts DIR]... [--stdout] [--force]
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
@@ -80,8 +80,9 @@ family's values against its datasheet.
 
 `part new` starts a part file for a part on the schematic, named by its reference (U2) or part number: the pin
 map, class and datasheet link from the symbol, and every limit unknown until it is read from the datasheet. It
-writes `parts/<MPN>.toml` next to the schematic (never over an existing file unless --force), or prints it with
---stdout.
+writes `parts/<MPN>.toml` next to the schematic, or prints it with --stdout. It won't replace a file, or write
+one for a part the library, a part family or the symbol's own rating already covers, unless --force; and never
+one for a part number another file in the board's part folders already defines.
 
 `datasheet` checks part files against their datasheets (see .claude/skills/datasheet-to-part). `verify` downloads each
 file's datasheet (cached in --cache, default ~/.cache/gerberus/datasheets), or reads --pdf, and looks for every
@@ -151,10 +152,13 @@ fn run(args: &[String]) -> ExitCode {
 
 fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
     let (mut stdout, mut force) = (false, false);
-    for a in rest {
+    let mut extra = vec![];
+    let mut it = rest.iter();
+    while let Some(a) = it.next() {
         match a.as_str() {
             "--stdout" => stdout = true,
             "--force" => force = true,
+            "--parts" => extra.push(it.next().ok_or("--parts takes a folder")?.clone()),
             _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
         }
     }
@@ -163,32 +167,88 @@ fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
         .file_name()
         .map_or_else(|| path.display().to_string(), |f| f.to_string_lossy().into());
     let (mpn, text) = gerberus::part_new::template(&design, which, &source)?;
-    // A part the library already covers, by a file or a family, doesn't need one unless asked.
-    let local = path.parent().unwrap_or(Path::new(".")).join("parts");
-    let dirs: Vec<PathBuf> = if local.is_dir() { vec![local] } else { vec![] };
-    let mut lib = load_library(&dirs)?;
-    lib.expand_families(&design);
-    if !force && let Some(file) = lib.files.get(&mpn) {
-        return Err(format!(
-            "{mpn} already has a part file: {} (`gerberus part show {mpn}` prints it); --force writes a new one \
-             anyway",
-            file.display()
-        ));
-    }
     // What `check` would load, so the file is never one it rejects.
     let part: gerberus::limits::Part = toml::from_str(&text).map_err(|e| format!("the template doesn't parse: {e}"))?;
     let problems = part.problems();
     if !problems.is_empty() {
         return Err(format!("the template has problems: {}", problems.join("; ")));
     }
+    let dir = path.parent().unwrap_or(Path::new(".")).join("parts");
+    let file = dir.join(gerberus::doctor::file_name(&mpn));
+
+    // A part the library already covers, by a file, a family or the schematic's own rating, doesn't need one
+    // unless asked. A part file in the board's own folders under another name is never doubled: the library
+    // would refuse to load with the part defined twice.
+    let mut flags = vec![];
+    for d in &extra {
+        flags.push("--parts".to_string());
+        flags.push(d.clone());
+    }
+    let o = options(path, &flags, &[])?;
+    let mut lib = load_library(&o.dirs)?;
+    if let Some(existing) = lib.files.get(&mpn).cloned()
+        && !existing.to_string_lossy().ends_with("(built in)")
+    {
+        if existing != file {
+            return Err(format!(
+                "{mpn} is already in {}: edit that file instead, since a second file for it would stop the library \
+                 loading",
+                existing.display()
+            ));
+        }
+        if !force && !stdout {
+            return Err(format!("{} already exists; --force replaces it", file.display()));
+        }
+    }
+    if file.exists() {
+        let other = std::fs::read_to_string(&file)
+            .ok()
+            .and_then(|t| t.parse::<toml::Table>().ok())
+            .and_then(|t| t.get("mpn").and_then(|m| m.as_str()).map(str::to_string));
+        if other.as_deref().is_some_and(|m| m != mpn) {
+            return Err(format!(
+                "{} holds another part, {:?}; move it or write this one by hand under another name",
+                file.display(),
+                other.unwrap_or_default()
+            ));
+        }
+        if !force && !stdout {
+            return Err(format!("{} already exists; --force replaces it", file.display()));
+        }
+    }
+    lib.expand_families(&design);
+    let c = design
+        .components
+        .get(which)
+        .or_else(|| {
+            design
+                .components
+                .values()
+                .find(|c| gerberus::limits::component_mpn(c) == mpn)
+        })
+        .expect("the template found it");
+    if !force {
+        match lib.lookup(c) {
+            gerberus::limits::Lookup::Datasheet(_) if !file.exists() => {
+                return Err(format!(
+                    "{mpn} already has a part file: {} (`gerberus part show {mpn}` prints it); --force writes a \
+                     new one anyway",
+                    lib.files[&mpn].display()
+                ));
+            }
+            gerberus::limits::Lookup::ClassDefault(_) => {
+                return Err(format!(
+                    "{} is already checked against the rating its schematic symbol gives (`gerberus parts` shows \
+                     it); a part file would replace that. --force writes one anyway",
+                    c.reference
+                ));
+            }
+            _ => {}
+        }
+    }
     if stdout {
         print!("{text}");
         return Ok(true);
-    }
-    let dir = path.parent().unwrap_or(Path::new(".")).join("parts");
-    let file = dir.join(gerberus::doctor::file_name(&mpn));
-    if file.exists() && !force {
-        return Err(format!("{} already exists; --force replaces it", file.display()));
     }
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     std::fs::write(&file, &text).map_err(|e| format!("{}: {e}", file.display()))?;
@@ -873,8 +933,23 @@ fn datasheet(sub: &str, rest: &[String]) -> Result<bool, String> {
             let mut ok = true;
             for f in &files {
                 let part = Part::load(f)?;
+                // A file `part new` started still has values nobody has read: say so, and don't pass it.
+                if part.unread() {
+                    ok = false;
+                    println!(
+                        "{}: values still say \"{}\": read them from the datasheet first",
+                        part.mpn,
+                        gerberus::part_new::NOT_READ
+                    );
+                }
                 let pdf = match (&pdf, &part.datasheet) {
                     (Some(p), _) => p.clone(),
+                    (None, Some(d)) if d.url.trim().is_empty() => {
+                        return Err(format!(
+                            "{}: [datasheet] has no url; fill it in, or give the PDF with --pdf",
+                            f.display()
+                        ));
+                    }
                     (None, Some(d)) => {
                         let dir = cache.as_ref().ok_or("no cache directory; give --cache")?;
                         datasheet::fetch(&d.url, dir)?

@@ -139,3 +139,73 @@ fn command_writes_the_file_once() {
     assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// An unread template gets none of the benefit of a real part file: an unread TVS doesn't clamp anything, and
+/// `datasheet verify` fails on it.
+#[test]
+fn an_unread_tvs_clamps_nothing() {
+    let dir = root("tests/fixtures/kitchen-sink");
+    let design = kicad::load(&dir.join("kitchen-sink.kicad_sch")).unwrap();
+    let inputs = BoardInputs::load(&dir.join("inputs.toml")).unwrap();
+    let mut lib = Library::load_dir(&root("parts")).unwrap();
+    let (mpn, text) = template(&design, "D6", "kitchen-sink.kicad_sch").unwrap();
+    // The symbol is a plain diode; the file is read as a TVS, as someone would correct its class first.
+    let mut p: Part = toml::from_str(&text).unwrap();
+    p.class = Class::Tvs;
+    assert!(p.unread());
+    lib.parts.insert(mpn, p);
+    let policy = gerberus::policy::Policy::load(&root("policy.toml")).unwrap();
+    let v = gerberus::voltage::compute(&design, &lib, &inputs);
+    let report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
+    let esd: Vec<_> = report
+        .findings
+        .iter()
+        .filter(|f| f.rule == "esd" && f.message.starts_with("J4.1"))
+        .collect();
+    assert!(!esd.is_empty());
+    assert!(
+        esd.iter()
+            .all(|f| f.verdict != gerberus::rules::Verdict::Pass && !f.message.contains("clamped by D6")),
+        "{esd:?}"
+    );
+
+    let tmp = std::env::temp_dir().join(format!("gerberus-unread-{}.toml", std::process::id()));
+    std::fs::write(&tmp, &text).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_gerberus"))
+        .args(["datasheet", "verify"])
+        .arg(&tmp)
+        .args(["--pdf", "/dev/null"])
+        .env("GERBERUS_NO_UPDATE_CHECK", "1")
+        .output()
+        .unwrap();
+    std::fs::remove_file(&tmp).unwrap();
+    assert_eq!(out.status.code(), Some(1), "{out:?}");
+    assert!(String::from_utf8_lossy(&out.stdout).contains(NOT_READ));
+}
+
+/// A capacitor the schematic already rates isn't given a file that would replace that rating, unless forced.
+#[test]
+fn a_class_default_is_kept() {
+    let dir = std::env::temp_dir().join(format!("gerberus-class-default-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // C1 keeps its 50 V Voltage field but gets a part number nothing has a file for.
+    let text = std::fs::read_to_string(root("tests/fixtures/can-encoder/can-encoder.kicad_sch"))
+        .unwrap()
+        .replacen("\"CC0805KKX7R9BB225\"", "\"NO-SUCH-CAP\"", 1);
+    std::fs::write(dir.join("board.kicad_sch"), text).unwrap();
+    let run = |force: bool| {
+        Command::new(env!("CARGO_BIN_EXE_gerberus"))
+            .args(["part", "new", "board.kicad_sch", "NO-SUCH-CAP", "--stdout"])
+            .args(if force { &["--force"][..] } else { &[][..] })
+            .current_dir(&dir)
+            .env("GERBERUS_NO_UPDATE_CHECK", "1")
+            .output()
+            .unwrap()
+    };
+    let out = run(false);
+    assert_eq!(out.status.code(), Some(2), "{out:?}");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("already checked against the rating"));
+    assert!(run(true).status.success());
+    std::fs::remove_dir_all(&dir).unwrap();
+}

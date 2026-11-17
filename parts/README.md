@@ -209,10 +209,21 @@ note = "..."
 
 `gerberus part new board.kicad_sch U2` writes `parts/<MPN>.toml` next to the schematic from U2's symbol: the part
 number, the pin map (symbol pin names, without KiCad's overbar markup), a class guessed from the reference and
-symbol, the datasheet link, and one `[[limit]]` whose ranges are `{ unknown = "not read from the datasheet yet" }`.
-The file loads as it is, so `check` runs and reports those pins UNKNOWN until each value is read, and `gerberus
-doctor` lists it as a file to fill in. Name the part by reference or part number; `--stdout` prints the file
-instead, and `--force` writes one over an existing file or for a part the library already has.
+symbol (`ic` when it can't tell, and the comment says so), the datasheet link, and the `[[limit]]` the class takes
+(across a passive, cathode to anode, between connector contacts, every pin from an IC's ground pin) with
+`{ unknown = "not read from the datasheet yet" }` for every range. A part it can't give one to, such as a
+transistor or an IC with no ground pin, gets a comment instead.
+
+The file loads as it is. Until its values are read, `check` reports its pins UNKNOWN, and the rules that give a
+part with no part file the benefit of the doubt (an input it may bias itself, a TVS that may clamp, an ESD path
+that may reach an IC) treat it as missing. `gerberus doctor` lists it as a file to fill in, and `gerberus
+datasheet verify` fails on it until no value says "not read from the datasheet yet". The pin names come from the
+symbol, so check them against the datasheet's pin table yourself.
+
+Name the part by reference or part number. `--stdout` prints the file instead, and `--parts DIR` adds folders to
+look in. It won't replace a file, or write one for a part a built-in file, a part family or the symbol's own
+rating (a capacitor's `Voltage` field) already covers, unless `--force`. It never writes a second file for a part
+number one of the board's part files already defines.
 
 ### Checking a part file
 

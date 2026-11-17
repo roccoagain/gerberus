@@ -25,6 +25,9 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
                 .find(|c| component_mpn(c).eq_ignore_ascii_case(which))
         })
         .ok_or_else(|| format!("no part {which:?} in the design: name a reference such as U2, or a part number"))?;
+    if c.pins.is_empty() {
+        return Err(format!("{} has no pins, so it needs no part file", c.reference));
+    }
     let mpn = component_mpn(c).to_string();
     if mpn.is_empty() {
         return Err(format!(
@@ -38,7 +41,7 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
         .filter(|o| component_mpn(o) == mpn)
         .map(|o| o.reference.as_str())
         .collect();
-    let class = class_of(c);
+    let (class, guessed) = class_of(c);
     let field = |names: &[&str]| {
         names
             .iter()
@@ -72,11 +75,12 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
         .collect();
     // 1, 2, ... 10, not 1, 10, 2; BGA balls by letter, then number.
     pins.sort_by_key(|(n, _)| natural(n));
-    let ground = pins
-        .iter()
-        .find(|(_, n)| is_ground_name(n))
-        .or_else(|| {
-            pins.iter().find(|(num, _)| {
+    // The ground pin, by its name; failing that, a power pin on this instance's ground net, which the comment
+    // then says, since another instance may wire it differently.
+    let named_ground = pins.iter().find(|(_, n)| is_ground_name(n)).map(|(_, n)| n.clone());
+    let net_ground = || {
+        pins.iter()
+            .find(|(num, _)| {
                 c.pins.get(num).is_some_and(|p| {
                     let net = design.nets[p.net]
                         .name
@@ -84,11 +88,18 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
                         .next()
                         .unwrap_or("")
                         .to_ascii_uppercase();
-                    matches!(net.as_str(), "GND" | "0V" | "VSS")
+                    p.kind == crate::design::PinKind::PowerIn && matches!(net.as_str(), "GND" | "0V" | "VSS")
                 })
             })
-        })
-        .map(|(_, n)| n.clone());
+            .map(|(_, n)| n.clone())
+    };
+    let (ground, ground_by_net) = if let Some(g) = named_ground {
+        (Some(g), false)
+    } else {
+        let g = net_ground();
+        let by_net = g.is_some();
+        (g, by_net)
+    };
 
     let mut out = String::new();
     let _ = writeln!(
@@ -96,8 +107,8 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
         "# Written by `gerberus part new` from {} in {source}.\n\
          # Fill it in from the datasheet: every value that says \"{NOT_READ}\"\n\
          # is UNKNOWN in `gerberus check` until it is replaced. parts/README.md gives the format;\n\
-         # `gerberus datasheet verify` then checks each value against its page, and `gerberus pinout` checks\n\
-         # the pin map against the symbol and footprint.",
+         # `gerberus datasheet verify` then checks each value against its page. The pin names come from the\n\
+         # symbol, so check them against the datasheet's pin table: `gerberus pinout` then checks the footprint.",
         refs.join(", ")
     );
     if c.fields.get("MPN").is_none_or(|m| m.trim().is_empty()) {
@@ -132,10 +143,16 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
     );
     let _ = writeln!(
         out,
-        "class = {}  # guessed from {}; one of capacitor, resistor, inductor, diode, tvs, led, connector, \
-         oscillator, ic",
+        "class = {}  # {}; one of capacitor, resistor, inductor, diode, tvs, led, connector, oscillator, ic",
         quote(class),
-        c.reference
+        if guessed {
+            format!("guessed from {}", c.reference)
+        } else {
+            format!(
+                "NOT guessed: ic is only the fallback for {}, so set the right class",
+                c.reference
+            )
+        }
     );
     let _ = writeln!(out);
     let _ = writeln!(out, "[datasheet]");
@@ -177,6 +194,9 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
         }
         let _ = writeln!(out, "abs_max = {{ unknown = \"{NOT_READ}\" }}");
         let _ = writeln!(out, "recommended = {{ unknown = \"{NOT_READ}\" }}");
+        if class == "tvs" {
+            let _ = writeln!(out, "breakdown = {{ unknown = \"{NOT_READ}\" }}");
+        }
     };
     match class {
         "resistor" | "capacitor" | "inductor" if names.len() == 2 => limit(
@@ -214,8 +234,19 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
                         &mut out,
                         &others,
                         Some(g),
-                        "Every pin from ground, unread. Split it as the datasheet does: supply pins, then each \
-                         group of\n# signal pins with its own range.",
+                        &format!(
+                            "Every pin from ground, unread. Split it as the datasheet does: supply pins, then \
+                             each group of\n# signal pins with its own range.{}",
+                            if ground_by_net {
+                                format!(
+                                    "\n# {g} is taken as ground because it is a power pin on {}'s ground net: \
+                                     check the datasheet.",
+                                    c.reference
+                                )
+                            } else {
+                                String::new()
+                            }
+                        ),
                     );
                 }
             }
@@ -232,7 +263,8 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
         let _ = writeln!(
             out,
             "\n# Also from the datasheet, where it gives them: [[drive]] for what the part puts on its outputs, \
-             [[supply]]\n# currents, theta_ja and tj_max, and [[esd]] ratings (see parts/README.md)."
+             [[supply]]\n# currents, theta_ja and tj_max, and [[esd]] ratings (see parts/README.md). An input the part \
+             biases itself\n# (an AC-coupled audio input) takes a [[drive]] with kind = \"biases\"."
         );
     }
     Ok((mpn, out))
@@ -246,19 +278,21 @@ fn natural(n: &str) -> (String, u64, String) {
     (letters, digits.parse().unwrap_or(0), rest[digits.len()..].to_string())
 }
 
-fn class_of(c: &Component) -> &'static str {
+/// The class and whether it was guessed from the reference or symbol (`false`: `ic` only as the fallback).
+fn class_of(c: &Component) -> (&'static str, bool) {
     let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
     let lib = c.lib_id.to_ascii_lowercase();
-    if lib.contains("tvs") {
-        return "tvs";
+    let symbol = lib.rsplit(':').next().unwrap_or("");
+    if lib.contains("tvs") || letters == "ESD" {
+        return ("tvs", true);
     }
-    if lib.contains("led") && letters.starts_with('D') {
-        return "led";
+    if symbol.starts_with("led") {
+        return ("led", true);
     }
     if lib.starts_with("connector") {
-        return "connector";
+        return ("connector", true);
     }
-    match letters.as_str() {
+    let class = match letters.as_str() {
         "R" | "RN" => "resistor",
         "C" => "capacitor",
         "L" | "FB" => "inductor",
@@ -266,16 +300,15 @@ fn class_of(c: &Component) -> &'static str {
         "LED" => "led",
         "J" | "P" | "CN" | "X" if !lib.contains("crystal") => "connector",
         "Y" | "X" => "oscillator",
-        _ => "ic",
-    }
+        "U" | "IC" => "ic",
+        _ => return ("ic", false),
+    };
+    (class, true)
 }
 
 fn is_ground_name(n: &str) -> bool {
     let n = n.to_ascii_uppercase();
-    matches!(
-        n.as_str(),
-        "GND" | "VSS" | "AGND" | "DGND" | "PGND" | "GNDA" | "GNDD" | "0V"
-    )
+    n.starts_with("GND") || n.starts_with("VSS") || matches!(n.as_str(), "AGND" | "DGND" | "PGND" | "SGND" | "0V")
 }
 
 /// A TOML string.

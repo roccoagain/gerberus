@@ -80,6 +80,14 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
     let cov = coverage(design, lib);
     let unchecked = |r: &str| matches!(cov.get(r), Some(Coverage::Unchecked { .. }));
     let mpn = |r: &str| component_mpn(&design.components[r]).to_string();
+    // A part whose file `part new` started and nobody has finished.
+    let unread = |r: &str| {
+        design
+            .components
+            .get(r)
+            .and_then(|c| lib.part_for(c))
+            .is_some_and(crate::limits::Part::unread)
+    };
     let mut waits: BTreeMap<Key, BTreeSet<usize>> = BTreeMap::new();
     let mut pins: BTreeMap<Key, BTreeSet<String>> = BTreeMap::new();
     let mut unknown = 0;
@@ -103,7 +111,7 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
             pins.entry(k.clone()).or_default().insert(pin.to_string());
             keys.insert(k);
         }
-        if f.message.contains(crate::part_new::NOT_READ) && design.components.contains_key(&f.reference) {
+        if unread(&f.reference) {
             keys.insert(Key::Fill(mpn(&f.reference)));
         }
         if design.components.contains_key(&f.reference) && unchecked(&f.reference) {
@@ -112,6 +120,9 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
         for r in references_in(&f.message, design) {
             if unchecked(&r) {
                 keys.insert(Key::Part(mpn(&r)));
+            }
+            if unread(&r) {
+                keys.insert(Key::Fill(mpn(&r)));
             }
         }
         let v = match &f.case {
@@ -135,6 +146,9 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
             for r in references_in(text, design) {
                 if unchecked(&r) && !(cant_model && is_transistor(&design.components[&r])) {
                     keys.insert(Key::Part(mpn(&r)));
+                }
+                if unread(&r) && !cant_model {
+                    keys.insert(Key::Fill(mpn(&r)));
                 }
             }
             if let Some((r, p)) = power_output(text)
@@ -409,7 +423,11 @@ fn part_item(design: &Design, lib: &Library, setup: &Setup, m: &str, refs: Vec<S
             "start {} with `gerberus part new {} {}`, then fill it in from the datasheet: parts/README.md says \
              how, and an agent can do it with the datasheet-to-part skill",
             file.display(),
-            setup.design,
+            if setup.design.contains(char::is_whitespace) {
+                format!("\"{}\"", setup.design)
+            } else {
+                setup.design.clone()
+            },
             c.reference
         ),
     }

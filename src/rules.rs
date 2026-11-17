@@ -1174,7 +1174,7 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                         Driver::Floating => false,
                     }
             });
-            let own_rail = lib.part_for(c).is_none()
+            let own_rail = lib.part_for(c).is_none_or(Part::unread)
                 && own_pins >= 2
                 && powered_elsewhere
                 && design.nets[pin.net].pins.iter().all(|(r2, p2)| {
@@ -1189,7 +1189,7 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
             // a capacitor to a rail, when another input of the same part is AC-coupled (the other leg of a
             // differential input). Many amplifiers and codecs bias such inputs themselves; without a part file,
             // nothing says whether this one does. A lone input with only a decoupling capacitor stays a FAIL.
-            let ac_coupled = lib.part_for(c).is_none()
+            let ac_coupled = lib.part_for(c).is_none_or(Part::unread)
                 && pin.kind == PinKind::Input
                 && design.only_capacitors_on(reference, pin.net)
                 && (coupled_to_signal(design, volts, reference, pin.net)
@@ -1203,7 +1203,7 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                     Verdict::Unknown,
                     format!(
                         "{reference}.{name} is on {net}, which only capacitors reach: it is AC-coupled. {reference} \
-                         has no part file, so nothing says whether it biases this input itself; if its datasheet \
+                         has no part file read from its datasheet, so nothing says whether it biases this input itself; if its datasheet \
                          says it does, give it a `biases` drive"
                     ),
                 ),
@@ -1211,7 +1211,7 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                     Verdict::Unknown,
                     format!(
                         "{reference}.{name} is on {net}, which only {reference}'s own pins and passive parts reach. \
-                         {reference} has no part file, so nothing says whether it supplies that net itself (a charge \
+                         {reference} has no part file read from its datasheet, so nothing says whether it supplies that net itself (a charge \
                          pump or internal regulator output)"
                     ),
                 ),
