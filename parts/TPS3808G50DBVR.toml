@@ -1,9 +1,8 @@
-# The schematic orders TPS3808EG50DBVR. SBVS050N does not list that part number: its device table (page 3) and
-# orderable addendum (pages 19 to 22) list TPS3808G50DBVR (5 V rail, VIT 4.65 V, SOT-23 DBV, large T&R) and no
-# part number with an "E" after TPS3808. The values here are read for TPS3808G50DBVR, which is a [[variant]] below;
-# that they hold for the "E" part is an assumption the datasheet doesn't back. Check the order code with TI or the
-# distributor.
-mpn = "TPS3808EG50DBVR"
+# The amp board orders TPS3808EG50DBVR, which SBVS050N does not list: its device table (page 3) and orderable
+# addendum (pages 19 to 22) have no part number with an "E" after TPS3808. So this file is keyed by the part the
+# datasheet does list, and the amp board's U103 stays UNCHECKED until a datasheet names the E part (as with
+# PESD5V0S1BAF).
+mpn = "TPS3808G50DBVR"
 manufacturer = "Texas Instruments"
 description = "Supply voltage supervisor, 4.65 V fixed threshold (5 V rail), programmable delay, open-drain RESET, SOT-23-6 (DBV)"
 class = "ic"
@@ -15,9 +14,6 @@ tj_max = { value = 150, page = 5, note = "operating junction TJ max, absolute ma
 title = "TPS3808 Low-Quiescent-Current, Programmable-Delay Supervisory Circuit"
 document = "SBVS050N, revised August 2026"
 url = "https://www.ti.com/lit/ds/symlink/tps3808.pdf"
-
-[[variant]]
-mpn = "TPS3808G50DBVR"
 
 # Table 5-1 Pin Functions, SOT-23 column (page 4). The datasheet prints RESET and MR with an overbar (active low);
 # the symbol names them RESET_N and MR_N. MR is pulled up to VDD internally (RMR 70 kΩ min, page 6). RESET is an
