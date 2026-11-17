@@ -10,6 +10,7 @@ pub mod family;
 pub mod inputs;
 pub mod kicad;
 pub mod limits;
+pub mod part_new;
 pub mod pinout;
 pub mod policy;
 pub mod protection;

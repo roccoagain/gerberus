@@ -205,6 +205,26 @@ note = "..."
 - Rated values of passives and connectors go in `recommended`, not `abs_max`: a capacitor's rated voltage is the
   most it may see continuously, and the withstanding-voltage test above it is a short test, not a rating.
 
+### Starting a part file
+
+`gerberus part new board.kicad_sch U2` writes `parts/<MPN>.toml` next to the schematic from U2's symbol: the part
+number, the pin map (symbol pin names, without KiCad's overbar markup), a class guessed from the reference and
+symbol (`ic` when it can't tell, and the comment says so), the datasheet link, and the `[[limit]]` the class takes
+(across a passive, cathode to anode, between connector contacts, every pin from an IC's ground pin) with
+`{ unknown = "not read from the datasheet yet" }` for every range. A part it can't give one to, such as a
+transistor or an IC with no ground pin, gets a comment instead.
+
+The file loads as it is. Until its values are read, `check` reports its pins UNKNOWN, and the rules that give a
+part with no part file the benefit of the doubt (an input it may bias itself, a TVS that may clamp, an ESD path
+that may reach an IC) treat it as missing. `gerberus doctor` lists it as a file to fill in, and `gerberus
+datasheet verify` fails on it until no value says "not read from the datasheet yet". The pin names come from the
+symbol, so check them against the datasheet's pin table yourself.
+
+Name the part by reference or part number. `--stdout` prints the file instead, and `--parts DIR` adds folders to
+look in. It won't replace a file, or write one for a part a built-in file, a part family or the symbol's own
+rating (a capacitor's `Voltage` field) already covers, unless `--force`. It never writes a second file for a part
+number one of the board's part files already defines.
+
 ### Checking a part file
 
 Every value is read twice from the datasheet, by readers who haven't seen each other's work, and checked against

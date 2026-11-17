@@ -84,7 +84,8 @@ settles. [More](docs/doctor.md)
 | `gerberus datasheet` | A part file against its datasheet, value by value. [More](docs/datasheets.md) |
 
 Part limits come from a built-in library of part files, each value cited to its datasheet page. A part with no
-part file comes out UNKNOWN rather than PASS. To add one, see [parts/README.md](parts/README.md).
+part file comes out UNKNOWN rather than PASS. To add one, start it with `gerberus part new <schematic> <reference>`
+and fill it in from the datasheet; see [parts/README.md](parts/README.md).
 
 Run `gerberus --help` for every command and option.
 

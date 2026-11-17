@@ -521,6 +521,16 @@ impl Part {
             .filter(move |e| e.pins.is_empty() || e.pins.contains(&name))
     }
 
+    /// Values `gerberus part new` left for someone to read from the datasheet are still there. Checkers treat
+    /// such a file like a missing one wherever a missing file gives the benefit of the doubt.
+    pub fn unread(&self) -> bool {
+        let unread = |r: &Range| matches!(r, Range::Unknown(why) if why == crate::part_new::NOT_READ);
+        self.limits
+            .iter()
+            .any(|l| unread(&l.abs_max) || unread(&l.recommended) || l.breakdown.as_ref().is_some_and(unread))
+            || self.drives.iter().any(|d| unread(&d.range))
+    }
+
     /// Pin names no voltage limit mentions, apart from `NC` and `DNC`. A checker must report these as
     /// UNKNOWN; the coverage report lists them.
     pub fn uncovered_pins(&self) -> Vec<&str> {

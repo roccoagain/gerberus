@@ -19,7 +19,8 @@ fn part_of<'a>(design: &Design, lib: &'a Library, reference: &str) -> Option<&'a
         return None;
     }
     match lib.lookup(c) {
-        Lookup::Datasheet(p) => Some(p),
+        // A file `part new` started and nobody has read in yet says nothing about clamping or surviving.
+        Lookup::Datasheet(p) if !p.unread() => Some(p),
         _ => None,
     }
 }
@@ -123,6 +124,7 @@ fn unmodelled(design: &Design, lib: &Library, reference: &str, net: usize, named
     }
     match lib.lookup(c) {
         Lookup::Unchecked(_) => Some(format!("{reference} ({})", c.value)),
+        Lookup::Datasheet(p) if p.unread() => Some(format!("{reference} ({})", c.value)),
         _ => None,
     }
 }
@@ -163,6 +165,14 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<S
                             _ => None,
                         })
                         .reduce(f64::max);
+                    // A TVS whose breakdown isn't known can't be said to clamp anything.
+                    if breakdown.is_none() {
+                        unknown
+                            .entry(through.clone())
+                            .or_default()
+                            .push(format!("{r} ({})", part.mpn));
+                        continue;
+                    }
                     raw.entry(through.clone())
                         .or_default()
                         .push((format!("{r} ({})", part.mpn), breakdown));
