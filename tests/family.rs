@@ -203,6 +203,63 @@ fn samsung_part_numbers_decode() {
     assert!(f.decode("CL10A106MP8NNNX").is_none());
 }
 
+#[test]
+fn yageo_cc_and_fenghua_part_numbers_decode() {
+    let lib = builtin();
+    let volts = |p: &gerberus::limits::Part| {
+        p.limits
+            .iter()
+            .find(|l| l.quantity == Quantity::Voltage)
+            .and_then(|l| l.recommended.values())
+    };
+    let y = family(&lib, "Yageo CC X7R");
+    let d = y.decode("CC0402KRX7R7BB104").unwrap().unwrap();
+    assert_eq!(d.codes["voltage"], "7");
+    let p = y.part("CC0402KRX7R7BB104").unwrap().unwrap();
+    assert!(p.problems().is_empty(), "{:?}", p.problems());
+    assert_eq!(volts(&p), Some((-16.0, 16.0)));
+    assert_eq!(p.tolerance.as_ref().unwrap().value, 0.1);
+    assert_eq!(p.temperature.as_ref().map(|t| (t.min, t.max)), Some((-55.0, 125.0)));
+    assert_eq!(volts(&y.part("CC1206KKX7R5BB106").unwrap().unwrap()), Some((-6.3, 6.3)));
+    assert_eq!(
+        volts(&y.part("CC1210KKX7RYBB104").unwrap().unwrap()),
+        Some((-250.0, 250.0))
+    );
+    // NP0 is another datasheet, and B isn't a voltage code.
+    assert!(y.decode("CC0402JRNPO9BN101").is_none());
+    assert!(y.decode("CC0402KRX7RBBB104").is_none());
+
+    let f = family(&lib, "Fenghua general MLCC");
+    let p = f.part("0603B104K500NT").unwrap().unwrap();
+    assert!(p.problems().is_empty(), "{:?}", p.problems());
+    assert_eq!(volts(&p), Some((-50.0, 50.0)));
+    assert_eq!(p.temperature.as_ref().map(|t| (t.min, t.max)), Some((-55.0, 125.0)));
+    // X5R to 85 °C, X6S to 105 °C; 6R3 is 6.3 V, 250 is 25 V.
+    let p = f.part("0402X105K6R3NT").unwrap().unwrap();
+    assert_eq!(volts(&p), Some((-6.3, 6.3)));
+    assert_eq!(p.temperature.as_ref().map(|t| t.max), Some(85.0));
+    let p = f.part("0805DS106K250NT").unwrap().unwrap();
+    assert_eq!(volts(&p), Some((-25.0, 25.0)));
+    assert_eq!(p.temperature.as_ref().map(|t| t.max), Some(105.0));
+    // A picofarad tolerance (C = +/-0.25 pF) gives no fraction.
+    assert!(f.part("0402CG1R0C500NT").unwrap().unwrap().tolerance.is_none());
+    // The datasheet's own examples (page 30): the two-letter dielectrics aren't read as B plus a value.
+    for (mpn, code) in [
+        ("0402BS104K250NT", "BS"),
+        ("0402BT104K250NT", "BT"),
+        ("0402DS104K250NT", "DS"),
+        ("0402X104K250NT", "X"),
+    ] {
+        let d = f.decode(mpn).unwrap().unwrap();
+        assert_eq!(d.codes["dielectric"], code, "{mpn}");
+        assert_eq!(d.codes["value"], "104", "{mpn}");
+    }
+    // Not this family's: the code scheme goes above 50 V, but this datasheet's tables stop there; and the
+    // termination must be N.
+    assert!(f.decode("0603B104K101NT").is_none());
+    assert!(f.decode("0603B104K500XT").is_none());
+}
+
 /// A family in a board's own parts folder replaces the built-in one; a part file anywhere beats a family.
 #[test]
 fn family_precedence() {
@@ -307,6 +364,6 @@ fn families_agree_with_hand_written_part_files() {
         }
     }
     // The six Samsung CL files, less CL05B104KB54PNC, whose codes 4 and P the 2015 catalogue doesn't list, and
-    // the nine UNI-ROYAL files.
-    assert!(compared >= 14, "only {compared} parts compared");
+    // the nine UNI-ROYAL files, the two Yageo CC and the one Fenghua file.
+    assert!(compared >= 17, "only {compared} parts compared");
 }
