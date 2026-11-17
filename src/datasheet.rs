@@ -335,6 +335,7 @@ pub fn claims(part: &Part) -> Vec<Claim> {
             DriveKind::Forward => "forward",
             DriveKind::Switches => "switches",
             DriveKind::Biases => "biases",
+            DriveKind::Channel => "channel",
         };
         let context = named(&[d.pin.as_str(), d.to.as_str()]);
         let label = format!("drive {} ({kind} {} to {})", i + 1, d.pin, d.to);
@@ -346,6 +347,19 @@ pub fn claims(part: &Part) -> Vec<Claim> {
                 role: Role::Value,
                 unit: Unit::Amp,
                 page: *page,
+                context: context.clone(),
+                derived: None,
+                other_end: None,
+                avoid: vec![],
+            });
+        }
+        if let Some(o) = &d.on {
+            out.push(Claim {
+                label: format!("{label} on at VGS"),
+                value: Claimed::Number(o.vgs),
+                role: Role::Value,
+                unit: Unit::Volt,
+                page: o.page,
                 context: context.clone(),
                 derived: None,
                 other_end: None,
@@ -1523,7 +1537,8 @@ pub fn render(mpn: &str, outcomes: &[Outcome], all: bool) -> String {
 }
 
 /// The keys of a part file whose values a second reader fills in.
-const VALUE_KEYS: [&str; 19] = [
+const VALUE_KEYS: [&str; 20] = [
+    "on",
     "efficiency",
     "theta_ja",
     "tj_max",
@@ -1861,6 +1876,13 @@ pub fn compare(first: &Part, second: &Part) -> Vec<Difference> {
                 .map(|h| format!("duty {} volts {} (page {})", h.duty, h.volts, h.page))
         };
         opt(&format!("{at} headroom"), h(a), h(b), &mut out);
+        opt(
+            &format!("{at} on at VGS"),
+            a.on.as_ref().map(|o| format!("{} V (page {})", o.vgs, o.page)),
+            b.on.as_ref().map(|o| format!("{} V (page {})", o.vgs, o.page)),
+            &mut out,
+        );
+        opt(&format!("{at} gate"), a.gate.clone(), b.gate.clone(), &mut out);
         opt(
             &format!("{at} test current"),
             a.current.map(|c| c.to_string()),

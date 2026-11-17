@@ -149,8 +149,8 @@ pub fn diagnose(
                 keys.insert(k);
                 continue;
             }
-            // A transistor's channel isn't modelled, so a part file for it wouldn't settle what its pins do to
-            // a net.
+            // A bipolar transistor's (or a dual MOSFET's) channel isn't modelled, so a part file for it wouldn't
+            // settle what its pins do to a net. A single MOSFET's part file can give a `channel` drive.
             let cant_model = text.contains("on a part gerberus can't model");
             for r in references_in(text, design) {
                 if unchecked(&r) && !(cant_model && is_transistor(&design.components[&r])) {
@@ -550,10 +550,11 @@ fn references_in(text: &str, design: &Design) -> BTreeSet<String> {
         .collect()
 }
 
-/// A transistor, whose channel no [[drive]] can describe: gerberus doesn't model MOSFET or BJT channels yet.
+/// A transistor whose channel no [[drive]] can describe: a bipolar one, or a MOSFET whose symbol doesn't name
+/// a single G, D and S (a dual part). A single MOSFET's part file can give a `channel` drive.
 fn is_transistor(c: &crate::design::Component) -> bool {
     let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
-    letters == "Q" || c.lib_id.starts_with("Transistor")
+    (letters == "Q" || c.lib_id.starts_with("Transistor")) && crate::voltage::fet_pins(c).is_none()
 }
 
 /// `3 unknown results wait on it`.

@@ -30,6 +30,15 @@ abs_max = { min = -12, max = 12, page = 1, note = "VGS ±12 V" }
 recommended = { unknown = "no recommended operating conditions are given" }
 
 # No [[drive]] for the body diode: gerberus reads a forward drive as setting the cathode net, which is right for
-# a series diode but not for a low-side switch. gerberus doesn't model the channel, so the drain net comes out
-# UNKNOWN (see Known gaps in parts/README.md). VSD is at most
-# 1 V at IS = 1 A (page 2). ID (5.7 A), IS (2 A) and PD (1.4 W) aren't listed: no rule uses them yet.
+# a series diode but not for a low-side switch. The channel drive below models the switch. VSD is at most 1 V at
+# IS = 1 A (page 2). ID (5.7 A), IS (2 A) and PD (1.4 W) aren't listed: no rule uses them yet.
+
+# The channel: VGS(th) is given at 25 °C only, so gerberus takes the threshold as 0 V. RDS(on) is given down to
+# VGS = 2.5 V, so past that the channel counts as fully on.
+[[drive]]
+kind = "channel"
+pin = "D"
+to = "S"
+gate = "G"
+range = { min = 0.65, max = 1.45, page = 2, note = "VGS(th) gate threshold voltage, VDS = VGS, ID = 250 µA, TJ = 25 °C" }
+on = { vgs = 2.5, page = 2, note = "RDS(on) at VGS = 2.5 V, ID = 3 A: 48 mΩ max" }

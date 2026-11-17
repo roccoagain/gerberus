@@ -111,6 +111,14 @@ to = "K"
 range = { min = { unknown = "only a maximum is given" }, max = 0.6, page = 1, note = "at IF = 1 A" }
 
 [[drive]]
+kind = "channel"       # a MOSFET channel from `pin` (drain) to `to` (source), switched by `gate`
+pin = "D"
+to = "S"
+gate = "G"
+range = { min = 1.1, max = 2.1, page = 6, note = "VGSth, ID = 250 µA, Tj = 25 °C" }   # V(gate) − V(source)
+on = { vgs = 5, page = 6, note = "RDSon at VGS = 5 V" }   # the VGS RDS(on) is given at nearest the threshold
+
+[[drive]]
 kind = "forward"       # an LED: `current` is the IF its VF range is measured at
 pin = "A"
 to = "K"
@@ -129,6 +137,22 @@ AC-coupled: a capacitor brings in a signal (its far side is driven and isn't a 0
 while another input of the same part is AC-coupled (the unused leg of a differential input). Only the datasheet
 can say whether the part biases it. An input with nothing on it but a capacitor to ground, on a part with no
 other AC-coupled input, is still a FAIL.
+
+A `channel` drive's `range` is the gate threshold VGS(th), negative for a P-channel part, and `on` the VGS
+nearest the threshold that RDS(on) is given at. Their signs say whether the part is N- or P-channel. gerberus
+measures the gate from both ends of the channel, since either can act as the source:
+
+- **Off** when the gate never passes either end in the direction that turns the part on (above, for N-channel).
+  The threshold is taken as 0 V rather than the datasheet's minimum, which holds only at 25 °C.
+- **Fully on** when the gate is always at least `on` past one end.
+- **Maybe on** otherwise.
+
+A channel that isn't off pulls each end toward the other, but no further than the gate: an N-channel part can't
+raise a net above its gate (a level shifter's low side stays at or below the gate), and a P-channel part can't
+lower one below it. Its drop depends on a current gerberus doesn't know, so it isn't counted. A gate nothing is
+sure to drive leaves the channel maybe on. A MOSFET with no part file, or a part file with no `channel` drive,
+stays a part gerberus can't model. Keep a P-channel reverse-polarity switch's body diode as a `forward` drive from
+D to S as well: it gives the source its range when the gate can't turn the channel on.
 
 An LED's VF minimum holds only at and above `current`. Below it the LED drops less, so a series resistor's
 current is then bounded with VF taken as 0 V.
@@ -388,6 +412,8 @@ down to the inputs it comes from. It starts from `inputs.toml` (the `to` pins ar
   Above the recommended maximum, the top end follows the supply. Line and load regulation aren't modelled.
 - **Switch nodes** (`switches`): whatever their range gives; both ends are UNKNOWN on today's parts.
 - **Biased inputs** (`biases`): an input reached only through capacitors sits at its bias range.
+- **MOSFET channels** (`channel`): off, fully on or maybe on, from the gate against both ends. A channel that
+  isn't off pulls each end toward the other, no further than the gate; one that is off pulls nothing.
 - **Everything else**: the union of what can pull the net: nets reached through resistors, inductors, LEDs and
   jumpers (capacitors count as open, TVS diodes as off), and IC output pins, which reach at most their part's
   highest supply. A pin of any other part that isn't an input makes the net UNKNOWN.
@@ -495,10 +521,9 @@ Found by the blind second reading of every file (November 2026):
   3.3 V, assuming none drives above 3.3 V. Two more assumptions aren't checked: the probe only senses the
   board's VCC pin and doesn't power the board through it, and the board is powered while a probe is connected.
   A fixed 3.3 V probe on an unpowered board would drive its pins far above VDD + 0.3 V.
-- **MOSFETs** have no model of their channel. AO3401A's and IRF4905PBF's body diodes are a `forward` drive from D
-  to S, which fits their use as reverse-polarity switches (supply into D) and would be wrong in a high-side switch
-  fed at S;
-  2N7002NXAKR and AO3400A have no drive and no channel, so a drain net they alone switch comes out UNKNOWN.
+- **MOSFETs**: AO3401A's and IRF4905PBF's body diodes are a `forward` drive from D to S, which fits their use as
+  reverse-polarity switches (supply into D) and would be wrong in a high-side switch fed at S. All four MOSFETs
+  have a `channel` drive; `stress` still models a forward drive's part as its channel switched on (0.05 Ω).
 - **TPS3808EG50DBVR** (TPS3808E datasheet SNVSCE0B): RESET is open drain, which no drive kind describes, so the
   net it pulls low comes out UNKNOWN. The CT pin's recommended minimum isn't given, and the supply current
   adds the MR pull-up current at its 90 kΩ typical, the only value given.

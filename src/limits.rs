@@ -217,8 +217,21 @@ pub struct Drive {
     /// For a forward drive: the current in amps that `range` was measured at. Below it the forward
     /// voltage falls under `range`'s minimum, so a checker can't count on that minimum there.
     pub current: Option<f64>,
+    /// For a MOSFET channel: the gate pin. `range` is then the gate threshold VGS(th), `V(gate) - V(to)`.
+    pub gate: Option<String>,
+    /// For a MOSFET channel: the gate-source voltage RDS(on) is specified at, past which the channel is fully on.
+    pub on: Option<OnAt>,
     /// `V(pin) - V(to)` in volts, with its page. Conditions (load current, temperature) go in the note.
     pub range: Range,
+}
+
+/// The gate-source voltage a MOSFET's RDS(on) is given at.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OnAt {
+    pub vgs: f64,
+    pub page: u32,
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -234,6 +247,9 @@ pub enum DriveKind {
     /// An input the part biases itself through internal resistors, such as an amplifier's AC-coupled input:
     /// `pin` sits within `range` (which may be relative to the supply) with nothing else driving it.
     Biases,
+    /// A MOSFET channel between `pin` (drain) and `to` (source), switched by `gate`: `range` is the gate
+    /// threshold VGS(th), and `on` the VGS its RDS(on) is given at.
+    Channel,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -567,6 +583,7 @@ impl Part {
         for d in &self.drives {
             out.extend([d.pin.as_str(), d.to.as_str()]);
             out.extend(d.supply.as_deref());
+            out.extend(d.gate.as_deref());
         }
         out
     }
@@ -785,11 +802,30 @@ impl Part {
         }
         for (i, d) in self.drives.iter().enumerate() {
             let at = |what: &str| format!("drive {} ({}): {what}", i + 1, d.pin);
-            if d.kind != DriveKind::Forward && d.supply.is_none() {
+            if !matches!(d.kind, DriveKind::Forward | DriveKind::Channel) && d.supply.is_none() {
                 out.push(at("a regulator, switch node or biased input needs `supply`"));
             }
             if d.kind != DriveKind::Regulates && (d.feedback || d.headroom.is_some()) {
                 out.push(at("only a regulator has `feedback` or `headroom`"));
+            }
+            if d.kind == DriveKind::Channel {
+                if d.gate.is_none() {
+                    out.push(at("a MOSFET channel needs `gate`"));
+                }
+                if let Some(o) = &d.on {
+                    if o.page == 0 || self.datasheet.is_none() || !o.vgs.is_finite() || o.vgs == 0.0 {
+                        out.push(at("`on` needs a datasheet page and a VGS other than 0"));
+                    }
+                    if let Some((lo, hi)) = d.range.values()
+                        && !((o.vgs > 0.0 && lo > 0.0 && o.vgs >= hi) || (o.vgs < 0.0 && hi < 0.0 && o.vgs <= lo))
+                    {
+                        out.push(at(
+                            "`on` must be past the whole threshold range, with the same sign (N-channel above, P-channel below)",
+                        ));
+                    }
+                }
+            } else if d.gate.is_some() || d.on.is_some() {
+                out.push(at("only a MOSFET channel has `gate` or `on`"));
             }
             if let Some(h) = &d.headroom
                 && (h.page == 0 || self.datasheet.is_none() || !(h.duty > 0.0 && h.duty <= 1.0) || h.volts < 0.0)
@@ -798,7 +834,7 @@ impl Part {
                     "headroom needs a datasheet page, a duty in (0, 1] and volts of at least 0",
                 ));
             }
-            for p in [&d.pin, &d.to].into_iter().chain(&d.supply) {
+            for p in [&d.pin, &d.to].into_iter().chain(&d.supply).chain(&d.gate) {
                 if !names.contains(&p.as_str()) {
                     out.push(at(&format!("pin {p:?} is not in [pins]")));
                 }

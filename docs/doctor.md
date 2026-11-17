@@ -52,15 +52,15 @@ What it lists:
 
 How it counts: each UNKNOWN finding on a net is followed back through how the net got its range (what
 `gerberus voltages --explain` prints) to the steps that made it unknown, and to the parts and connector pins those
-steps name. A finding about a part with no part file, or naming one, waits on that part too. A transistor's
-channel isn't modelled, so a step that only says a transistor pin can't be modelled isn't counted against its
-part file. A finding can wait on
+steps name. A finding about a part with no part file, or naming one, waits on that part too. A bipolar
+transistor or a dual MOSFET isn't modelled, so a step that only says its pin can't be modelled isn't counted
+against its part file. A single MOSFET's is: a `channel` drive in its part file models it. A finding can wait on
 several things at once, so adding one may not settle it: each count is how many findings wait on that item, at
 most.
 
 What it leaves out: results it doesn't trace yet. Some stay UNKNOWN whatever is added, because the datasheet gives
 no limit (a MOSFET's recommended operating conditions, an LED's reverse voltage) or gerberus doesn't model the
-circuit yet (a MOSFET's channel, a bootstrap pin). Others need data doctor doesn't point at yet: a part's
+circuit yet (a bipolar transistor, a dual MOSFET, a bootstrap pin). Others need data doctor doesn't point at yet: a part's
 thermal resistance, the board's `temperature` in inputs.toml, or an `[[esd]]` rating. The closing note counts
 them; `gerberus check --unknown` lists every UNKNOWN.
 

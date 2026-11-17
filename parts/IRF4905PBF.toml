@@ -44,3 +44,13 @@ kind = "forward"
 pin = "D"
 to = "S"
 range = { min = { unknown = "only a maximum is given, and the channel can bypass the diode" }, max = 1.6, page = 2, note = "VSD diode forward voltage magnitude, TJ = 25 °C, IS = -38 A, VGS = 0 V (printed -1.6 V for this P-channel part)" }
+
+# The channel: VGS(th) is given at 25 °C only, so gerberus takes the threshold as 0 V. RDS(on) is given only at
+# VGS = -10 V, so past that the channel counts as fully on.
+[[drive]]
+kind = "channel"
+pin = "D"
+to = "S"
+gate = "G"
+range = { min = -4.0, max = -2.0, page = 2, note = "VGS(th) gate threshold voltage, VDS = VGS, ID = -250 µA" }
+on = { vgs = -10, page = 2, note = "RDS(on) at VGS = -10 V, ID = -38 A: 0.02 Ω max" }
