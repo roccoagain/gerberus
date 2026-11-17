@@ -18,11 +18,12 @@ const USAGE: &str = "usage:
   gerberus doctor <design> [--inputs FILE] [--parts DIR]... [--json] [--color WHEN]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
-  gerberus part show <MPN> [--parts DIR]...
+  gerberus part show <MPN> [--parts DIR]... [--out FILE] [--force]
   gerberus part new <design> <REF or MPN> [--parts DIR]... [--stdout] [--force]
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
+  gerberus skill install [DIR] [--force]
   gerberus update
   gerberus --version
 
@@ -82,8 +83,9 @@ against the USB 2.0 Template 1 mask. --plots writes each pair's eye diagram and 
 files into DIR. It reads part capacitance from the same part folders as `parts`, matched by footprint value.
 It exits with status 1 when any error FAILs.
 `part show` prints the part file the library has for a part number: the file itself, or the one its part family
-writes for it (see parts/README.md, \"Part families\"). Save it and run `datasheet verify` on it to check a
-family's values against its datasheet.
+writes for it (see parts/README.md, \"Part families\"). --out FILE writes it to a file instead, making its folder
+(`--out board/parts/<MPN>.toml` makes a copy that overrides the built-in one, to add to); it won't replace a file
+unless --force. Run `datasheet verify` on it to check a family's values against its datasheet.
 
 `part new` starts a part file for a part on the schematic, named by its reference (U2) or part number: the pin
 map, class and datasheet link from the symbol, and every limit unknown until it is read from the datasheet. It
@@ -91,14 +93,18 @@ writes `parts/<MPN>.toml` next to the schematic, or prints it with --stdout. It 
 one for a part the library, a part family or the symbol's own rating already covers, unless --force; and never
 one for a part number another file in the board's part folders already defines.
 
-`datasheet` checks part files against their datasheets (see .claude/skills/datasheet-to-part). `verify` downloads each
+`datasheet` checks part files against their datasheets (see the datasheet-to-part skill). `verify` downloads each
 file's datasheet (cached in --cache, default ~/.cache/gerberus/datasheets), or reads --pdf, or a PDF saved in the
-board's datasheets/ folder (beside parts/, named after the part number or the part file, with .pdf; read
-before any download), and looks for every
-cited value on its page: in the right MIN/TYP/MAX column, in the right unit, on a row that names the pin. It
+board's datasheets/ folder (beside parts/, named after the part number or the part file, with .pdf; read before
+any download), and looks for every cited value on its page: in the right MIN/TYP/MAX column, in the right unit, on a row that names the pin. It
 needs poppler's `pdftotext`. --all also lists confirmed values. It exits with status 1 when a value is missing
 or mismatched. `blank` prints the part file with every datasheet value replaced by \"?\", for a second reader to
 fill in blind; `compare` lists every value where two readings disagree and exits with status 1 if any do.
+
+`skill install` writes the agent skills that ship with gerberus into DIR/.claude/skills (DIR defaults to the
+current folder, the board's repository): check-board (init, doctor, part files, check) and datasheet-to-part
+(reading a datasheet into a part file, verified and read twice). Run it again after `gerberus update` to bring
+them up to date: it replaces the files it wrote, but not one someone has changed since, unless --force.
 
 `update` updates gerberus to the latest release with `gerberus-update`, which the installers put next to it.
 Once a day, gerberus also asks GitHub whether a newer release is out and says so after a command finishes; set
@@ -141,6 +147,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "si" => si(Path::new(path), rest),
         [cmd, sub, rest @ ..] if cmd == "datasheet" => datasheet(sub, rest),
+        [cmd, sub, rest @ ..] if cmd == "skill" && sub == "install" => skill_install(rest),
         [cmd, sub, mpn, rest @ ..] if cmd == "part" && sub == "show" && !mpn.starts_with("--") => part_show(mpn, rest),
         [cmd, sub, path, which, rest @ ..] if cmd == "part" && sub == "new" && !which.starts_with("--") => {
             part_new(Path::new(path), which, rest)
@@ -271,25 +278,67 @@ fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
     Ok(true)
 }
 
+fn skill_install(rest: &[String]) -> Result<bool, String> {
+    let (mut dir, mut force) = (None, false);
+    for a in rest {
+        match a.as_str() {
+            "--force" => force = true,
+            d if !d.starts_with("--") && dir.is_none() => dir = Some(PathBuf::from(d)),
+            _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
+        }
+    }
+    let dir = dir.unwrap_or_else(|| PathBuf::from("."));
+    for (path, outcome) in gerberus::skill::install(&dir, force)? {
+        let what = match outcome {
+            gerberus::skill::Outcome::Written => "wrote",
+            gerberus::skill::Outcome::Updated => "updated",
+            gerberus::skill::Outcome::Replaced => "replaced (--force)",
+            gerberus::skill::Outcome::Unchanged => "up to date",
+        };
+        println!("{what}: {}", path.display());
+    }
+    println!(
+        "an agent working in {} now has the check-board and datasheet-to-part skills",
+        dir.display()
+    );
+    Ok(true)
+}
+
 fn part_show(mpn: &str, rest: &[String]) -> Result<bool, String> {
-    let mut dirs = vec![];
+    let (mut dirs, mut out, mut force) = (vec![], None, false);
     let mut it = rest.iter();
     while let Some(a) = it.next() {
-        match (a.as_str(), it.next()) {
-            ("--parts", Some(d)) => dirs.push(PathBuf::from(d)),
+        match a.as_str() {
+            "--force" => force = true,
+            "--parts" => dirs.push(PathBuf::from(it.next().ok_or("--parts needs a folder")?)),
+            "--out" => out = Some(PathBuf::from(it.next().ok_or("--out needs a file")?)),
             _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
         }
     }
     let lib = load_library(&dirs)?;
+    let text = part_text(&lib, mpn)?;
+    let Some(out) = out else {
+        print!("{text}");
+        return Ok(true);
+    };
+    if out.exists() && !force {
+        return Err(format!("{} already exists; --force replaces it", out.display()));
+    }
+    if let Some(dir) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    std::fs::write(&out, text).map_err(|e| format!("{}: {e}", out.display()))?;
+    println!("wrote {}", out.display());
+    Ok(true)
+}
+
+/// The part file the library has for `mpn`: the file itself, or the one its part family writes.
+fn part_text(lib: &Library, mpn: &str) -> Result<String, String> {
     if let Some(path) = lib.files.get(mpn) {
-        match gerberus::limits::builtin_text(path)
+        return Ok(gerberus::limits::builtin_text(path)
             .map(str::to_string)
             .or_else(|| std::fs::read_to_string(path).ok())
-        {
-            Some(text) => print!("{text}"),
-            None => println!("# {mpn} is in {}", path.display()),
-        }
-        return Ok(true);
+            .unwrap_or_else(|| format!("# {mpn} is in {}\n", path.display())));
     }
     for (path, family) in lib.families.iter().rev() {
         if let Some(text) = family.part_text(mpn) {
@@ -301,13 +350,11 @@ fn part_show(mpn: &str, rest: &[String]) -> Result<bool, String> {
             if !problems.is_empty() {
                 return Err(at(problems.join("; ")));
             }
-            println!(
-                "# Written by the {} family in {} for {mpn}.",
+            return Ok(format!(
+                "# Written by the {} family in {} for {mpn}.\n{text}",
                 family.family,
                 path.display()
-            );
-            print!("{text}");
-            return Ok(true);
+            ));
         }
     }
     Err(format!("no part file or part family has {mpn:?}"))

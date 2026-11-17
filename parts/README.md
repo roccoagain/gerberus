@@ -191,7 +191,7 @@ note = "..."
 ```
 
 `iec-contact` and `iec-air` are system-level ratings: IEC 61000-4-2, or ISO 10605 as automotive parts print it
-(say which in `note`). Only these meet `policy.toml`'s `[esd]` level. A datasheet with no ESD rating gets no
+(say which in `note`). Only these meet the `[esd]` level in gerberus's built-in `policy.toml`. A datasheet with no ESD rating gets no
 `[[esd]]` entry, and its pins on an external connector come out UNKNOWN.
 
 ### Which datasheet number goes where
@@ -321,8 +321,8 @@ Samsung CL capacitors (`samsung-cl.toml`).
 
 ### Derating policy
 
-Datasheet limits are facts; derating is project judgement. It lives in `policy.toml` at the repository root,
-never in a part file:
+Datasheet limits are facts; derating is project judgement. It lives in `policy.toml` at the root of the Gerberus
+repository, never in a part file, and is built into gerberus: a board can't change it yet. Its format:
 
 ```toml
 [[derate]]

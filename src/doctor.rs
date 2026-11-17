@@ -221,7 +221,7 @@ pub fn diagnose(
                     help: match (&file, fitted) {
                         (Some(f), _) if f.ends_with("(built in)") => format!(
                             "the shared library's file has no [[drive]] there: copy it next to the schematic with \
-                             `gerberus part show {m} > {}` and add one for the pin (see \"What a part drives\" in \
+                             `gerberus part show {m} --out {}` and add one for the pin (see \"What a part drives\" in \
                              parts/README.md)",
                             setup.parts.join(file_name(&m)).display()
                         ),
@@ -292,7 +292,7 @@ pub fn diagnose(
                     help: if built_in {
                         format!(
                             "the shared library's file has no limit there: copy it next to the schematic with `gerberus part \
-                             show {m} > {}` and add a [[limit]] naming the pins, from the datasheet",
+                             show {m} --out {}` and add a [[limit]] naming the pins, from the datasheet",
                             setup.parts.join(file_name(m)).display()
                         )
                     } else {
