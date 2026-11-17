@@ -1,5 +1,5 @@
 {
-  "fetched": 1794817738,
+  "fetched": 1794909521,
   "listing": {
     "code": "C123789",
     "mpn": "SMF26A",
@@ -13,7 +13,7 @@
         "code": "C123810",
         "mpn": "SMF24A",
         "manufacturer": "MDD(Microdiode Semiconductor)",
-        "stock": 46380,
+        "stock": 46320,
         "status": "normal",
         "package": "SOD-123FL",
         "description": "38.9VC Clamp 5.1A@10/1000us Ipp TVS DIODE SOD-123FL"
@@ -22,11 +22,25 @@
         "code": "C123813",
         "mpn": "SMF28A",
         "manufacturer": "MDD(Microdiode Semiconductor)",
-        "stock": 28440,
+        "stock": 28420,
         "status": "normal",
         "package": "SOD-123FL",
         "description": "45.4VC Clamp 4.4A@10/1000us Ipp TVS DIODE SOD-123FL"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Clamping Voltage": "42.1V",
+      "Number of Channels": "Single-channel",
+      "Operating Temperature": "-55℃~+150℃",
+      "Peak Pulse Current (Ipp)": "4.8A@10/1000us",
+      "Peak Pulse Power Dissipation (Ppp)": "200W@10/1000us",
+      "Polarity": "Unidirectional",
+      "Reverse Leakage Current (Ir)": "1uA",
+      "Reverse Stand-Off Voltage (Vrwm)": "26V",
+      "Voltage - Breakdown": "31.9V",
+      "type": "TVS"
+    }
+  },
+  "version": 2
 }

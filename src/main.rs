@@ -16,7 +16,7 @@ const USAGE: &str = "usage:
   gerberus check <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [REPORT]
   gerberus init <design> [--parts DIR]... [--stdout] [--force]
   gerberus doctor <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [--json] [--color WHEN]
-  gerberus bom <design> [--boards N] [--from lcsc|mouser|digikey] [--offline] [--cache DIR] [--max-age HOURS]
+  gerberus bom <design> [--boards N] [--jlcpcb] [--from lcsc|mouser|digikey] [--offline] [--cache DIR] [--max-age HOURS] [REPORT]
   gerberus bom <design> --csv FILE [--boards N]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
   gerberus part show <MPN> [--parts DIR]... [--out FILE] [--force]
@@ -76,12 +76,14 @@ doesn't describe (or inputs.toml itself), and limits a part file is missing. Eac
 wait on it. --json prints the list as JSON.
 
 `bom` looks up every BOM line by its LCSC part number: stock for --boards boards (default 10), LCSC's listing
-status, and similar parts from other makers. --from mouser or --from digikey looks lines up by their MPN field
-instead, which gives the manufacturer's lifecycle (active, NRND, obsolete) too; they need an API key in
-MOUSER_API_KEY, or DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET. Answers are cached in --cache (default
-~/.cache/gerberus/<distributor>) for --max-age hours (default 24); --offline uses only the cache. It exits with
-status 1 when any line has an error. --csv FILE writes the BOM, with quantities for --boards boards, as a CSV file
-for DigiKey's or Mouser's BOM upload, and looks nothing up.
+status, and similar parts from other makers. Resistors and capacitors are checked by value, size and ratings
+against LCSC's listing, and short or wrongly rated ones get checked LCSC equivalents. --jlcpcb is for a board
+JLCPCB assembles: a part with no LCSC number is an error, and extended parts are counted. --from mouser or --from
+digikey looks lines up by their MPN field instead, which gives the manufacturer's lifecycle (active, NRND,
+obsolete) too; they need an API key in MOUSER_API_KEY, or DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET. Answers are
+cached in --cache (default ~/.cache/gerberus/<distributor>) for --max-age hours (default 24); --offline uses only
+the cache. It exits with status 1 when any line has an error. --csv FILE writes the BOM, with quantities for
+--boards boards, as a CSV file for DigiKey's or Mouser's BOM upload, and looks nothing up.
 
 `si` checks every USB 2.0 pair on a KiCad board (nets ending in D+/D-, DP/DM or _P/_N with USB in the name):
 impedance from a 2D field solver run on the stackup, skew, vias, stubs, reference planes, length and the
@@ -845,8 +847,11 @@ fn parts(path: &Path, rest: &[String]) -> Result<bool, String> {
 }
 
 fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
-    use gerberus::bom::{Api, Online, Options, Severity, check};
+    use gerberus::bom::{Api, Online, Options, Severity, check_with_parts};
+    let (show, rest) = Show::parse(rest)?;
+    let rest = &rest[..];
     let mut opts = Options::default();
+    let mut parts: Vec<PathBuf> = vec![];
     let mut offline = false;
     let mut cache = None;
     let mut from = "lcsc".to_string();
@@ -856,6 +861,11 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
     while let Some(a) = it.next() {
         match (a.as_str(), it.clone().next()) {
             ("--offline", _) => offline = true,
+            ("--jlcpcb", _) => opts.jlcpcb = true,
+            ("--parts", Some(dir)) => {
+                parts.push(PathBuf::from(dir));
+                it.next();
+            }
             ("--boards", Some(n)) => {
                 opts.boards = n
                     .parse()
@@ -882,7 +892,7 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
                     .map_err(|_| format!("--max-age needs a number of hours, not {h:?}"))?;
                 it.next();
             }
-            ("--boards" | "--cache" | "--max-age" | "--from" | "--csv", None) => {
+            ("--boards" | "--cache" | "--max-age" | "--from" | "--csv" | "--parts", None) => {
                 return Err(format!("{a} needs a value\n{USAGE}"));
             }
             _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
@@ -933,54 +943,31 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
         Some(dir) => Some(dir),
         None => Online::cache_dir_for(&from),
     };
-    let lcsc = matches!(api, Api::Lcsc);
     let mut source = Online::with_api(api, cache, max_age, offline);
-    let report = check(&design, &mut source, opts);
-    let source_name = gerberus::bom::Source::name(&source);
-    let mut count = std::collections::BTreeMap::new();
-    for h in &report {
-        let what = match &h.listing {
-            Some(l) if lcsc => format!(
-                "{} {}, {} in stock, LCSC status {}{}",
-                l.code,
-                l.mpn,
-                l.stock,
-                l.status,
-                l.assembly
-                    .as_deref()
-                    .map(|a| format!(", JLCPCB {a}"))
-                    .unwrap_or_default()
-            ),
-            Some(l) => format!(
-                "{} {}, {} in stock at {}, lifecycle {}",
-                l.code,
-                l.mpn,
-                l.stock,
-                source_name,
-                l.lifecycle.as_deref().unwrap_or("not given")
-            ),
-            None if lcsc => h.line.lcsc.clone().unwrap_or_else(|| "no LCSC number".into()),
-            None => "not found".into(),
-        };
-        println!("{} ({}): {what}", h.line.references.join(", "), h.line.mpn);
-        for f in &h.findings {
-            println!("  {}: {}", f.severity, f.message);
-            *count.entry(f.severity).or_insert(0) += 1;
+    // Part files give resistors' and capacitors' ratings, to compare with LCSC's listing.
+    let local = path.parent().unwrap_or(Path::new(".")).join("parts");
+    let mut dirs: Vec<PathBuf> = vec![];
+    if local.is_dir() {
+        dirs.push(local);
+    }
+    dirs.extend(parts);
+    // A broken part file shouldn't stop a BOM check: without the library, ratings just aren't compared.
+    let lib = match load_library(&dirs) {
+        Ok(mut lib) => {
+            lib.expand_families(&design);
+            Some(lib)
         }
-    }
-    if lcsc {
-        println!("note: {}", gerberus::bom::LIFECYCLE_NOTE);
-    }
-    let n = |s| count.get(&s).copied().unwrap_or(0);
-    println!(
-        "{} lines for {} boards: {} errors, {} warnings, {} unknown",
-        report.len(),
-        opts.boards,
-        n(Severity::Error),
-        n(Severity::Warning),
-        n(Severity::Unknown)
-    );
-    Ok(n(Severity::Error) == 0)
+        Err(e) => {
+            eprintln!("warning: part files not read, so resistor and capacitor ratings aren't compared: {e}");
+            None
+        }
+    };
+    let report = check_with_parts(&design, &mut source, opts, lib.as_ref());
+    let source_name = gerberus::bom::Source::name(&source).to_string();
+    print!("{}", gerberus::bom::render(&report, opts, &source_name, &show));
+    Ok(report
+        .iter()
+        .all(|h| h.findings.iter().all(|f| f.severity != Severity::Error)))
 }
 
 /// Returns whether the board passed (no errors).

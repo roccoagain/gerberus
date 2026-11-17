@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817762,
+  "fetched": 1794909531,
   "listing": {
     "code": "C173513",
     "mpn": "SMAJ18A",
     "manufacturer": "MDD(Microdiode Semiconductor)",
-    "stock": 23680,
+    "stock": 23620,
     "status": "normal",
     "assembly": "extended",
     "package": "DO-214AC(SMA)",
@@ -18,6 +18,20 @@
         "package": "SMA(DO-214AC)",
         "description": "27.6VC Clamp 14.5A Ipp TVS DIODE SMA(DO-214AC)"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Clamping Voltage": "29.2V",
+      "Number of Channels": "Single-channel",
+      "Operating Temperature": "-65℃~+150℃",
+      "Peak Pulse Current (Ipp)": "13.7A@10/1000us",
+      "Peak Pulse Power Dissipation (Ppp)": "400W@10/1000us",
+      "Polarity": "Unidirectional",
+      "Reverse Leakage Current (Ir)": "1uA",
+      "Reverse Stand-Off Voltage (Vrwm)": "18V",
+      "Voltage - Breakdown": "22.1V",
+      "type": "TVS"
+    }
+  },
+  "version": 2
 }

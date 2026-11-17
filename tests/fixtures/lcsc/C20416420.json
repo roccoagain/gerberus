@@ -1,0 +1,40 @@
+{
+  "fetched": 1794909530,
+  "listing": {
+    "code": "C20416420",
+    "mpn": "TCC0805X5R226M250FT",
+    "manufacturer": "CCTC",
+    "stock": 145935,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "0805",
+    "similar": [
+      {
+        "code": "C48986262",
+        "mpn": "TCC0805X5R226K250FT",
+        "manufacturer": "CCTC",
+        "stock": 37545,
+        "status": "normal",
+        "package": "0805",
+        "description": "22uF X5R ±10% 25V 0805 Ceramic Capacitors"
+      },
+      {
+        "code": "C55251641",
+        "mpn": "TCC0805X5R226M250FTI",
+        "manufacturer": "CCTC",
+        "stock": 0,
+        "status": "normal",
+        "package": "0805",
+        "description": "22uF X5R ±20% 25V 0805 Ceramic Capacitors"
+      }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Capacitance": "22uF",
+      "Temperature Coefficient": "X5R",
+      "Tolerance": "±20%",
+      "Voltage Rating": "25V"
+    }
+  },
+  "version": 2
+}

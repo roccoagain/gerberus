@@ -1,13 +1,28 @@
 {
-  "fetched": 1794817738,
+  "fetched": 1794909521,
   "listing": {
     "code": "C2286",
     "mpn": "KT-0603R",
     "manufacturer": "Hubei KENTO Elec",
-    "stock": 3151400,
+    "stock": 2967900,
     "status": "normal",
     "assembly": "basic",
     "package": "0603",
-    "similar": []
-  }
+    "similar": [],
+    "lifecycle": null,
+    "params": {
+      "Diode Configuration": "Discrete Diode",
+      "Forward Current": "20mA",
+      "Illumination Color": "Red",
+      "Lamp Holder Type": "1.6mm x 0.8mm square LED",
+      "Lens Color": "Water Clear",
+      "Luminous Intensity": "300mcd",
+      "Operating Temperature": "-40℃~+85℃",
+      "Peak Wavelength": "645nm",
+      "Viewing Angle": "120°",
+      "Voltage - Forward(Vf)": "1.8V~2.4V",
+      "Wavelength": "615nm~630nm"
+    }
+  },
+  "version": 2
 }

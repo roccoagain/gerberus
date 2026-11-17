@@ -1,0 +1,24 @@
+{
+  "fetched": 1794909537,
+  "listing": {
+    "code": "C2989264",
+    "mpn": "TC0350B1002T5F",
+    "manufacturer": "UNI-ROYAL",
+    "stock": 13150,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "0603",
+    "similar": [],
+    "lifecycle": null,
+    "params": {
+      "Operating Temperature": "-55℃~+155℃",
+      "Power(Watts)": "100mW",
+      "Resistance": "10kΩ",
+      "Temperature Coefficient": "±50ppm/℃",
+      "Tolerance": "±0.1%",
+      "Type": "Thin Film Resistor",
+      "Voltage Rating": "75V"
+    }
+  },
+  "version": 2
+}

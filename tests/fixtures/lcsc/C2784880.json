@@ -1,0 +1,34 @@
+{
+  "fetched": 1794909536,
+  "listing": {
+    "code": "C2784880",
+    "mpn": "PS03W4F1002T5E",
+    "manufacturer": "UNI-ROYAL",
+    "stock": 30200,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "0603",
+    "similar": [
+      {
+        "code": "C2772694",
+        "mpn": "ES03W4F1002T5E",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0603",
+        "description": "250mW 10kΩ 150V Thick Film Resistor ±1% 0603 Chip Resistor - Surface Mount"
+      }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Operating Temperature": "-55℃~+155℃",
+      "Power(Watts)": "250mW",
+      "Resistance": "10kΩ",
+      "Temperature Coefficient": "±100ppm/℃",
+      "Tolerance": "±1%",
+      "Type": "Thick Film Resistor",
+      "Voltage Rating": "75V"
+    }
+  },
+  "version": 2
+}

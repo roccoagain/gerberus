@@ -1,0 +1,21 @@
+{
+  "fetched": 1794909530,
+  "listing": {
+    "code": "C129303",
+    "mpn": "0805X226M250NT",
+    "manufacturer": "FH",
+    "stock": 53720,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "0805",
+    "similar": [],
+    "lifecycle": null,
+    "params": {
+      "Capacitance": "22uF",
+      "Temperature Coefficient": "X5R",
+      "Tolerance": "±20%",
+      "Voltage Rating": "25V"
+    }
+  },
+  "version": 2
+}

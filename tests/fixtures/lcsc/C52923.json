@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817738,
+  "fetched": 1794909531,
   "listing": {
     "code": "C52923",
     "mpn": "CL05A105KA5NQNC",
     "manufacturer": "Samsung Electro-Mechanics",
-    "stock": 5456600,
+    "stock": 511000,
     "status": "normal",
     "assembly": "basic",
     "package": "0402",
@@ -13,7 +13,7 @@
         "code": "C16193167",
         "mpn": "CL05A105KA5NNNC",
         "manufacturer": "Samsung Electro-Mechanics",
-        "stock": 28270,
+        "stock": 28200,
         "status": "normal",
         "package": "0402",
         "description": "1uF X5R ±10% 25V 0402 Ceramic Capacitors RoHS"
@@ -31,7 +31,7 @@
         "code": "C2186557",
         "mpn": "GRM155R61E105KA12J",
         "manufacturer": "muRata",
-        "stock": 74500,
+        "stock": 74400,
         "status": "normal",
         "package": "0402",
         "description": "1uF ±10% 25V Ceramic Capacitor X5R 0402"
@@ -49,11 +49,19 @@
         "code": "C326568",
         "mpn": "CC0402KRX5R8BB105",
         "manufacturer": "YAGEO",
-        "stock": 138160,
+        "stock": 134120,
         "status": "normal",
         "package": "0402",
         "description": "1uF ±10% 25V Ceramic Capacitor X5R 0402"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Capacitance": "1uF",
+      "Temperature Coefficient": "X5R",
+      "Tolerance": "±10%",
+      "Voltage Rating": "25V"
+    }
+  },
+  "version": 2
 }

@@ -1,0 +1,31 @@
+{
+  "fetched": 1794909530,
+  "listing": {
+    "code": "C33546009",
+    "mpn": "HGC0805R5226M250NSLJ",
+    "manufacturer": "Chinocera",
+    "stock": 182185,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "0805",
+    "similar": [
+      {
+        "code": "C22367832",
+        "mpn": "HGC0805R5226M350NSLJ",
+        "manufacturer": "Chinocera",
+        "stock": 126975,
+        "status": "normal",
+        "package": "0805",
+        "description": "22uF ±20% 35V Ceramic Capacitor X5R 0805"
+      }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Capacitance": "22uF",
+      "Temperature Coefficient": "X5R",
+      "Tolerance": "±20%",
+      "Voltage Rating": "25V"
+    }
+  },
+  "version": 2
+}

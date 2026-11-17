@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817760,
+  "fetched": 1794909526,
   "listing": {
     "code": "C160404",
     "mpn": "SM04B-SRSS-TB(LF)(SN)",
     "manufacturer": "JST",
-    "stock": 60115,
+    "stock": 8945,
     "status": "normal",
     "assembly": "extended",
     "package": "SMD,P=1mm,Surface Mount,Right Angle",
@@ -31,7 +31,7 @@
         "code": "C54905904",
         "mpn": "LAIL-PHC1.0-4P-01-SH-WT",
         "manufacturer": "LAILAN",
-        "stock": 60850,
+        "stock": 60845,
         "status": "normal",
         "package": "SMD,P=1mm,Surface Mount,Right Angle",
         "description": "Surface Mount, Right Angle SH 50V 4 1 1mm 1A -25℃~+85℃ 4P Tin Beige 1x4P SMD,P=1mm,Surface Mount,Right Angle Headers, Male Pins"
@@ -54,6 +54,27 @@
         "package": "SMD,P=1mm",
         "description": "Connector Header 4 position 1mm Pitch 1A Surface Mount,Vertical -25℃~+85℃"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Color": "White",
+      "Connector Type": "Surface Mount, Right Angle",
+      "Contact Material": "Copper Alloy",
+      "Contact Plating": "Tin",
+      "Current Rating": "1A",
+      "Flame Retardant Rating": "UL94V-0",
+      "Number of PINs": "4P",
+      "Number of PINs Per Row": "4",
+      "Number of Rows": "1",
+      "Operating Temperature": "-25℃~+85℃",
+      "Pin Structure": "1x4P",
+      "Pitch": "1mm",
+      "Plastic Material": "PA",
+      "Reference Series": "SH",
+      "Supplementary Features": "Auxiliary Solder Pin",
+      "Voltage Rating (Max)": "50V",
+      "X-Length of Bottom Edge on Board (Spacing Line)": "6mm"
+    }
+  },
+  "version": 2
 }
