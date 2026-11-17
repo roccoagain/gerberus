@@ -14,7 +14,7 @@ Using it:
 - [Junction temperature and derating](thermal.md): `loads`, junction temperature, forward current.
 - [Hot-plug stress](stress.md): `stress`, the SPICE simulation and what it models.
 - [Pinout check](pinout.md): `pinout`.
-- [BOM health](bom.md): `bom`, stock and second sources at LCSC.
+- [BOM health](bom.md): `bom`, stock, lifecycle and second sources at LCSC, Mouser or DigiKey, and an order CSV.
 - [USB signal integrity](usb-si.md): `si`, impedance, skew, stubs and the eye diagram.
 - [Datasheet checks](datasheets.md): `datasheet verify`, `blank` and `compare`, for adding part files.
 

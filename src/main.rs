@@ -16,7 +16,8 @@ const USAGE: &str = "usage:
   gerberus check <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [REPORT]
   gerberus init <design> [--parts DIR]... [--stdout] [--force]
   gerberus doctor <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [--json] [--color WHEN]
-  gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
+  gerberus bom <design> [--boards N] [--from lcsc|mouser|digikey] [--offline] [--cache DIR] [--max-age HOURS]
+  gerberus bom <design> --csv FILE [--boards N]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
   gerberus part show <MPN> [--parts DIR]... [--out FILE] [--force]
   gerberus part new <design> <REF or MPN> [--parts DIR]... [--stdout] [--force]
@@ -75,8 +76,12 @@ doesn't describe (or inputs.toml itself), and limits a part file is missing. Eac
 wait on it. --json prints the list as JSON.
 
 `bom` looks up every BOM line by its LCSC part number: stock for --boards boards (default 10), LCSC's listing
-status, and similar parts from other makers. Answers are cached in --cache (default ~/.cache/gerberus/lcsc) for
---max-age hours (default 24); --offline uses only the cache. It exits with status 1 when any line has an error.
+status, and similar parts from other makers. --from mouser or --from digikey looks lines up by their MPN field
+instead, which gives the manufacturer's lifecycle (active, NRND, obsolete) too; they need an API key in
+MOUSER_API_KEY, or DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET. Answers are cached in --cache (default
+~/.cache/gerberus/<distributor>) for --max-age hours (default 24); --offline uses only the cache. It exits with
+status 1 when any line has an error. --csv FILE writes the BOM, with quantities for --boards boards, as a CSV file
+for DigiKey's or Mouser's BOM upload, and looks nothing up.
 
 `si` checks every USB 2.0 pair on a KiCad board (nets ending in D+/D-, DP/DM or _P/_N with USB in the name):
 impedance from a 2D field solver run on the stackup, skew, vias, stubs, reference planes, length and the
@@ -840,10 +845,12 @@ fn parts(path: &Path, rest: &[String]) -> Result<bool, String> {
 }
 
 fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
-    use gerberus::bom::{Lcsc, Options, Severity, check};
+    use gerberus::bom::{Api, Online, Options, Severity, check};
     let mut opts = Options::default();
     let mut offline = false;
-    let mut cache = Lcsc::default_cache_dir();
+    let mut cache = None;
+    let mut from = "lcsc".to_string();
+    let mut csv = None;
     let mut max_age_hours: u64 = 24;
     let mut it = rest.iter();
     while let Some(a) = it.next() {
@@ -857,6 +864,14 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
                     .ok_or(format!("--boards needs a positive number, not {n:?}"))?;
                 it.next();
             }
+            ("--from", Some(d)) => {
+                from = d.to_ascii_lowercase();
+                it.next();
+            }
+            ("--csv", Some(f)) => {
+                csv = Some(PathBuf::from(f));
+                it.next();
+            }
             ("--cache", Some(dir)) => {
                 cache = Some(PathBuf::from(dir));
                 it.next();
@@ -867,7 +882,9 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
                     .map_err(|_| format!("--max-age needs a number of hours, not {h:?}"))?;
                 it.next();
             }
-            ("--boards" | "--cache" | "--max-age", None) => return Err(format!("{a} needs a value\n{USAGE}")),
+            ("--boards" | "--cache" | "--max-age" | "--from" | "--csv", None) => {
+                return Err(format!("{a} needs a value\n{USAGE}"));
+            }
             _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
         }
     }
@@ -876,12 +893,48 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
         .map(std::time::Duration::from_secs)
         .ok_or(format!("--max-age {max_age_hours} is too large"))?;
     let design = gerberus::load(path)?;
-    let mut source = Lcsc::new(cache, max_age, offline);
+    if let Some(file) = csv {
+        std::fs::write(&file, gerberus::bom::order_csv(&design, opts.boards))
+            .map_err(|e| format!("can't write {}: {e}", file.display()))?;
+        println!(
+            "wrote {} lines for {} boards to {}",
+            gerberus::bom::lines(&design).len(),
+            opts.boards,
+            file.display()
+        );
+        return Ok(true);
+    }
+    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+    // Offline, only the cache is read, so no key is needed.
+    let key = |k: &str| -> Result<String, String> {
+        match env(k) {
+            Some(v) => Ok(v),
+            None if offline => Ok(String::new()),
+            None => Err(format!(
+                "--from {from} needs an API key in {k}; see docs/bom.md for how to get one"
+            )),
+        }
+    };
+    let api = match from.as_str() {
+        "lcsc" => Api::Lcsc,
+        "mouser" => Api::Mouser {
+            key: key("MOUSER_API_KEY")?,
+        },
+        "digikey" => Api::DigiKey {
+            client_id: key("DIGIKEY_CLIENT_ID")?,
+            client_secret: key("DIGIKEY_CLIENT_SECRET")?,
+        },
+        other => return Err(format!("--from takes lcsc, mouser or digikey, not {other:?}")),
+    };
+    let cache = cache.or_else(|| Online::cache_dir_for(&from));
+    let lcsc = matches!(api, Api::Lcsc);
+    let mut source = Online::with_api(api, cache, max_age, offline);
     let report = check(&design, &mut source, opts);
+    let source_name = gerberus::bom::Source::name(&source);
     let mut count = std::collections::BTreeMap::new();
     for h in &report {
         let what = match &h.listing {
-            Some(l) => format!(
+            Some(l) if lcsc => format!(
                 "{} {}, {} in stock, LCSC status {}{}",
                 l.code,
                 l.mpn,
@@ -892,7 +945,16 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
                     .map(|a| format!(", JLCPCB {a}"))
                     .unwrap_or_default()
             ),
-            None => h.line.lcsc.clone().unwrap_or_else(|| "no LCSC number".into()),
+            Some(l) => format!(
+                "{} {}, {} in stock at {}, lifecycle {}",
+                l.code,
+                l.mpn,
+                l.stock,
+                source_name,
+                l.lifecycle.as_deref().unwrap_or("not given")
+            ),
+            None if lcsc => h.line.lcsc.clone().unwrap_or_else(|| "no LCSC number".into()),
+            None => "not found".into(),
         };
         println!("{} ({}): {what}", h.line.references.join(", "), h.line.mpn);
         for f in &h.findings {
@@ -900,7 +962,9 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
             *count.entry(f.severity).or_insert(0) += 1;
         }
     }
-    println!("note: {}", gerberus::bom::LIFECYCLE_NOTE);
+    if lcsc {
+        println!("note: {}", gerberus::bom::LIFECYCLE_NOTE);
+    }
     let n = |s| count.get(&s).copied().unwrap_or(0);
     println!(
         "{} lines for {} boards: {} errors, {} warnings, {} unknown",
