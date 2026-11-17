@@ -13,6 +13,7 @@ const USAGE: &str = "usage:
   gerberus voltages <design> [--inputs FILE] [--parts DIR]... [--fault CASE] [--explain NET]...
   gerberus loads <design> [--inputs FILE] [--parts DIR]...
   gerberus stress <design> [--inputs FILE] [--parts DIR]... [--runs N] [--seed N] [--netlist FILE] [REPORT]
+  gerberus signal <design> [--inputs FILE] [--parts DIR]... [--json] [REPORT]
   gerberus check <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [REPORT]
   gerberus init <design> [--parts DIR]... [--stdout] [--force]
   gerberus doctor <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [--json] [--color WHEN]
@@ -150,6 +151,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "voltages" => voltages(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "loads" => loads(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "stress" => stress(Path::new(path), rest),
+        [cmd, path, rest @ ..] if cmd == "signal" => signal(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "doctor" => doctor(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "init" => init(Path::new(path), rest),
@@ -776,6 +778,34 @@ fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
         print!("{}", gerberus::spice::describe(&design, &sweep));
+        print!("{}", gerberus::rules::render(&design, &v, &report, &show));
+    }
+    Ok(report.errors() == 0)
+}
+
+fn signal(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let (show, rest) = Show::parse(rest)?;
+    let mut json = false;
+    let mut others = vec![];
+    for a in rest {
+        match a.as_str() {
+            "--json" => json = true,
+            _ => others.push(a.clone()),
+        }
+    }
+    let o = options(path, &others, &["--inputs"])?;
+    let (design, lib, inputs, v) = analyse(path, &o)?;
+    let levels = gerberus::signal::levels(&design, &lib, &inputs, &v)?;
+    let report = gerberus::rules::Report {
+        findings: gerberus::signal::check(&design, &lib, &levels),
+        waived: vec![],
+        waivers_file: String::new(),
+        cases: vec![],
+    };
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
+    } else {
+        print!("{}", gerberus::signal::describe(&design, &levels));
         print!("{}", gerberus::rules::render(&design, &v, &report, &show));
     }
     Ok(report.errors() == 0)

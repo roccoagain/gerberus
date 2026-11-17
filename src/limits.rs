@@ -61,6 +61,26 @@ pub struct Part {
     /// A switching regulator's lowest efficiency over the loads and supplies the note gives, as a fraction.
     /// Without it, a checker can't work out what the regulator draws from its input or dissipates.
     pub efficiency: Option<Rated>,
+    /// The amplifiers in the part, for `gerberus signal`.
+    #[serde(default, rename = "opamp")]
+    pub opamps: Vec<OpAmp>,
+}
+
+/// One operational amplifier in a part: its pins, and how close to its supply rails its output gets.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpAmp {
+    /// The non-inverting input.
+    pub plus: String,
+    /// The inverting input.
+    pub minus: String,
+    pub out: String,
+    /// The positive and negative supply pins.
+    pub vpos: String,
+    pub vneg: String,
+    /// The most the output stays away from either rail, in volts, at the load in the note: the MAX of the
+    /// datasheet's output swing from rail.
+    pub swing: Option<Rated>,
 }
 
 /// One datasheet number with its page.
@@ -580,6 +600,15 @@ impl Part {
                 }
             }
         }
+        for a in &self.opamps {
+            out.extend([
+                a.plus.as_str(),
+                a.minus.as_str(),
+                a.out.as_str(),
+                a.vpos.as_str(),
+                a.vneg.as_str(),
+            ]);
+        }
         for d in &self.drives {
             out.extend([d.pin.as_str(), d.to.as_str()]);
             out.extend(d.supply.as_deref());
@@ -798,6 +827,19 @@ impl Part {
                 if !names.contains(&p.as_str()) {
                     out.push(at(&format!("pin {p:?} is not in [pins]")));
                 }
+            }
+        }
+        for (i, a) in self.opamps.iter().enumerate() {
+            let at = |what: &str| format!("opamp {} ({}): {what}", i + 1, a.out);
+            for p in [&a.plus, &a.minus, &a.out, &a.vpos, &a.vneg] {
+                if !names.contains(&p.as_str()) {
+                    out.push(at(&format!("pin {p:?} is not in [pins]")));
+                }
+            }
+            if let Some(s) = &a.swing
+                && (!(s.value >= 0.0 && s.value.is_finite()) || s.page == 0 || self.datasheet.is_none())
+            {
+                out.push(at("swing needs a datasheet page and volts of at least 0"));
             }
         }
         for (i, d) in self.drives.iter().enumerate() {
@@ -1130,6 +1172,7 @@ pub fn class_default(c: &Component) -> Option<Part> {
         tj_max: None,
         supply: Vec::new(),
         efficiency: None,
+        opamps: vec![],
     })
 }
 

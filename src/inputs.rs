@@ -26,6 +26,33 @@ pub struct BoardInputs {
     /// The ambient temperature range the board works in. Without it, parts are taken over their own rated
     /// range.
     pub temperature: Option<BoardTemperature>,
+    /// Signals brought in at connector pins, such as a guitar or a line input, for `gerberus signal`.
+    #[serde(default, rename = "signal")]
+    pub signals: Vec<Signal>,
+}
+
+/// An AC signal between two pins, such as a guitar's tip from its sleeve: up to `peak` volts either way from
+/// wherever the board biases the pin, across `frequency`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Signal {
+    pub name: String,
+    pub pin: PinRef,
+    pub to: PinRef,
+    /// The largest peak, in volts (half the peak-to-peak).
+    pub peak: f64,
+    /// The band, in hertz: 20 Hz to 20 kHz when it isn't given.
+    #[serde(default = "audio_band")]
+    pub frequency: [f64; 2],
+    /// The source reaches the pin through a capacitor, so the board sets the pin's DC bias. Otherwise the pin is
+    /// held at the DC of `to`, as a DC-coupled source (a pickup, a line driver into a DC path) would.
+    #[serde(default)]
+    pub ac_coupled: bool,
+    pub source: String,
+}
+
+fn audio_band() -> [f64; 2] {
+    [20.0, 20e3]
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -177,6 +204,7 @@ impl BoardInputs {
             undriven: vec![],
             differential: vec![],
             temperature: None,
+            signals: vec![],
         }
     }
 
@@ -270,6 +298,22 @@ impl BoardInputs {
     /// Everything that doesn't match the design or doesn't make sense. Empty when the file is sound.
     pub fn problems(&self, design: &Design) -> Vec<String> {
         let mut out = Vec::new();
+        for s in &self.signals {
+            for p in [&s.pin, &s.to] {
+                if design.pin_net(&p.reference, &p.pin).is_none() {
+                    out.push(format!("signal {}: pin {p} is not in the design", s.name));
+                }
+            }
+            if !(s.peak > 0.0 && s.peak.is_finite()) {
+                out.push(format!("signal {}: peak must be above 0 V", s.name));
+            }
+            if !(s.frequency[0] > 0.0 && s.frequency[0] < s.frequency[1] && s.frequency[1].is_finite()) {
+                out.push(format!(
+                    "signal {}: frequency must be [low, high] in Hz, low above 0",
+                    s.name
+                ));
+            }
+        }
         for (n, i) in self.inputs.iter().enumerate() {
             if self.inputs[..n].iter().any(|j| j.name == i.name) {
                 out.push(format!("{}: the name is used twice", i.name));

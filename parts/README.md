@@ -166,6 +166,24 @@ tcr = { ppm = 100, page = 6 }
 temperature = { min = -55, max = 155, page = 5 }
 ```
 
+### Op-amps
+
+An `[[opamp]]` names one amplifier's pins, for `gerberus signal`, which models it as an ideal amplifier:
+
+```toml
+[[opamp]]
+plus = "+IN"
+minus = "–IN"
+out = "OUT"
+vpos = "V+"
+vneg = "V–"
+swing = { value = 0.02, page = 10, note = "output swing from rail, VS = 5.5 V, RL = 10 kΩ, MAX" }
+```
+
+`swing` is the MAX of the datasheet's output swing from the rails (or the supply less the MIN output voltage
+high), at the load in the note. Without it, an output inside its rails is UNKNOWN rather than PASS. A dual
+op-amp has two entries.
+
 ### Power and temperature
 
 Any part can give its rated ambient range, its thermal resistance and junction limit, the most current it draws,
@@ -395,6 +413,26 @@ to = "J1.4"
 min = 7
 max = 26
 source = "hardware/can-encoder/DESIGN.md: input range 7–26 V"
+```
+
+#### Signals
+
+A `[[signal]]` is an AC signal brought in at a connector, for `gerberus signal`: up to `peak` volts either side
+of the pin's DC bias, across `frequency` (20 Hz to 20 kHz when it isn't given). By default the source is
+DC-coupled, as a pickup or a line driver into a DC path is: it holds the pin at the DC of `to`, or, when the pin has
+an `[[input]]`, anywhere in that input's range less the peak at each end (the input's range is the pin's whole
+voltage, the swing included). With `ac_coupled = true` it reaches the pin through a capacitor, so the board sets the
+pin's bias. Two DC-coupled signals can't hold one pin:
+
+```toml
+[[signal]]
+name = "guitar"
+pin = "J1.T"
+to = "J1.S"
+peak = 1.5                  # volts, half the peak-to-peak
+frequency = [20, 20000]     # hertz
+ac_coupled = false          # true: the source is capacitor-coupled, the board biases the pin
+source = "DESIGN.md: passive pickups, 1.5 V peak (3 Vpp)"
 ```
 
 ## Net voltages
