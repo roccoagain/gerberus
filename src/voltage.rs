@@ -356,11 +356,15 @@ fn compute_with(design: &Design, lib: &Library, inputs: &BoardInputs, channels: 
         let nets: Vec<usize> = c.pins.values().map(|p| p.net).collect();
         if let [a, b] = nets[..]
             && !c.dnp
-            && is_bead(c)
+            && let Some(what) = short_kind(c)
         {
             shorts.push(Short {
-                via: format!("ferrite bead {r}"),
-                note: ", a DC short".into(),
+                via: format!("{what} {r}"),
+                note: if what == "fuse" {
+                    ", a DC short while it is intact".into()
+                } else {
+                    ", a DC short".into()
+                },
                 a,
                 b,
             });
@@ -875,6 +879,25 @@ fn is_capacitor(lib: &Library, c: &Component) -> bool {
     c.lib_id.starts_with("Device:C") || class_of(lib, c) == Some(Class::Capacitor)
 }
 
+/// A two-pin part that is a DC short, and what it is: a ferrite bead, a net tie (`Device:NetTie*`, `NT1`) or a
+/// fuse (`Device:Fuse*`, `Device:Polyfuse*`, `F1`).
+fn short_kind(c: &Component) -> Option<&'static str> {
+    if c.pins.len() != 2 {
+        return None;
+    }
+    let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
+    let symbol = c.lib_id.rsplit(':').next().unwrap_or("");
+    if is_bead(c) {
+        Some("ferrite bead")
+    } else if symbol.starts_with("NetTie") || letters == "NT" {
+        Some("net tie")
+    } else if c.lib_id.starts_with("Device:Fuse") || c.lib_id.starts_with("Device:Polyfuse") || letters == "F" {
+        Some("fuse")
+    } else {
+        None
+    }
+}
+
 /// A ferrite bead, by its symbol (`Device:FerriteBead*`, `Device:Ferrite*`) or its reference (`FB1`).
 fn is_bead(c: &Component) -> bool {
     let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
@@ -887,12 +910,14 @@ fn is_inductor_symbol(c: &Component) -> bool {
 }
 
 /// A two-pin part a net's voltage passes through, for the fallback range: resistors, inductors and ferrite
-/// beads (and so LEDs, `Device:L*`), and jumpers, which may be closed.
+/// beads (and so LEDs, `Device:L*`), net ties and fuses, and jumpers and two-pin switches, which may be closed.
 fn is_link(lib: &Library, c: &Component) -> bool {
     c.pins.len() == 2
         && (c.lib_id.starts_with("Device:R")
             || is_inductor_symbol(c)
+            || short_kind(c).is_some()
             || c.lib_id.starts_with("Jumper:")
+            || c.lib_id.starts_with("Switch:")
             || matches!(class_of(lib, c), Some(Class::Resistor | Class::Inductor | Class::Led)))
 }
 

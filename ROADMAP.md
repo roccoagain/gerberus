@@ -33,7 +33,7 @@ Point Gerberus at a new board and get useful answers in minutes. Every `UNKNOWN`
 - [ ] More families: UNI-ROYAL thick film (01005 to 2512, such as 0402WGF and 0603WAF) is built in; so are Yageo CC X7R and Fenghua general MLCCs. Still to come: Stackpole RMCF, Murata GRM and KEMET, Yageo CC NP0, and inductors.
 - [ ] Bulk library: JLCPCB basic parts first, then the most-used extended parts, each through `datasheet verify` and a blind second reading. Track what share of the test boards' parts are covered.
 - [x] Test points are skipped instead of `UNCHECKED`. (Mounting holes, fiducials and logos left out of the BOM are already skipped.)
-- [ ] Net ties join their two nets in the voltage engine and in `stress`, instead of staying `UNCHECKED`.
+- [x] Net ties join their two nets in the voltage engine and in `stress`, instead of staying `UNCHECKED`. Fuses count as shorts too, and two-pin switches as links that may be closed.
 - [ ] Modules and dev boards (Daisy Seed, ESP32 and STM32 modules, Raspberry Pi Pico) as parts with their header pinout and limits.
 - [ ] A `[[variant]]` the datasheet doesn't list (PESD5V0S1BAF), allowed only with a source from the maker that it is the same part.
 - [x] `gerberus part new <design> <REF or MPN>`: writes a part file into the project's `parts/` folder from the schematic (pins from the symbol, class from the reference, every value `{ unknown = "not read from the datasheet yet" }`), ready to fill in and `datasheet verify`; `doctor` lists it until it is filled in. Reading a PDF given with `--pdf` waits for the `datasheets/` folder.

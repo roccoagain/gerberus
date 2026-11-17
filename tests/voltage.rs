@@ -660,3 +660,41 @@ fn a_floating_gate_leaves_its_channel_maybe_on() {
     let q8 = v.channels.iter().find(|c| c.reference == "Q8").unwrap();
     assert_eq!(q8.state, ChannelState::Maybe, "{}", q8.reason);
 }
+
+/// A fuse and a net tie are DC shorts, so the net past them takes the driven net's range; a two-pin switch may
+/// be closed, so the net past it is pulled toward the driven one.
+#[test]
+fn fuses_net_ties_and_switches_pass_a_rail_through() {
+    use gerberus::design::Net;
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    for name in ["FUSED", "TIED", "SWITCHED"] {
+        d.nets.push(Net {
+            name: name.into(),
+            pins: vec![],
+            labels: vec![],
+        });
+    }
+    add_part(&mut d, "F9", "Device:Fuse", "VBUS", "FUSED");
+    add_part(&mut d, "NT9", "Device:NetTie_2", "+5V", "TIED");
+    add_part(&mut d, "SW9", "Switch:SW_SPST", "+3V3", "SWITCHED");
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    assert_eq!(span(&d, &v, "FUSED"), span(&d, &v, "VBUS"));
+    assert!(
+        text(&v, &d, "FUSED").contains("through fuse F9"),
+        "{}",
+        text(&v, &d, "FUSED")
+    );
+    assert_eq!(span(&d, &v, "TIED"), span(&d, &v, "+5V"));
+    assert!(
+        text(&v, &d, "TIED").contains("through net tie NT9"),
+        "{}",
+        text(&v, &d, "TIED")
+    );
+    assert_eq!(span(&d, &v, "SWITCHED"), span(&d, &v, "+3V3"));
+    assert!(
+        text(&v, &d, "SWITCHED").contains("pulled through SW9"),
+        "{}",
+        text(&v, &d, "SWITCHED")
+    );
+}
