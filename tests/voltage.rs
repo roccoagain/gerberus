@@ -500,3 +500,103 @@ fn fault_cases_replace_normal_inputs() {
     assert!(close(span(&d, &v, "/CANL"), -4.5, 7.06));
     assert!(close(span(&d, &v, "Net-(JP1-B)"), -4.5, 26.0));
 }
+
+/// Adds a MOSFET Q9 with pins 1 = G, 2 = S, 3 = D, and a net `LOAD`, pulled up to +5V by R99, for whichever
+/// pins name it.
+fn add_fet(d: &mut Design, value: &str, gate: &str, source: &str, drain: &str) {
+    use gerberus::design::{Component, Net, Pin, PinKind};
+    d.nets.push(Net {
+        name: "LOAD".into(),
+        pins: vec![],
+        labels: vec![],
+    });
+    add_part(d, "R99", "Device:R", "LOAD", "+5V");
+    let mut c = Component {
+        reference: "Q9".into(),
+        value: value.into(),
+        lib_id: "Transistor_FET:2N7002".into(),
+        in_bom: true,
+        on_board: true,
+        ..Default::default()
+    };
+    for (num, name, net) in [("1", "G", gate), ("2", "S", source), ("3", "D", drain)] {
+        let i = net_index(d, net);
+        c.pins.insert(
+            num.into(),
+            Pin {
+                number: num.into(),
+                name: name.into(),
+                kind: PinKind::Passive,
+                no_connect: false,
+                stack: None,
+                net: i,
+            },
+        );
+        d.nets[i].pins.push(("Q9".into(), num.into()));
+    }
+    d.components.insert("Q9".into(), c);
+}
+
+/// A MOSFET with no part file may be on: its drain net takes the range of both sides instead of UNKNOWN.
+#[test]
+fn a_mosfet_with_no_part_file_may_conduct() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    add_fet(&mut d, "IRLML6344", "/LED", "GND", "LOAD");
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    let top = span(&d, &v, "+5V").max.unwrap();
+    assert!(close(span(&d, &v, "LOAD"), 0.0, top), "{}", span(&d, &v, "LOAD"));
+    assert!(
+        text(&v, &d, "LOAD").contains("Q9 has no part file"),
+        "{}",
+        text(&v, &d, "LOAD")
+    );
+    assert_eq!(v.by_name(&d, "LOAD").unwrap().driver, gerberus::voltage::Driver::Pulled);
+}
+
+/// 2N7002NXAKR's VGSth is 1.1 V at least (p6): with its gate on its source, the channel is off.
+#[test]
+fn a_mosfet_held_below_threshold_is_off() {
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    add_fet(&mut d, "2N7002NXAKR", "GND", "GND", "LOAD");
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    assert_eq!(span(&d, &v, "LOAD"), span(&d, &v, "+5V"));
+    let t = text(&v, &d, "LOAD");
+    assert!(t.contains("Q9's channel is off: VGS is 0 to 0 V"), "{t}");
+    let q9 = v.channels.iter().find(|c| c.reference == "Q9").unwrap();
+    assert_eq!(q9.state, gerberus::voltage::ChannelState::Off);
+}
+
+/// A gate the MCU drives (0 to 3.366 V) crosses the 1.1 to 2.1 V threshold, so the channel may be on; a gate
+/// on VBUS (at least 7 V) is past the 5 V RDS(on) is given at, so it is on.
+#[test]
+fn a_mosfet_gate_decides_its_state() {
+    use gerberus::voltage::ChannelState;
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    for (gate, state) in [("/LED", ChannelState::Maybe), ("VBUS", ChannelState::On)] {
+        let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+        add_fet(&mut d, "2N7002NXAKR", gate, "GND", "LOAD");
+        let v = compute(&d, &lib, &inputs);
+        let q9 = v.channels.iter().find(|c| c.reference == "Q9").unwrap();
+        assert_eq!(q9.state, state, "{}", q9.reason);
+        // Either way the drain can sit anywhere between the two sides: the channel's drop isn't known.
+        let top = span(&d, &v, "+5V").max.unwrap();
+        assert!(close(span(&d, &v, "LOAD"), 0.0, top), "{}", span(&d, &v, "LOAD"));
+    }
+}
+
+/// A P-channel part's threshold is negative. AO3401A fed at its drain from +5V (the way the amp board uses it
+/// against a reversed supply) is on with its gate grounded, and off with its gate on its source.
+#[test]
+fn a_p_channel_mosfet_reads_its_threshold_negative() {
+    use gerberus::voltage::ChannelState;
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    for (gate, state) in [("LOAD", ChannelState::Off), ("GND", ChannelState::On)] {
+        let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+        add_fet(&mut d, "AO3401A", gate, "LOAD", "+5V");
+        let v = compute(&d, &lib, &inputs);
+        let q9 = v.channels.iter().find(|c| c.reference == "Q9").unwrap();
+        assert_eq!(q9.state, state, "{}", q9.reason);
+    }
+}

@@ -6,7 +6,12 @@
 //! - a regulator's output or feedback pin (`kind = "regulates"`), through a two-resistor divider when the
 //!   feedback pin has one, using each resistor's tolerance from its part file,
 //! - a switch node (`kind = "switches"`),
-//! - an input the part biases itself, when only capacitors reach it (`kind = "biases"`).
+//! - an input the part biases itself, when only capacitors reach it (`kind = "biases"`),
+//! - a MOSFET channel (`kind = "channel"`), worked out from its gate and source ranges: off when VGS never
+//!   reaches the threshold's smallest magnitude, fully on when VGS is always past the VGS that RDS(on) is
+//!   given at, and otherwise a switch that may be on or off. A channel that isn't off joins its drain and
+//!   source nets like a resistor does: the current through it, and so its drop, isn't known. A MOSFET with no part file, recognised by its
+//!   symbol's G, D and S pins, is always taken as possibly on.
 //!
 //! A net none of those reach gets the range of everything that can pull it: nets it reaches through
 //! resistors, inductors, LEDs and jumpers, and IC output pins, which reach at most their part's highest supply.
@@ -158,6 +163,38 @@ pub struct HeldAt {
 pub struct Voltages {
     pub nets: Vec<NetVoltage>,
     pub regulators: Vec<Regulation>,
+    /// Every MOSFET channel, and whether it can conduct.
+    pub channels: Vec<Channel>,
+}
+
+/// Whether a MOSFET channel conducts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelState {
+    /// VGS never reaches the threshold: only the body diode, if the part file gives one, conducts.
+    Off,
+    /// It may be on or off, or partly on: the drain and source nets can pull each other anywhere between.
+    Maybe,
+    /// VGS is always past the voltage RDS(on) is given at: the channel surely conducts, with a drop that
+    /// depends on a current gerberus doesn't know.
+    On,
+}
+
+/// One MOSFET's channel, from its part file's `channel` drive or, with no part file, its symbol's pin names.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Channel {
+    pub reference: String,
+    pub drain: usize,
+    pub source: usize,
+    pub gate: Option<usize>,
+    pub state: ChannelState,
+    /// Why it is in this state.
+    pub reason: String,
+    /// The gate threshold VGS(th), smallest to largest, when the part file gives it.
+    threshold: Option<(f64, f64)>,
+    /// The VGS RDS(on) is given at.
+    on: Option<f64>,
+    /// Who and what the numbers come from, such as `Q2 (2N7002NXAKR) VGS(th) p3`.
+    cite: String,
 }
 
 impl Voltages {
@@ -220,6 +257,31 @@ impl Voltages {
 /// Works out every net's range. `inputs` should already pass [`BoardInputs::problems`]; an input whose pins
 /// aren't in the design is skipped.
 pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages {
+    // Every channel starts as possibly on, which gives each net the widest range it can have. A channel worked
+    // out as off or on from those ranges stays so, as narrower ranges can't change that; the others are
+    // worked out again from the narrower ranges that follow, a few times at most.
+    let mut channels = find_channels(design, lib);
+    let mut v = compute_with(design, lib, inputs, &channels);
+    for _ in 0..4 {
+        let mut changed = false;
+        for ch in channels.iter_mut().filter(|c| c.state == ChannelState::Maybe) {
+            let (state, reason) = decide(design, &v, ch);
+            ch.reason = reason;
+            if state != ChannelState::Maybe {
+                ch.state = state;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+        v = compute_with(design, lib, inputs, &channels);
+    }
+    v.channels = channels;
+    v
+}
+
+fn compute_with(design: &Design, lib: &Library, inputs: &BoardInputs, channels: &[Channel]) -> Voltages {
     let n = design.nets.len();
     let mut out: Vec<Option<NetVoltage>> = vec![None; n];
     let net_of = |r: &str, p: &str| design.components.get(r)?.pins.get(p).map(|p| p.net);
@@ -269,37 +331,40 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
     // 3. Nets fed through a ferrite bead from a driven net: a bead is a DC short (well under an ohm), so the net
     //    takes the driven net's range. Beads only: an inductor may be a switcher's, with a switch node on one side.
     let mut strong: Vec<bool> = (0..n).map(|i| fixed[i] || plans.contains_key(&i)).collect();
-    let mut beads: BTreeMap<usize, Vec<(&str, usize)>> = BTreeMap::new();
+    let mut shorts: Vec<Short> = vec![];
+    for (r, c) in &design.components {
+        let nets: Vec<usize> = c.pins.values().map(|p| p.net).collect();
+        if let [a, b] = nets[..]
+            && !c.dnp
+            && is_bead(c)
+        {
+            shorts.push(Short {
+                via: format!("ferrite bead {r}"),
+                note: ", a DC short".into(),
+                a,
+                b,
+            });
+        }
+    }
+    let mut beads: BTreeMap<usize, Vec<(usize, usize)>> = BTreeMap::new();
     loop {
         let mut grew = false;
-        for (r, c) in &design.components {
-            if c.dnp || !is_bead(c) {
-                continue;
-            }
-            let nets: Vec<usize> = c.pins.values().map(|p| p.net).collect();
-            if let [a, b] = nets[..] {
-                for (from, to) in [(a, b), (b, a)] {
-                    if strong[from] && !strong[to] && !beads.contains_key(&to) {
-                        beads.entry(to).or_default().push((r.as_str(), from));
-                    }
+        for s in &shorts {
+            for (from, to) in [(s.a, s.b), (s.b, s.a)] {
+                if strong[from] && !strong[to] && !beads.contains_key(&to) {
+                    beads.entry(to).or_default();
                 }
             }
         }
-        // A net reached through several beads takes them all, so add them in one pass before marking.
-        for (r, c) in &design.components {
-            if c.dnp || !is_bead(c) {
-                continue;
-            }
-            let nets: Vec<usize> = c.pins.values().map(|p| p.net).collect();
-            if let [a, b] = nets[..] {
-                for (from, to) in [(a, b), (b, a)] {
-                    if strong[from]
-                        && let Some(list) = beads.get_mut(&to)
-                        && !strong[to]
-                        && !list.iter().any(|&(x, f)| x == r.as_str() && f == from)
-                    {
-                        list.push((r.as_str(), from));
-                    }
+        // A net reached through several shorts takes them all, so add them in one pass before marking.
+        for (k, s) in shorts.iter().enumerate() {
+            for (from, to) in [(s.a, s.b), (s.b, s.a)] {
+                if strong[from]
+                    && let Some(list) = beads.get_mut(&to)
+                    && !strong[to]
+                    && !list.iter().any(|&(x, f)| x == k && f == from)
+                {
+                    list.push((k, from));
                 }
             }
         }
@@ -314,8 +379,8 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
         }
     }
 
-    // 4. Groups of the remaining nets, joined by resistors, inductors, LEDs and jumpers.
-    let groups = build_groups(design, lib, inputs, &strong);
+    // 4. Groups of the remaining nets, joined by resistors, inductors, LEDs, jumpers and channels that may be on.
+    let groups = build_groups(design, lib, inputs, &strong, channels);
 
     // 5. Resolve whatever has everything it reads, until nothing changes.
     let mut regulators = vec![];
@@ -371,13 +436,14 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
                 continue;
             }
             let mut nv: Option<NetVoltage> = None;
-            for &(r, f) in list {
+            for &(k, f) in list {
                 let from = out[f].as_ref().expect("checked above");
+                let s = &shorts[k];
                 merge(
                     &mut nv,
                     from.span,
                     Why {
-                        text: format!("through ferrite bead {r} from {}, a DC short", design.nets[f].name),
+                        text: format!("through {} from {}{}", s.via, design.nets[f].name, s.note),
                         from: vec![f],
                         bounded: true,
                         low_floor: from.floor,
@@ -467,7 +533,171 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
             .map(|nv| nv.unwrap_or_else(|| unknown("UNKNOWN: not reached".into(), vec![])))
             .collect(),
         regulators,
+        channels: vec![],
     }
+}
+
+/// A part that joins two nets with next to no resistance: a ferrite bead.
+struct Short {
+    /// `ferrite bead FB1`.
+    via: String,
+    /// What follows the net's name in the explanation.
+    note: String,
+    a: usize,
+    b: usize,
+}
+
+/// The MOSFET channels in a design, all taken as possibly on until [`decide`] works them out.
+fn find_channels(design: &Design, lib: &Library) -> Vec<Channel> {
+    let mut out = vec![];
+    for (r, c) in &design.components {
+        if c.dnp {
+            continue;
+        }
+        let part = lib.part_for(c);
+        let drives: Vec<&Drive> = part
+            .map(|p| p.drives.iter().filter(|d| d.kind == DriveKind::Channel).collect())
+            .unwrap_or_default();
+        if let Some(part) = part
+            && !drives.is_empty()
+        {
+            for d in drives {
+                let net = |name: &str| part_pin_net(c, part, name);
+                let (Some(drain), Some(source)) = (net(&d.pin), net(&d.to)) else {
+                    continue;
+                };
+                out.push(Channel {
+                    reference: r.clone(),
+                    drain,
+                    source,
+                    gate: d.gate.as_deref().and_then(net),
+                    state: ChannelState::Maybe,
+                    reason: "not worked out yet".into(),
+                    threshold: d.range.values(),
+                    on: d.on.as_ref().map(|o| o.vgs),
+                    cite: format!(
+                        "VGS(th) from {}{}",
+                        cite(part, &d.range),
+                        d.on.as_ref()
+                            .map(|o| format!(", RDS(on) given at VGS = {} V (p{})", o.vgs, o.page))
+                            .unwrap_or_default()
+                    ),
+                });
+            }
+        } else if let Some((drain, source, gate)) = fet_pins(c) {
+            let why = match part {
+                None => "has no part file",
+                Some(_) => "has a part file with no `channel` drive",
+            };
+            out.push(Channel {
+                reference: r.clone(),
+                drain,
+                source,
+                gate: Some(gate),
+                state: ChannelState::Maybe,
+                reason: format!("{r} {why}, so its gate threshold isn't known and the channel may be on"),
+                threshold: None,
+                on: None,
+                cite: String::new(),
+            });
+        }
+    }
+    out
+}
+
+/// The drain, source and gate nets of a MOSFET symbol: a `Transistor_FET` symbol, or a `Q` part, whose pins
+/// are named G, D and S (or Gate, Drain and Source). Pins sharing a name must share a net.
+fn fet_pins(c: &Component) -> Option<(usize, usize, usize)> {
+    let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
+    if !(c.lib_id.starts_with("Transistor_FET") || letters == "Q") {
+        return None;
+    }
+    let role = |names: [&str; 2]| -> Option<usize> {
+        let nets: BTreeSet<usize> = c
+            .pins
+            .values()
+            .filter(|p| names.iter().any(|n| p.name.eq_ignore_ascii_case(n)))
+            .map(|p| p.net)
+            .collect();
+        (nets.len() == 1).then(|| *nets.iter().next().expect("one net"))
+    };
+    let (d, s, g) = (role(["D", "Drain"])?, role(["S", "Source"])?, role(["G", "Gate"])?);
+    // Every pin is one of the three, so this is a single MOSFET, not a dual one or an IC.
+    c.pins
+        .values()
+        .all(|p| {
+            ["D", "Drain", "S", "Source", "G", "Gate"]
+                .iter()
+                .any(|n| p.name.eq_ignore_ascii_case(n))
+        })
+        .then_some((d, s, g))
+}
+
+/// Whether a channel conducts, from the gate and source ranges in `v`.
+fn decide(design: &Design, v: &Voltages, ch: &Channel) -> (ChannelState, String) {
+    let maybe = |why: String| (ChannelState::Maybe, why);
+    let r = &ch.reference;
+    let Some((tlo, thi)) = ch.threshold else {
+        return maybe(if ch.cite.is_empty() {
+            ch.reason.clone()
+        } else {
+            format!("{r}'s part file gives no gate threshold, so the channel may be on")
+        });
+    };
+    let Some(gate) = ch.gate else {
+        return maybe(format!("{r}'s gate isn't connected, so the channel may be on"));
+    };
+    let (g, s) = (v.nets[gate].span, v.nets[ch.source].span);
+    let (Some(gmin), Some(gmax), Some(smin), Some(smax)) = (g.min, g.max, s.min, s.max) else {
+        return maybe(format!(
+            "{r}'s gate ({}) or source ({}) range is UNKNOWN, so the channel may be on",
+            design.nets[gate].name, design.nets[ch.source].name
+        ));
+    };
+    // A gate on its own source sits at 0 V, however far the net itself moves.
+    let (lo, hi) = if gate == ch.source {
+        (0.0, 0.0)
+    } else {
+        (gmin - smax, gmax - smin)
+    };
+    let vgs = format!(
+        "VGS is {} to {} V ({} {g} less {} {s})",
+        round(lo),
+        round(hi),
+        design.nets[gate].name,
+        design.nets[ch.source].name
+    );
+    let cite = &ch.cite;
+    if tlo > 0.0 {
+        if hi < tlo {
+            return (
+                ChannelState::Off,
+                format!("{vgs}, below the {tlo} V smallest threshold ({cite})"),
+            );
+        }
+        if let Some(on) = ch.on.filter(|&on| lo >= on) {
+            return (
+                ChannelState::On,
+                format!("{vgs}, at or past the {on} V RDS(on) is given at ({cite})"),
+            );
+        }
+    } else if thi < 0.0 {
+        if lo > thi {
+            return (
+                ChannelState::Off,
+                format!("{vgs}, short of the {thi} V smallest threshold ({cite})"),
+            );
+        }
+        if let Some(on) = ch.on.filter(|&on| hi <= on) {
+            return (
+                ChannelState::On,
+                format!("{vgs}, at or past the {on} V RDS(on) is given at ({cite})"),
+            );
+        }
+    }
+    maybe(format!(
+        "{vgs}, which can reach the threshold, so the channel may be on ({cite})"
+    ))
 }
 
 /// One input's range, and why. `follows` is the net its top follows, if it follows one.
@@ -755,6 +985,8 @@ fn plan_drive<'a>(
     let to = net(&drive.to);
     let supply = drive.supply.as_deref().and_then(net);
     match drive.kind {
+        // Worked out from the gate before the nets are, in `compute`.
+        DriveKind::Channel => vec![],
         DriveKind::Forward => match to {
             Some(k) if k != pin => vec![plan(k, vec![pin], How::Forward { anode: pin })],
             _ => vec![],
@@ -1279,6 +1511,8 @@ fn recommended(part: &Part, pin: &str) -> (Option<f64>, Option<f64>) {
 struct Group {
     nets: Vec<usize>,
     pulls: Vec<Pull>,
+    /// MOSFET channels on these nets that are always off, and why.
+    off: Vec<String>,
     /// A capacitor or inductor touches the group, so it can leave the range of the nets around it.
     reactive: bool,
 }
@@ -1297,6 +1531,13 @@ enum Pull {
         /// be relied on to.
         push_pull: bool,
     },
+    /// Through a MOSFET channel that may be on, or is always on, to a driven net.
+    Channel {
+        via: String,
+        net: usize,
+        state: ChannelState,
+        reason: String,
+    },
     Unknown(String),
 }
 
@@ -1305,7 +1546,7 @@ impl Group {
         self.pulls
             .iter()
             .flat_map(|p| match p {
-                Pull::Net { net, .. } => vec![*net],
+                Pull::Net { net, .. } | Pull::Channel { net, .. } => vec![*net],
                 Pull::Output { supplies, .. } => supplies.clone(),
                 Pull::Unknown(_) => vec![],
             })
@@ -1320,7 +1561,17 @@ impl Group {
                 .iter()
                 .flat_map(|&n| design.nets[n].pins.iter().map(|(r, p)| format!("{r}.{p}")))
                 .collect();
-            let text = if pins.len() <= 1 {
+            let text = if !self.off.is_empty() {
+                format!(
+                    "UNKNOWN: nothing drives it while {} off: {}",
+                    if self.off.len() == 1 {
+                        "this channel is"
+                    } else {
+                        "these channels are"
+                    },
+                    self.off.join("; ")
+                )
+            } else if pins.len() <= 1 {
                 format!("UNKNOWN: only {} is on this net, so nothing sets it", pins.join(""))
             } else {
                 format!(
@@ -1368,6 +1619,28 @@ impl Group {
                         },
                     )
                 }
+                Pull::Channel {
+                    via,
+                    net,
+                    state,
+                    reason,
+                } => (
+                    span_of(out, *net),
+                    Why {
+                        text: format!(
+                            "through {via}'s channel toward {}{shared}, {}: {reason}",
+                            name(*net),
+                            if *state == ChannelState::On {
+                                "fully on"
+                            } else {
+                                "which may be on"
+                            }
+                        ),
+                        from: vec![*net],
+                        bounded: true,
+                        low_floor: out[*net].as_ref().is_some_and(|nv| nv.floor),
+                    },
+                ),
                 Pull::Unknown(reason) => (
                     Span::unknown(),
                     Why {
@@ -1379,17 +1652,42 @@ impl Group {
             merge(&mut nv, span, why);
         }
         let mut nv = nv.expect("a group with pulls has a range");
-        let real = self
-            .pulls
-            .iter()
-            .any(|p| matches!(p, Pull::Net { .. }) || matches!(p, Pull::Output { push_pull, .. } if *push_pull));
+        for o in &self.off {
+            nv.why.push(Why {
+                text: format!("{o}, so it doesn't pull this net"),
+                ..Default::default()
+            });
+        }
+        // A channel that may be off doesn't prove the net is driven.
+        let real = self.pulls.iter().any(|p| {
+            matches!(p, Pull::Net { .. })
+                || matches!(
+                    p,
+                    Pull::Channel {
+                        state: ChannelState::On,
+                        ..
+                    }
+                )
+                || matches!(p, Pull::Output { push_pull, .. } if *push_pull)
+        });
         nv.driver = if real { Driver::Pulled } else { Driver::Weak };
-        if !self.reactive && self.pulls.iter().all(|p| matches!(p, Pull::Net { .. })) {
+        if !self.reactive
+            && self.pulls.iter().all(|p| {
+                matches!(
+                    p,
+                    Pull::Net { .. }
+                        | Pull::Channel {
+                            state: ChannelState::On,
+                            ..
+                        }
+                )
+            })
+        {
             nv.between = self
                 .pulls
                 .iter()
                 .filter_map(|p| match p {
-                    Pull::Net { net, .. } => Some(*net),
+                    Pull::Net { net, .. } | Pull::Channel { net, .. } => Some(*net),
                     _ => None,
                 })
                 .collect::<BTreeSet<_>>()
@@ -1400,7 +1698,13 @@ impl Group {
     }
 }
 
-fn build_groups(design: &Design, lib: &Library, inputs: &BoardInputs, strong: &[bool]) -> Vec<Group> {
+fn build_groups(
+    design: &Design,
+    lib: &Library,
+    inputs: &BoardInputs,
+    strong: &[bool],
+    channels: &[Channel],
+) -> Vec<Group> {
     let n = design.nets.len();
     let mut parent: Vec<usize> = (0..n).collect();
     fn find(p: &mut [usize], x: usize) -> usize {
@@ -1424,6 +1728,12 @@ fn build_groups(design: &Design, lib: &Library, inputs: &BoardInputs, strong: &[
             parent[ra] = rb;
         }
     }
+    for ch in channels.iter().filter(|c| c.state != ChannelState::Off) {
+        if !strong[ch.drain] && !strong[ch.source] {
+            let (ra, rb) = (find(&mut parent, ch.drain), find(&mut parent, ch.source));
+            parent[ra] = rb;
+        }
+    }
     let mut members: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for i in (0..n).filter(|&i| !strong[i]) {
         let r = find(&mut parent, i);
@@ -1433,11 +1743,50 @@ fn build_groups(design: &Design, lib: &Library, inputs: &BoardInputs, strong: &[
         .into_values()
         .map(|nets| {
             let mut pulls = vec![];
+            let mut off = vec![];
             let mut reactive = false;
             for &net in &nets {
                 for (r, pnum) in &design.nets[net].pins {
                     let Some(c) = design.components.get(r) else { continue };
                     if c.dnp {
+                        continue;
+                    }
+                    // A MOSFET's pins: its channel pulls toward the other side unless it is off; its gate takes.
+                    let mine: Vec<&Channel> = channels
+                        .iter()
+                        .filter(|ch| {
+                            &ch.reference == r && (ch.drain == net || ch.source == net || ch.gate == Some(net))
+                        })
+                        .collect();
+                    if !mine.is_empty() {
+                        for ch in mine {
+                            let other = if ch.drain == net {
+                                ch.source
+                            } else if ch.source == net {
+                                ch.drain
+                            } else {
+                                continue;
+                            };
+                            if ch.state == ChannelState::Off {
+                                let o = format!("{r}'s channel is off: {}", ch.reason);
+                                if !off.contains(&o) {
+                                    off.push(o);
+                                }
+                            } else if strong[other] {
+                                let pull = Pull::Channel {
+                                    via: r.clone(),
+                                    net: other,
+                                    state: ch.state,
+                                    reason: ch.reason.clone(),
+                                };
+                                if !pulls
+                                    .iter()
+                                    .any(|p| matches!(p, Pull::Channel { via, net, .. } if via == r && *net == other))
+                                {
+                                    pulls.push(pull);
+                                }
+                            }
+                        }
                         continue;
                     }
                     if is_capacitor(lib, c) || is_inductor_symbol(c) || class_of(lib, c) == Some(Class::Inductor) {
@@ -1501,7 +1850,12 @@ fn build_groups(design: &Design, lib: &Library, inputs: &BoardInputs, strong: &[
                     }
                 }
             }
-            Group { nets, pulls, reactive }
+            Group {
+                nets,
+                pulls,
+                off,
+                reactive,
+            }
         })
         .collect()
 }
