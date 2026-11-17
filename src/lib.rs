@@ -13,6 +13,7 @@ pub mod init;
 pub mod inputs;
 pub mod kicad;
 pub mod limits;
+pub mod mcp;
 pub mod part_new;
 pub mod pinout;
 pub mod policy;

@@ -11,6 +11,7 @@ Using it:
 - [What to add first](doctor.md): `doctor`, the ranked list of missing part files, inputs and limits.
 - [Revision diff](diff.md): `diff`, the parts, connections and findings that changed between two revisions.
 - [Checking a board in CI](ci.md): the GitHub Action, and a pass/fail badge for the board's README.
+- [MCP server](mcp.md): `mcp`, the commands as tools for an AI agent.
 - [Waivers](waivers.md): accepting a finding on purpose, with the reason on record.
 - [Voltage checks](voltage-checks.md): `voltages` and `check`, every rule, fault cases, reverse polarity and ESD.
 - [Junction temperature and derating](thermal.md): `loads`, junction temperature, forward current.

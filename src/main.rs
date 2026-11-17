@@ -28,6 +28,7 @@ const USAGE: &str = "usage:
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
+  gerberus mcp
   gerberus skill install [DIR] [--force]
   gerberus update
   gerberus --version
@@ -51,6 +52,8 @@ next to the schematic (same name, .kicad_pcb) unless --pcb names another, and th
 `voltages` works out the worst-case voltage range of every net, starting from the board inputs (`inputs.toml`
 next to the schematic unless --inputs is given). --explain prints the reasoning behind one net. --fault works
 them out for one of the fault cases in the inputs instead of normal operation.
+
+`mcp` serves the commands to an AI agent over the Model Context Protocol, on stdin and stdout (see docs/mcp.md).
 
 `diff` compares two revisions of a design, or one against a git revision with --rev: the parts added, removed or
 changed, the connections made or broken (nets matched by their pins, not their names), and the `check` findings
@@ -161,6 +164,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "stress" => stress(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "signal" => signal(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
+        [cmd] if cmd == "mcp" => mcp(),
         [cmd, path, rest @ ..] if cmd == "diff" => diff(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "doctor" => doctor(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "init" => init(Path::new(path), rest),
@@ -669,6 +673,13 @@ fn waive(
     }
     waivers.apply(report, &file.display().to_string());
     Ok(())
+}
+
+fn mcp() -> Result<bool, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("can't find this program: {e}"))?;
+    let stdin = std::io::stdin();
+    gerberus::mcp::serve(&exe, stdin.lock(), std::io::stdout())?;
+    Ok(true)
 }
 
 /// The design's check report, with its own inputs.toml, waivers.toml and parts/ folder.
