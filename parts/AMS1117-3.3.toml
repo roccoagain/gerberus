@@ -1,0 +1,42 @@
+mpn = "AMS1117-3.3"
+manufacturer = "Advanced Monolithic Systems"
+description = "3.3 V 1 A LDO, SOT-223"
+class = "ic"
+tj_max = { value = 125, page = 2, note = "operating junction temperature range, control section and power transistor, -40 to 125 °C" }
+theta_ja = { value = 90, page = 2, note = "SOT-223; can be 46 to over 90 °C/W depending on the copper area" }
+
+[datasheet]
+title = "AMS1117 1A Low Dropout Voltage Regulator"
+document = "no revision printed"
+url = "https://datasheet.lcsc.com/datasheet/pdf/e6935943fc6b1bbf350a1a0f3e90dc4a.pdf"
+
+# SOT-223, page 1: 1 ground (adjust on the adjustable part), 2 output, 3 input. The tab is the output; on
+# SOT-223 footprints it is pad 2 or a fourth pad joined to it.
+[pins]
+1 = "GND"
+2 = "VOUT"
+3 = "VIN"
+
+[[limit]]
+pins = ["VIN"]
+to = "GND"
+abs_max = { min = { unknown = "the absolute maximum ratings give only a maximum input voltage" }, max = 15, page = 2, note = "input voltage" }
+recommended = { min = 4.75, max = 15, page = 3, derived = "4.75 .. 15; the lowest specified input (page 3) up to the absolute maximum input (page 2)", note = "no recommended operating conditions are given: the lowest input the AMS1117-3.3 is specified at (load regulation and ripple rejection, VIN = 4.75 V), up to the 15 V absolute maximum (page 2)" }
+
+[[limit]]
+pins = ["VOUT"]
+to = "GND"
+abs_max = { unknown = "no output voltage rating is given" }
+recommended = { unknown = "VOUT is the regulated output; no separate operating range is given" }
+
+[[drive]]
+kind = "regulates"
+pin = "VOUT"
+to = "GND"
+supply = "VIN"
+headroom = { volts = 1.3, page = 3, note = "dropout voltage max, IOUT = 0.8 A (note 4: higher above 0.8 A)" }
+range = { min = 3.166, max = 3.434, page = 2, derived = "3.201 - 0.010 - 0.025 .. 3.399 + 0.010 + 0.025; output voltage over temperature (bold row, VIN = 4.8 V, IOUT = 0), widened by the 10 mV line regulation (page 2) and the 25 mV load regulation at 0 to 0.8 A (page 3)", note = "at the dropout headroom the output is a further 1 % low (dropout is defined at a 1 % drop, page 3)" }
+
+[[supply]]
+pins = ["VIN"]
+current = { min = 0, max = 0.011, page = 3, note = "quiescent current max, VIN - VOUT = 1.5 V; the load current passes through on top" }

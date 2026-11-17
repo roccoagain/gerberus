@@ -1,0 +1,53 @@
+mpn = "LM358DR2G"
+manufacturer = "onsemi"
+description = "dual single-supply op amp, 3 to 32 V, SOIC-8"
+class = "ic"
+temperature = { min = 0, max = 70, page = 3, note = "TA operating ambient, LM358" }
+theta_ja = { value = 212, page = 3, note = "RθJA, case 751 (SOIC-8), minimum-pad 1 oz board" }
+tj_max = { value = 150, page = 3, note = "junction temperature, maximum ratings" }
+
+[datasheet]
+title = "LM258, LM358, LM358A, LM2904, LM2904A, LM2904V, NCV2904, NCV2904V Single Supply Dual Operational Amplifiers"
+document = "LM358/D, Rev. 27, October 2013"
+url = "https://datasheet.lcsc.com/datasheet/pdf/6e027cbb78e54e6f93d2bb9049a549fd.pdf"
+
+# SOIC-8 pin connections, page 1. LM358DR2G is the LM358 in SOIC-8 on tape and reel (ordering table, page 10).
+[pins]
+1 = "OUTA"
+2 = "IN-A"
+3 = "IN+A"
+4 = "GND"
+5 = "IN+B"
+6 = "IN-B"
+7 = "OUTB"
+8 = "VCC"
+
+[[limit]]
+pins = ["VCC"]
+to = "GND"
+abs_max = { min = { unknown = "the maximum ratings give only the supply's maximum" }, max = 32, page = 3, note = "power supply voltage, single supply VCC" }
+recommended = { min = 3, max = 32, page = 1, note = "features: single supply operation 3.0 V to 32 V" }
+
+# Note 2: below a 32 V supply, the input's absolute maximum is the supply voltage. VIDR (±32 V between an
+# amplifier's inputs, page 3) isn't a separate limit: the inputs' own limits already keep them within it.
+[[limit]]
+pins = ["IN-A", "IN+A", "IN-B", "IN+B"]
+to = "GND"
+abs_max = { min = -0.3, max = { pin = "VCC", plus = 0, at_most = 32 }, page = 3, derived = "-0.3 .. VCC; note 2: below a 32 V supply the absolute maximum input voltage is equal to the supply voltage", note = "VICR input common mode voltage range -0.3 to 32 V; note 2: for supplies below 32 V the absolute maximum input is the supply voltage" }
+recommended = { min = 0, max = { pin = "VCC", plus = -2 }, page = 4, derived = "0 .. VCC - 2; VICR is 0 to 28 at VCC = 30 over temperature, and 30 - 28 = 2", note = "VICR input common mode voltage range, LM358, over TA = Tlow to Thigh: 0 to 28 V at VCC = 30 V, so VCC - 2 V (note 6 gives VCC - 1.7 V, the 25 °C figure)" }
+
+[[limit]]
+pins = ["OUTA", "OUTB"]
+to = "GND"
+abs_max = { unknown = "no output voltage rating is given; the output is short-circuit protected" }
+recommended = { unknown = "the output is driven by the part; no separate operating range is given" }
+
+[[supply]]
+pins = ["VCC"]
+current = { min = 0, max = 0.003, page = 4, note = "ICC total device, VCC = 30 V, VO = 0 V, RL = ∞, TA = Tlow to Thigh, LM358; 1.2 mA at VCC = 5 V" }
+
+[[esd]]
+model = "hbm"
+volts = 2000
+page = 3
+note = "ESD protection at any pin, human body model"

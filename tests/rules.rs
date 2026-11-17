@@ -1156,3 +1156,24 @@ fn esd_weak_pin_beside_an_undescribed_part_is_unknown() {
         f[0].message
     );
 }
+
+/// A TVS that gives only a minimum breakdown or a clamping voltage still clamps a connector's net: USB ESD arrays
+/// like the USBLC6-2SC6 give no maximum breakdown, and the sniffer's UART pin was failing with one beside it.
+#[test]
+fn esd_counts_a_tvs_with_only_a_clamping_voltage() {
+    let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    let tx = d.components["J1"].pins["2"].net;
+    let gnd = net(&d, "GND");
+    add(
+        &mut d,
+        "U99",
+        "Power_Protection:USBLC6-2SC6",
+        "USBLC6-2SC6",
+        Some("USBLC6-2SC6"),
+        vec![pin("1", PinKind::Passive, tx), pin("2", PinKind::Passive, gnd)],
+    );
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J1.2")).collect();
+    assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
+    assert!(f[0].message.contains("U99 (USBLC6-2SC6)"), "{}", f[0].message);
+}

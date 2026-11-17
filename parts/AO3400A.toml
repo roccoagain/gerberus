@@ -1,0 +1,35 @@
+mpn = "AO3400A"
+manufacturer = "Alpha & Omega Semiconductor"
+description = "30 V N-channel MOSFET, SOT-23"
+class = "ic"
+theta_ja = { value = 125, page = 1, note = "RθJA steady-state max, 1 in² FR-4 2 oz copper (90 for t ≤ 10 s)" }
+tj_max = { value = 150, page = 1, note = "TJ junction and storage temperature range, -55 to 150 °C" }
+
+[datasheet]
+title = "AO3400A 30V N-Channel MOSFET"
+document = "Rev 3, December 2011"
+url = "https://datasheet.lcsc.com/datasheet/pdf/130876b936da464599428c58fd8de8f6.pdf"
+
+# The SOT23 top view on page 1 doesn't number the leads: G sits by the pin-1 dot and S beside it on the same
+# side, D alone on the other, which is SOT-23 pins 1, 2 and 3.
+[pins]
+1 = "G"
+2 = "S"
+3 = "D"
+
+[[limit]]
+pins = ["D"]
+to = "S"
+abs_max = { min = { unknown = "a negative VDS forward-biases the body diode; it is limited by current (IS), not voltage" }, max = 30, page = 1, note = "VDS drain-source voltage, TA = 25 °C" }
+recommended = { unknown = "no recommended operating conditions are given" }
+
+[[limit]]
+pins = ["G"]
+to = "S"
+abs_max = { min = -12, max = 12, page = 1, note = "VGS ±12 V" }
+recommended = { unknown = "no recommended operating conditions are given" }
+
+# No [[drive]] for the body diode: gerberus reads a forward drive as setting the cathode net, which is right for
+# a series diode but not for a low-side switch. gerberus doesn't model the channel, so the drain net comes out
+# UNKNOWN (see Known gaps in parts/README.md). VSD is at most
+# 1 V at IS = 1 A (page 2). ID (5.7 A), IS (2 A) and PD (1.4 W) aren't listed: no rule uses them yet.

@@ -464,6 +464,7 @@ against the PDF at that URL.
 | kitchen-sink | the parts above, plus USB4105-GF-A, 0402WGF5101TCE, TPD1E05U06DPYR and TVS0500DRVR |
 | audio board rev 2 (B1narySolutions/amp-hardware, not a fixture) | TLV9061QDBVRQ1, AO3401A, 2N7002NXAKR, PESD5V0S1BA |
 | amp board (B1narySolutions/amp-hardware, not a fixture) | TPA3118D2DAPR, TPA6130A2RTJR, TPS3808G50DBVR, NSVBAT54HT1G, BZT52C12-TP, MPZ1608S221ATA00, SRP1038A-100M |
+| JLCPCB basic and common parts, on no board yet | AO3400A, AMS1117-3.3, USBLC6-2SC6, LM358DR2G; the resistor and capacitor families above |
 
 Not covered: footprint-only parts with no part number (Tag-Connect pads, SWD pads, solder jumpers).
 
@@ -495,7 +496,7 @@ Found by the blind second reading of every file (November 2026):
   A fixed 3.3 V probe on an unpowered board would drive its pins far above VDD + 0.3 V.
 - **MOSFETs** have no model of their channel. AO3401A's body diode is a `forward` drive from D to S, which fits
   its use as a reverse-polarity switch (supply into D) and would be wrong in a high-side switch fed at S;
-  2N7002NXAKR has no drive, so its drain net comes from what else pulls it.
+  2N7002NXAKR and AO3400A have no drive and no channel, so a drain net they alone switch comes out UNKNOWN.
 - **TPS3808EG50DBVR**: the amp board orders this part number, but TI's datasheet (SBVS050N) lists no TPS3808E part.
   The library has TPS3808G50DBVR, and U103 stays UNCHECKED until a datasheet names the E part.
 - **TPA3118D2DAPR, TPA6130A2RTJR**: the datasheets give no bias voltage range for the audio inputs (TPA3118: "biased
