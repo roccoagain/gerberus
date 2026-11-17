@@ -306,7 +306,8 @@ fn class_of(c: &Component) -> (&'static str, bool) {
     (class, true)
 }
 
-fn is_ground_name(n: &str) -> bool {
+/// A ground pin or net name: GND…, VSS…, AGND, DGND, PGND, SGND or 0V.
+pub fn is_ground_name(n: &str) -> bool {
     let n = n.to_ascii_uppercase();
     n.starts_with("GND") || n.starts_with("VSS") || matches!(n.as_str(), "AGND" | "DGND" | "PGND" | "SGND" | "0V")
 }

@@ -14,6 +14,7 @@ const USAGE: &str = "usage:
   gerberus loads <design> [--inputs FILE] [--parts DIR]...
   gerberus stress <design> [--inputs FILE] [--parts DIR]... [--runs N] [--seed N] [--netlist FILE] [REPORT]
   gerberus check <design> [--inputs FILE] [--parts DIR]... [REPORT]
+  gerberus init <design> [--parts DIR]... [--stdout] [--force]
   gerberus doctor <design> [--inputs FILE] [--parts DIR]... [--json] [--color WHEN]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
@@ -58,6 +59,12 @@ breakdown and stand-off, capacitor voltage and resistor power, undriven inputs a
 headroom, and parts with nothing to check against. Each fault case in the inputs is then checked against
 absolute maximum ratings, TVS breakdown and capacitor ratings. FAILs cite the numbers, their datasheet pages and how each
 net got its range (with --verbose). It exits with status 1 when any error FAILs.
+
+`init` writes a starter inputs.toml next to the schematic: an entry for every connector pin it can guess from
+the net's name (ground, USB VBUS, D+/D- and CC, a supply named by its voltage such as 12V or 3V3, a net the board
+drives itself, a test point), each with a source that starts \"GUESS by gerberus init\", and a comment for each pin
+it can't guess. `check` and `doctor` say how many guesses remain. It won't replace an inputs.toml unless --force;
+--stdout prints it instead.
 
 `doctor` lists what to add so `check` can settle its UNKNOWN results, most useful first: a part file for each
 part number that has none (with the symbol's datasheet link), what plugs into each connector pin inputs.toml
@@ -128,6 +135,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "stress" => stress(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "doctor" => doctor(Path::new(path), rest),
+        [cmd, path, rest @ ..] if cmd == "init" => init(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "si" => si(Path::new(path), rest),
         [cmd, sub, rest @ ..] if cmd == "datasheet" => datasheet(sub, rest),
@@ -508,9 +516,11 @@ fn analyse(
                 "note: no {} found, so nothing is known about what plugs into the connectors: {ground}, every net \
              only a connector reaches is UNKNOWN, and reverse-polarity, esd, fault cases and `stress` are \
              skipped.\n\
-             help: write an inputs.toml next to the schematic giving each connector pin's voltage range (see \
-             \"Board inputs\" in parts/README.md)",
-                inputs_path.display()
+             help: run `gerberus init {}` to start an inputs.toml next to the schematic, with each connector \
+             pin's voltage range guessed from its net name for you to check (see \"Board inputs\" in \
+             parts/README.md)",
+                inputs_path.display(),
+                path.display()
             );
         }
         inputs
@@ -519,6 +529,16 @@ fn analyse(
         let problems = inputs.problems(&design);
         if !problems.is_empty() {
             return Err(format!("{}: {}", inputs_path.display(), problems.join("; ")));
+        }
+        let guesses = gerberus::init::guesses(&inputs);
+        if !guesses.is_empty() && !o.quiet {
+            eprintln!(
+                "note: {} entries in {} are still guesses from `gerberus init` ({}), so results that rest on them \
+                 are only as good as the guesses",
+                guesses.len(),
+                inputs_path.display(),
+                guesses.join(", ")
+            );
         }
         inputs
     };
@@ -554,6 +574,50 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
     Ok(report.errors() == 0)
 }
 
+fn init(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let (mut stdout, mut force) = (false, false);
+    let mut others = vec![];
+    for a in rest {
+        match a.as_str() {
+            "--stdout" => stdout = true,
+            "--force" => force = true,
+            _ => others.push(a.clone()),
+        }
+    }
+    let o = options(path, &others, &[])?;
+    let mut lib = load_library(&o.dirs)?;
+    let design = gerberus::load(path)?;
+    lib.expand_families(&design);
+    let board = path
+        .file_stem()
+        .map_or_else(|| path.display().to_string(), |f| f.to_string_lossy().into());
+    let text = gerberus::init::template(&design, &lib, &board);
+    // What `check` would load, so the file is never one it rejects.
+    let inputs: BoardInputs = toml::from_str(&text).map_err(|e| format!("the starter file doesn't parse: {e}"))?;
+    let problems = inputs.problems(&design);
+    if !problems.is_empty() {
+        return Err(format!("the starter file has problems: {}", problems.join("; ")));
+    }
+    if stdout {
+        print!("{text}");
+        return Ok(true);
+    }
+    let file = path.parent().unwrap_or(Path::new(".")).join("inputs.toml");
+    if file.exists() && !force {
+        return Err(format!("{} already exists; --force replaces it", file.display()));
+    }
+    std::fs::write(&file, &text).map_err(|e| format!("{}: {e}", file.display()))?;
+    let guesses = gerberus::init::guesses(&inputs);
+    println!("wrote {} with {} guessed entries", file.display(), guesses.len());
+    println!(
+        "next: check each guess (its source starts \"{}\") and fill in the pins listed in comments, then run \
+         `gerberus doctor {}`",
+        gerberus::init::GUESS,
+        path.display()
+    );
+    Ok(true)
+}
+
 fn doctor(path: &Path, rest: &[String]) -> Result<bool, String> {
     let (show, rest) = Show::parse(rest)?;
     let json = rest.iter().any(|a| a == "--json");
@@ -564,7 +628,7 @@ fn doctor(path: &Path, rest: &[String]) -> Result<bool, String> {
     let policy = gerberus::policy::Policy::builtin()?;
     let report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
     let setup = gerberus::doctor::setup(path, o.inputs.as_deref());
-    let d = gerberus::doctor::diagnose(&design, &lib, &setup, &report, &v);
+    let d = gerberus::doctor::diagnose(&design, &lib, &setup, &inputs, &report, &v);
     if json {
         println!("{}", serde_json::to_string_pretty(&d).map_err(|e| e.to_string())?);
     } else {

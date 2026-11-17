@@ -7,6 +7,7 @@ pub mod design;
 pub mod diag;
 pub mod doctor;
 pub mod family;
+pub mod init;
 pub mod inputs;
 pub mod kicad;
 pub mod limits;

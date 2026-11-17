@@ -284,8 +284,11 @@ impl BoardInputs {
                     net.map(|n| n.name.clone())
                 })
                 .collect();
+            // A pin measured from itself is only allowed at 0 V: the board's ground reference.
+            let ground_reference = i.pin == i.to && i.min == 0.0 && i.max == Max::Value(0.0);
             if let [Some(a), Some(b)] = nets.as_slice()
                 && a == b
+                && !ground_reference
             {
                 out.push(format!("{}: {} and {} are on the same net, {a}", i.name, i.pin, i.to));
             }

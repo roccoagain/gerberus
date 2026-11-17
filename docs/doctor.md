@@ -39,6 +39,7 @@ What it lists:
 
 | Kind | What to add | Where |
 | --- | --- | --- |
+| `guess` | Entries `gerberus init` guessed, listed first whatever they settle: every result that rests on one is only as good as the guess. | `inputs.toml` |
 | `inputs` | What plugs into each connector pin: an `[[input]]` with its voltage range, or `[[undriven]]` if nothing outside drives it. With no `inputs.toml` at all, one item for the whole file, always listed. | `inputs.toml` next to the schematic ([inputs](../parts/README.md#board-inputs), [undriven](../parts/README.md#net-voltages)) |
 | `part-file` | A part file for a part number that has none, started with `gerberus part new`. The symbol's `Datasheet` link is shown when it has one. Part numbers that share a datasheet are pointed at [part families](../parts/README.md#part-families). | `parts/<MPN>.toml` next to the schematic ([format](../parts/README.md)) |
 | `fill-in` | Values a part file started with `gerberus part new` still marks "not read from the datasheet yet". | that part file |

@@ -93,7 +93,7 @@ fn doctor_lists_a_template_to_fill_in() {
         parts: PathBuf::from("board/parts"),
         design: "board/board.kicad_sch".into(),
     };
-    let d = gerberus::doctor::diagnose(&design, &lib, &setup, &report, &v);
+    let d = gerberus::doctor::diagnose(&design, &lib, &setup, &inputs, &report, &v);
     let item = d.items.iter().find(|i| i.rule == "fill-in").expect("fill-in item");
     assert_eq!(item.references, ["U4"]);
     assert!(

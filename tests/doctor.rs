@@ -26,7 +26,7 @@ fn doctor(design: &Design, lib: &Library, inputs: &BoardInputs, missing: bool) -
         parts: PathBuf::from("board/parts"),
         design: "board/board.kicad_sch".into(),
     };
-    let d = diagnose(design, lib, &setup, &report, &v);
+    let d = diagnose(design, lib, &setup, inputs, &report, &v);
     assert_eq!(d.unknown, report.unknowns());
     assert!(d.settled <= d.unknown);
     d
