@@ -30,8 +30,8 @@ recommended = { unknown = "no recommended operating conditions are given" }
 # right for a series diode but not for a low-side switch, whose drain other parts pull anywhere up to 60 V.
 # VSD is 0.47 to 1.2 V at IS = 115 mA (page 6).
 
-# The channel: VGSth is given at Tj = 25 °C only, and falls as the part heats up. RDSon is given down to
-# VGS = 5 V, so past that the channel counts as fully on.
+# The channel: VGSth in the table is at Tj = 25 °C; Fig. 12 (p8) shows it falling as the part heats up, which
+# is why gerberus takes the threshold as 0 V. RDSon is given down to VGS = 5 V, so past that it is fully on.
 [[drive]]
 kind = "channel"
 pin = "D"

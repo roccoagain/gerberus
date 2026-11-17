@@ -139,14 +139,20 @@ can say whether the part biases it. An input with nothing on it but a capacitor 
 other AC-coupled input, is still a FAIL.
 
 A `channel` drive's `range` is the gate threshold VGS(th), negative for a P-channel part, and `on` the VGS
-nearest the threshold that RDS(on) is given at. gerberus works out VGS from the gate and source nets: below the
-threshold's smallest magnitude the channel is off and pulls nothing; at or past `on` it is fully on; anywhere in
-between it may be on. A channel that isn't off joins its drain and source nets like a resistor, since its drop
-depends on a current gerberus doesn't know: each side can sit anywhere between the two. Datasheets give VGS(th)
-at 25 °C, and it falls as the part heats up, so a gate that only just stays under the minimum is taken as off on
-that 25 °C number. A MOSFET with no part file, recognised by its symbol's G, D and S pins (a `Transistor_FET`
-symbol or a `Q` reference), may always be on. Keep a P-channel reverse-polarity switch's body diode as a
-`forward` drive from D to S as well: it gives the source its range when the gate can't turn the channel on.
+nearest the threshold that RDS(on) is given at. Their signs say whether the part is N- or P-channel. gerberus
+measures the gate from both ends of the channel, since either can act as the source:
+
+- **Off** when the gate never passes either end in the direction that turns the part on (above, for N-channel).
+  The threshold is taken as 0 V rather than the datasheet's minimum, which holds only at 25 °C.
+- **Fully on** when the gate is always at least `on` past one end.
+- **Maybe on** otherwise.
+
+A channel that isn't off pulls each end toward the other, but no further than the gate: an N-channel part can't
+raise a net above its gate (a level shifter's low side stays at or below the gate), and a P-channel part can't
+lower one below it. Its drop depends on a current gerberus doesn't know, so it isn't counted. A gate nothing is
+sure to drive leaves the channel maybe on. A MOSFET with no part file, or a part file with no `channel` drive,
+stays a part gerberus can't model. Keep a P-channel reverse-polarity switch's body diode as a `forward` drive from
+D to S as well: it gives the source its range when the gate can't turn the channel on.
 
 An LED's VF minimum holds only at and above `current`. Below it the LED drops less, so a series resistor's
 current is then bounded with VF taken as 0 V.
@@ -406,8 +412,8 @@ down to the inputs it comes from. It starts from `inputs.toml` (the `to` pins ar
   Above the recommended maximum, the top end follows the supply. Line and load regulation aren't modelled.
 - **Switch nodes** (`switches`): whatever their range gives; both ends are UNKNOWN on today's parts.
 - **Biased inputs** (`biases`): an input reached only through capacitors sits at its bias range.
-- **MOSFET channels** (`channel`): off, fully on or maybe on, from VGS against the threshold. A channel that
-  isn't off joins its drain and source nets in the fallback below, like a resistor; one that is off pulls nothing.
+- **MOSFET channels** (`channel`): off, fully on or maybe on, from the gate against both ends. A channel that
+  isn't off pulls each end toward the other, no further than the gate; one that is off pulls nothing.
 - **Everything else**: the union of what can pull the net: nets reached through resistors, inductors, LEDs and
   jumpers (capacitors count as open, TVS diodes as off), and IC output pins, which reach at most their part's
   highest supply. A pin of any other part that isn't an input makes the net UNKNOWN.

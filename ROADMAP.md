@@ -44,7 +44,7 @@ Point Gerberus at a new board and get useful answers in minutes. Every `UNKNOWN`
 Behaviour Gerberus doesn't model yet:
 
 - [x] Inputs that bias themselves: a `biases` drive in the part file with the cited bias range, for pins such as the AC-coupled inputs of the TPA3118 and TPA6130A2. The net then gets a voltage the other rules can check, and `floating-input` passes.
-- [x] MOSFET channels in the voltage engine: a `channel` drive is on past the VGS that RDS(on) is given at, off below VGS(th) minimum, and may be either in between, where its drain and source nets each cover both sides. A MOSFET with no part file may always be on, so its drain net is no longer UNKNOWN.
+- [x] MOSFET channels in the voltage engine: a part file's `channel` drive makes the part off (gate never past either end), fully on (always past the VGS RDS(on) is given at) or maybe on, and a channel that isn't off pulls each end toward the other, no further than its gate.
 - [ ] Analog signal paths in SPICE (gain stages, filters), not only power. Moved here from v0.3.
 - [x] BOM health by manufacturer part number for DigiKey- or Mouser-sourced boards (`bom --from mouser|digikey`, with the user's API key), which also gives the manufacturer's lifecycle; and `bom --csv` writes an order list for their BOM upload tools. Not yet run against the live APIs.
 

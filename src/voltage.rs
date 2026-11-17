@@ -7,11 +7,12 @@
 //!   feedback pin has one, using each resistor's tolerance from its part file,
 //! - a switch node (`kind = "switches"`),
 //! - an input the part biases itself, when only capacitors reach it (`kind = "biases"`),
-//! - a MOSFET channel (`kind = "channel"`), worked out from its gate and source ranges: off when VGS never
-//!   reaches the threshold's smallest magnitude, fully on when VGS is always past the VGS that RDS(on) is
-//!   given at, and otherwise a switch that may be on or off. A channel that isn't off joins its drain and
-//!   source nets like a resistor does: the current through it, and so its drop, isn't known. A MOSFET with no part file, recognised by its
-//!   symbol's G, D and S pins, is always taken as possibly on.
+//! - a MOSFET channel (`kind = "channel"`), from its gate against both ends of the channel: off when the gate
+//!   never passes either end in the direction that turns it on, fully on when it is always past the VGS that
+//!   RDS(on) is given at, and otherwise maybe on. A channel that isn't off pulls each end toward the other, but
+//!   no further than the gate (an N-channel part can't raise a net above its gate, a P-channel one can't lower
+//!   it below), as its threshold is taken as 0 V: the datasheet's minimum holds only at 25 °C. A MOSFET with
+//!   no part file stays a part gerberus can't model.
 //!
 //! A net none of those reach gets the range of everything that can pull it: nets it reaches through
 //! resistors, inductors, LEDs and jumpers, and IC output pins, which reach at most their part's highest supply.
@@ -170,16 +171,17 @@ pub struct Voltages {
 /// Whether a MOSFET channel conducts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelState {
-    /// VGS never reaches the threshold: only the body diode, if the part file gives one, conducts.
+    /// The gate never passes either end of the channel in the direction that turns it on: only the body diode,
+    /// if the part file gives one, conducts.
     Off,
-    /// It may be on or off, or partly on: the drain and source nets can pull each other anywhere between.
+    /// It may be on or off, or partly on: each end can be pulled toward the other, as far as the gate allows.
     Maybe,
     /// VGS is always past the voltage RDS(on) is given at: the channel surely conducts, with a drop that
     /// depends on a current gerberus doesn't know.
     On,
 }
 
-/// One MOSFET's channel, from its part file's `channel` drive or, with no part file, its symbol's pin names.
+/// One MOSFET's channel, from its part file's `channel` drive.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Channel {
     pub reference: String,
@@ -189,11 +191,11 @@ pub struct Channel {
     pub state: ChannelState,
     /// Why it is in this state.
     pub reason: String,
-    /// The gate threshold VGS(th), smallest to largest, when the part file gives it.
-    threshold: Option<(f64, f64)>,
+    /// N-channel (true) or P-channel, from the signs of the threshold or `on`; unknown when neither is given.
+    n_channel: Option<bool>,
     /// The VGS RDS(on) is given at.
     on: Option<f64>,
-    /// Who and what the numbers come from, such as `Q2 (2N7002NXAKR) VGS(th) p3`.
+    /// The part and the page its numbers come from.
     cite: String,
 }
 
@@ -257,9 +259,9 @@ impl Voltages {
 /// Works out every net's range. `inputs` should already pass [`BoardInputs::problems`]; an input whose pins
 /// aren't in the design is skipped.
 pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages {
-    // Every channel starts as possibly on, which gives each net the widest range it can have. A channel worked
-    // out as off or on from those ranges stays so, as narrower ranges can't change that; the others are
-    // worked out again from the narrower ranges that follow, a few times at most.
+    // Every channel starts as possibly on, which gives each net the widest range it can have. Channels worked out
+    // as off or on from those ranges are fixed, and the rest worked out again from the narrower ranges that
+    // follow, a few times at most.
     let mut channels = find_channels(design, lib);
     let mut v = compute_with(design, lib, inputs, &channels);
     for _ in 0..4 {
@@ -273,6 +275,24 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
             }
         }
         if !changed {
+            break;
+        }
+        v = compute_with(design, lib, inputs, &channels);
+    }
+    // A decision rests on ranges that the decisions themselves narrow, so check each against the final ranges:
+    // one that no longer holds (a gate that ends up floating) goes back to possibly on. States only move back,
+    // so this ends.
+    loop {
+        let mut undone = false;
+        for ch in channels.iter_mut().filter(|c| c.state != ChannelState::Maybe) {
+            let (state, reason) = decide(design, &v, ch);
+            if state != ch.state {
+                ch.state = ChannelState::Maybe;
+                ch.reason = reason;
+                undone = true;
+            }
+        }
+        if !undone {
             break;
         }
         v = compute_with(design, lib, inputs, &channels);
@@ -547,58 +567,52 @@ struct Short {
     b: usize,
 }
 
-/// The MOSFET channels in a design, all taken as possibly on until [`decide`] works them out.
+/// The MOSFET channels in a design, all taken as possibly on until [`decide`] works them out. Only part files
+/// with a `channel` drive count: with no datasheet, nothing says which way a transistor conducts.
 fn find_channels(design: &Design, lib: &Library) -> Vec<Channel> {
     let mut out = vec![];
     for (r, c) in &design.components {
         if c.dnp {
             continue;
         }
-        let part = lib.part_for(c);
-        let drives: Vec<&Drive> = part
-            .map(|p| p.drives.iter().filter(|d| d.kind == DriveKind::Channel).collect())
-            .unwrap_or_default();
-        if let Some(part) = part
-            && !drives.is_empty()
-        {
-            for d in drives {
-                let net = |name: &str| part_pin_net(c, part, name);
-                let (Some(drain), Some(source)) = (net(&d.pin), net(&d.to)) else {
-                    continue;
-                };
-                out.push(Channel {
-                    reference: r.clone(),
-                    drain,
-                    source,
-                    gate: d.gate.as_deref().and_then(net),
-                    state: ChannelState::Maybe,
-                    reason: "not worked out yet".into(),
-                    threshold: d.range.values(),
-                    on: d.on.as_ref().map(|o| o.vgs),
-                    cite: format!(
-                        "VGS(th) from {}{}",
-                        cite(part, &d.range),
-                        d.on.as_ref()
-                            .map(|o| format!(", RDS(on) given at VGS = {} V (p{})", o.vgs, o.page))
-                            .unwrap_or_default()
-                    ),
-                });
-            }
-        } else if let Some((drain, source, gate)) = fet_pins(c) {
-            let why = match part {
-                None => "has no part file",
-                Some(_) => "has a part file with no `channel` drive",
+        let Some(part) = lib.part_for(c) else { continue };
+        for d in part.drives.iter().filter(|d| d.kind == DriveKind::Channel) {
+            let net = |name: &str| part_pin_net(c, part, name);
+            let (Some(drain), Some(source)) = (net(&d.pin), net(&d.to)) else {
+                continue;
+            };
+            let threshold = d.range.values();
+            let on = d.on.as_ref().map(|o| o.vgs);
+            // An N-channel part turns on with its gate above its source, a P-channel one below.
+            let n_channel = match (threshold, on) {
+                (Some((lo, _)), _) if lo > 0.0 => Some(true),
+                (Some((_, hi)), _) if hi < 0.0 => Some(false),
+                (None, Some(o)) => Some(o > 0.0),
+                _ => None,
             };
             out.push(Channel {
                 reference: r.clone(),
                 drain,
                 source,
-                gate: Some(gate),
+                gate: d.gate.as_deref().and_then(net),
                 state: ChannelState::Maybe,
-                reason: format!("{r} {why}, so its gate threshold isn't known and the channel may be on"),
-                threshold: None,
-                on: None,
-                cite: String::new(),
+                reason: "not worked out yet".into(),
+                n_channel,
+                on,
+                cite: format!(
+                    "{}{}: {}",
+                    part.mpn,
+                    part.datasheet.as_ref().map(|x| format!(" {}", x.document)).unwrap_or_default(),
+                    d.on.as_ref().map_or_else(
+                        || "no RDS(on) condition given".into(),
+                        |o| format!("RDS(on) given at VGS = {} V (p{})", o.vgs, o.page)
+                    )
+                ),
+                    part.datasheet
+                        .as_ref()
+                        .map(|x| format!(", {}", x.document))
+                        .unwrap_or_default()
+                ),
             });
         }
     }
@@ -606,8 +620,8 @@ fn find_channels(design: &Design, lib: &Library) -> Vec<Channel> {
 }
 
 /// The drain, source and gate nets of a MOSFET symbol: a `Transistor_FET` symbol, or a `Q` part, whose pins
-/// are named G, D and S (or Gate, Drain and Source). Pins sharing a name must share a net.
-fn fet_pins(c: &Component) -> Option<(usize, usize, usize)> {
+/// are named G, D and S (or Gate, Drain and Source), and nothing else. Pins sharing a name must share a net.
+pub fn fet_pins(c: &Component) -> Option<(usize, usize, usize)> {
     let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
     if !(c.lib_id.starts_with("Transistor_FET") || letters == "Q") {
         return None;
@@ -633,71 +647,93 @@ fn fet_pins(c: &Component) -> Option<(usize, usize, usize)> {
         .then_some((d, s, g))
 }
 
-/// Whether a channel conducts, from the gate and source ranges in `v`.
+/// Whether a channel conducts, from the gate, drain and source ranges in `v`. Either end of the channel can act
+/// as its source (the lower one, on an N-channel part), so the gate is measured against both.
+///
+/// Off needs the gate never to pass either end in the direction that turns the part on: at 0 V an enhancement
+/// MOSFET is off at any temperature, where the datasheet's VGS(th) minimum holds only at 25 °C. Fully on needs
+/// the gate always past `on` from one end, taken separately: the end with the larger worst case.
 fn decide(design: &Design, v: &Voltages, ch: &Channel) -> (ChannelState, String) {
     let maybe = |why: String| (ChannelState::Maybe, why);
     let r = &ch.reference;
-    let Some((tlo, thi)) = ch.threshold else {
-        return maybe(if ch.cite.is_empty() {
-            ch.reason.clone()
-        } else {
-            format!("{r}'s part file gives no gate threshold, so the channel may be on")
-        });
+    let Some(n) = ch.n_channel else {
+        return maybe(format!(
+            "{r}'s part file gives neither a gate threshold nor the VGS RDS(on) is given at, so which way it turns on isn't known"
+        ));
     };
     let Some(gate) = ch.gate else {
         return maybe(format!("{r}'s gate isn't connected, so the channel may be on"));
     };
-    let (g, s) = (v.nets[gate].span, v.nets[ch.source].span);
-    let (Some(gmin), Some(gmax), Some(smin), Some(smax)) = (g.min, g.max, s.min, s.max) else {
+    let gv = &v.nets[gate];
+    if matches!(gv.driver, Driver::Weak | Driver::Floating) {
         return maybe(format!(
-            "{r}'s gate ({}) or source ({}) range is UNKNOWN, so the channel may be on",
-            design.nets[gate].name, design.nets[ch.source].name
+            "nothing is sure to drive {r}'s gate ({}), so the channel may be on",
+            design.nets[gate].name
         ));
-    };
-    // A gate on its own source sits at 0 V, however far the net itself moves.
-    let (lo, hi) = if gate == ch.source {
-        (0.0, 0.0)
-    } else {
-        (gmin - smax, gmax - smin)
-    };
+    }
+    let g = gv.span;
+    // The gate from each end: its lowest and highest. A gate on that end sits at 0 V from it.
+    let mut from = vec![];
+    for end in [ch.source, ch.drain] {
+        if gate == end {
+            from.push((0.0, 0.0));
+            continue;
+        }
+        let e = v.nets[end].span;
+        let (Some(gmin), Some(gmax), Some(emin), Some(emax)) = (g.min, g.max, e.min, e.max) else {
+            return maybe(format!(
+                "{r}'s gate ({}) or channel ({}) range is UNKNOWN, so the channel may be on",
+                design.nets[gate].name, design.nets[end].name
+            ));
+        };
+        from.push((gmin - emax, gmax - emin));
+    }
+    let lo = from.iter().map(|f| f.0).fold(f64::INFINITY, f64::min);
+    let hi = from.iter().map(|f| f.1).fold(f64::NEG_INFINITY, f64::max);
     let vgs = format!(
-        "VGS is {} to {} V ({} {g} less {} {s})",
+        "the gate ({}, {g}) is {} to {} V from either end of the channel ({} and {})",
+        design.nets[gate].name,
         round(lo),
         round(hi),
-        design.nets[gate].name,
-        design.nets[ch.source].name
+        design.nets[ch.source].name,
+        design.nets[ch.drain].name
     );
     let cite = &ch.cite;
-    if tlo > 0.0 {
-        if hi < tlo {
-            return (
-                ChannelState::Off,
-                format!("{vgs}, below the {tlo} V smallest threshold ({cite})"),
-            );
-        }
-        if let Some(on) = ch.on.filter(|&on| lo >= on) {
-            return (
-                ChannelState::On,
-                format!("{vgs}, at or past the {on} V RDS(on) is given at ({cite})"),
-            );
-        }
-    } else if thi < 0.0 {
-        if lo > thi {
-            return (
-                ChannelState::Off,
-                format!("{vgs}, short of the {thi} V smallest threshold ({cite})"),
-            );
-        }
-        if let Some(on) = ch.on.filter(|&on| hi <= on) {
-            return (
-                ChannelState::On,
-                format!("{vgs}, at or past the {on} V RDS(on) is given at ({cite})"),
-            );
-        }
+    // Off: the gate never passes either end. Fully on: the gate is always past `on` from the end that acts as the
+    // source (the lower one on an N-channel part, the higher on a P-channel one), so from at least one end.
+    let (off, on) = if n {
+        (
+            hi <= 0.0,
+            ch.on
+                .is_some_and(|o| from.iter().map(|f| f.0).fold(f64::NEG_INFINITY, f64::max) >= o),
+        )
+    } else {
+        (
+            lo >= 0.0,
+            ch.on
+                .is_some_and(|o| from.iter().map(|f| f.1).fold(f64::INFINITY, f64::min) <= o),
+        )
+    };
+    if off {
+        return (
+            ChannelState::Off,
+            format!(
+                "{vgs}, never {} it, so this {}-channel part can't turn on ({cite})",
+                if n { "above" } else { "below" },
+                if n { "N" } else { "P" }
+            ),
+        );
     }
-    maybe(format!(
-        "{vgs}, which can reach the threshold, so the channel may be on ({cite})"
-    ))
+    if on {
+        return (
+            ChannelState::On,
+            format!(
+                "{vgs}, always past the {} V RDS(on) is given at ({cite})",
+                ch.on.unwrap_or_default()
+            ),
+        );
+    }
+    maybe(format!("{vgs}, so the channel may be on ({cite})"))
 }
 
 /// One input's range, and why. `follows` is the net its top follows, if it follows one.
@@ -1535,6 +1571,10 @@ enum Pull {
     Channel {
         via: String,
         net: usize,
+        gate: usize,
+        /// N-channel: it can raise this net only while the gate is above it. P-channel: lower it only while the
+        /// gate is below it.
+        n_channel: bool,
         state: ChannelState,
         reason: String,
     },
@@ -1546,7 +1586,8 @@ impl Group {
         self.pulls
             .iter()
             .flat_map(|p| match p {
-                Pull::Net { net, .. } | Pull::Channel { net, .. } => vec![*net],
+                Pull::Net { net, .. } => vec![*net],
+                Pull::Channel { net, gate, .. } => vec![*net, *gate],
                 Pull::Output { supplies, .. } => supplies.clone(),
                 Pull::Unknown(_) => vec![],
             })
@@ -1622,25 +1663,47 @@ impl Group {
                 Pull::Channel {
                     via,
                     net,
+                    gate,
+                    n_channel,
                     state,
                     reason,
-                } => (
-                    span_of(out, *net),
-                    Why {
-                        text: format!(
-                            "through {via}'s channel toward {}{shared}, {}: {reason}",
-                            name(*net),
-                            if *state == ChannelState::On {
-                                "fully on"
-                            } else {
-                                "which may be on"
-                            }
-                        ),
-                        from: vec![*net],
-                        bounded: true,
-                        low_floor: out[*net].as_ref().is_some_and(|nv| nv.floor),
-                    },
-                ),
+                } => {
+                    // The channel conducts only while the gate is past the net it pulls (taking the threshold as
+                    // 0 V, which holds at any temperature), so it can't take the net past the gate.
+                    let (y, g) = (span_of(out, *net), span_of(out, *gate));
+                    let span = if *n_channel {
+                        let cap = |v: Option<f64>| v.zip(g.max).map(|(v, c)| v.min(c));
+                        Span {
+                            min: cap(y.min),
+                            max: cap(y.max),
+                        }
+                    } else {
+                        let floor = |v: Option<f64>| v.zip(g.min).map(|(v, f)| v.max(f));
+                        Span {
+                            min: floor(y.min),
+                            max: floor(y.max),
+                        }
+                    };
+                    (
+                        span,
+                        Why {
+                            text: format!(
+                                "through {via}'s channel toward {}, {} the gate ({}){shared}; the channel is {}: {reason}",
+                                name(*net),
+                                if *n_channel { "no higher than" } else { "no lower than" },
+                                name(*gate),
+                                if *state == ChannelState::On {
+                                    "fully on"
+                                } else {
+                                    "maybe on"
+                                }
+                            ),
+                            from: vec![*net, *gate],
+                            bounded: *n_channel,
+                            low_floor: out[*net].as_ref().is_some_and(|nv| nv.floor),
+                        },
+                    )
+                }
                 Pull::Unknown(reason) => (
                     Span::unknown(),
                     Why {
@@ -1671,23 +1734,12 @@ impl Group {
                 || matches!(p, Pull::Output { push_pull, .. } if *push_pull)
         });
         nv.driver = if real { Driver::Pulled } else { Driver::Weak };
-        if !self.reactive
-            && self.pulls.iter().all(|p| {
-                matches!(
-                    p,
-                    Pull::Net { .. }
-                        | Pull::Channel {
-                            state: ChannelState::On,
-                            ..
-                        }
-                )
-            })
-        {
+        if !self.reactive && self.pulls.iter().all(|p| matches!(p, Pull::Net { .. })) {
             nv.between = self
                 .pulls
                 .iter()
                 .filter_map(|p| match p {
-                    Pull::Net { net, .. } | Pull::Channel { net, .. } => Some(*net),
+                    Pull::Net { net, .. } => Some(*net),
                     _ => None,
                 })
                 .collect::<BTreeSet<_>>()
@@ -1725,12 +1777,6 @@ fn build_groups(
             && !strong[b]
         {
             let (ra, rb) = (find(&mut parent, a), find(&mut parent, b));
-            parent[ra] = rb;
-        }
-    }
-    for ch in channels.iter().filter(|c| c.state != ChannelState::Off) {
-        if !strong[ch.drain] && !strong[ch.source] {
-            let (ra, rb) = (find(&mut parent, ch.drain), find(&mut parent, ch.source));
             parent[ra] = rb;
         }
     }
@@ -1772,12 +1818,26 @@ fn build_groups(
                                 if !off.contains(&o) {
                                     off.push(o);
                                 }
-                            } else if strong[other] {
-                                let pull = Pull::Channel {
-                                    via: r.clone(),
-                                    net: other,
-                                    state: ch.state,
-                                    reason: ch.reason.clone(),
+                            } else if nets.contains(&other) {
+                                // Both ends are already in this group, which shares one range.
+                            } else {
+                                let pull = match (ch.gate, ch.n_channel) {
+                                    (Some(gate), Some(n_channel)) => Pull::Channel {
+                                        via: r.clone(),
+                                        net: other,
+                                        gate,
+                                        n_channel,
+                                        state: ch.state,
+                                        reason: ch.reason.clone(),
+                                    },
+                                    _ => Pull::Unknown(format!(
+                                        "{r}'s channel may be on, and {}",
+                                        if ch.gate.is_none() {
+                                            "its gate isn't connected"
+                                        } else {
+                                            "its part file doesn't say whether it is N- or P-channel"
+                                        }
+                                    )),
                                 };
                                 if !pulls
                                     .iter()
