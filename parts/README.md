@@ -338,9 +338,12 @@ against the rating itself is an error.
 
 Each board has an `inputs.toml` next to its schematic (see `tests/fixtures/*/inputs.toml`). It gives the
 voltages the outside world puts on its connector pins. `gerberus init board.kicad_sch` starts one: an entry for
-each connector pin whose net name gives a guess (ground, USB VBUS, D+/D− with a short-to-VBUS fault case, CC, a
-supply named like `12V` or `3V3` at ±10 %, a net the board drives itself, a test point), each with a `source`
-that starts "GUESS by gerberus init", and a comment for each pin it can't guess. Replace each guess's source
+each connector pin whose net name gives a guess (USB VBUS; D+/D− with a short-to-VBUS fault case and CC, both only
+on a USB connector; a supply named like `12V` or `3V3` at ±10 %, unless the name also says it is a signal such as
+`EN_12V`; a net the board drives itself, as `[[undriven]]`), each with a `source` that starts "GUESS by gerberus
+init", and a comment for each pin it can't guess. It also writes ground as a 0 V reference (an `[[input]]` whose
+`pin` and `to` are the same ground pin, the one place that is allowed) and test points as `[[undriven]]`; both say
+"assumed by gerberus init" and aren't counted as guesses. Replace each guess's source
 with where the range really comes from; until then `check` says how many guesses its results rest on and
 `doctor` lists them first. It won't replace an existing file unless `--force`. Without an inputs.toml, `check`,
 `voltages` and `loads` still run but say so. A net named `GND`, `0V` or `VSS` is taken as 0 V, every net only a connector reaches is UNKNOWN,

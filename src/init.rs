@@ -9,12 +9,15 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use crate::design::{Design, PinKind};
-use crate::limits::{DriveKind, Library, non_electrical};
-use crate::part_new::is_ground_name;
+use crate::limits::{Library, non_electrical};
 use crate::voltage::is_connector;
 
 /// How every guessed entry's `source` starts.
 pub const GUESS: &str = "GUESS by gerberus init";
+
+/// How an entry init is sure enough of starts: a ground named as one, a test point. These aren't counted as
+/// guesses.
+pub const ASSUMED: &str = "assumed by gerberus init";
 
 /// The pins of every entry in `inputs` that is still a guess from `init`.
 pub fn guesses(inputs: &crate::inputs::BoardInputs) -> Vec<String> {
@@ -31,6 +34,7 @@ pub fn guesses(inputs: &crate::inputs::BoardInputs) -> Vec<String> {
                 .map(|u| u.pin.to_string()),
         )
         .collect();
+    out.sort();
     out.dedup();
     out
 }
@@ -44,6 +48,8 @@ enum Guess {
         min: f64,
         max: f64,
         why: String,
+        /// Why it can't be connected backwards, when it can't.
+        reverse: Option<String>,
         fault: Option<(String, f64, f64, String)>,
     },
     /// Nothing outside drives it.
@@ -72,12 +78,64 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
          # [temperature]\n# min = 0\n# max = 40\n# source = \"...\""
     );
 
+    // What the board drives by itself, worked out with nothing plugged in: a net with a step that isn't
+    // UNKNOWN, a ground reference or a pull-up is set by a part on the board.
+    let alone = crate::voltage::compute(design, lib, &crate::inputs::BoardInputs::none(board, design));
+    let driven = |net: usize| -> Option<String> {
+        alone.nets.get(net)?.why.iter().find_map(|w| {
+            let t = w.text.as_str();
+            let skip = t.starts_with("UNKNOWN")
+                || t.contains("the reference of input")
+                || t.starts_with("pulled")
+                || t.strip_prefix("driven by output pin ")
+                    .is_some_and(|rest| !drives_out(design, rest));
+            (!skip).then(|| {
+                let short: String = t.chars().take(90).collect();
+                if short.len() < t.len() {
+                    format!("{short}...")
+                } else {
+                    short
+                }
+            })
+        })
+    };
+
     let connectors: Vec<&str> = design
         .components
         .values()
-        .filter(|c| !c.dnp && c.on_board && is_connector(lib, c))
+        .filter(|c| !c.dnp && is_connector(lib, c))
         .map(|c| c.reference.as_str())
         .collect();
+    let net_name = |r: &str, p: &str| design.pin_net(r, p).map_or(String::new(), |n| n.name.clone());
+    let short = |n: &str| n.rsplit('/').next().unwrap_or("").to_string();
+    // The board's ground: a ground pin on a connector, else any pin on a net named as a ground. It is written as
+    // a 0 V reference, so ground is known even when no other input is.
+    let board_ground = connectors
+        .iter()
+        .flat_map(|r| design.components[*r].pins.keys().map(move |p| (*r, p.as_str())))
+        .find(|(r, p)| is_ground_net(&short(&net_name(r, p))))
+        .map(|(r, p)| format!("{r}.{p}"))
+        .or_else(|| {
+            design
+                .nets
+                .iter()
+                .filter(|n| !n.pins.is_empty())
+                .find(|n| is_ground_net(n.name.rsplit('/').next().unwrap_or("")))
+                .and_then(|n| n.pins.iter().min())
+                .map(|(r, p)| format!("{r}.{p}"))
+        });
+    if let Some(g) = &board_ground {
+        let _ = writeln!(
+            out,
+            "\n# Ground, at 0 V.\n[[input]]\nname = \"ground\"\npin = \"{g}\"  # {}\nto = \"{g}\"\nmin = 0\nmax = 0\n\
+             reverse = \"a ground reference, not a supply\"\nsource = {}",
+            short(&net_name(
+                g.split('.').next().unwrap_or(""),
+                g.split_once('.').map_or("", |x| x.1)
+            )),
+            quote(&format!("{ASSUMED}: the net is named as a ground"))
+        );
+    }
     if connectors.is_empty() {
         let _ = writeln!(
             out,
@@ -86,22 +144,6 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
         );
         return out;
     }
-    let net_name = |r: &str, p: &str| design.pin_net(r, p).map_or(String::new(), |n| n.name.clone());
-    let short = |n: &str| n.rsplit('/').next().unwrap_or("").to_string();
-    // The ground a connector's inputs are measured from: its own ground pin, else any ground pin on the board.
-    let board_ground = connectors
-        .iter()
-        .flat_map(|r| design.components[*r].pins.keys().map(move |p| (*r, p.as_str())))
-        .find(|(r, p)| is_ground_name(&short(&net_name(r, p))))
-        .map(|(r, p)| format!("{r}.{p}"))
-        .or_else(|| {
-            design
-                .nets
-                .iter()
-                .find(|n| is_ground_name(n.name.rsplit('/').next().unwrap_or("")))
-                .and_then(|n| n.pins.iter().min())
-                .map(|(r, p)| format!("{r}.{p}"))
-        });
 
     let mut guessed = 0;
     let mut open = vec![];
@@ -110,19 +152,25 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
         let ground = c
             .pins
             .keys()
-            .find(|p| is_ground_name(&short(&net_name(r, p))))
+            .find(|p| is_ground_net(&short(&net_name(r, p))))
             .map(|p| format!("{r}.{p}"))
             .or_else(|| board_ground.clone());
+        let usb = c.lib_id.to_ascii_uppercase().contains("USB")
+            || c.pins
+                .keys()
+                .any(|p| is_vbus(&short(&net_name(r, p)).to_ascii_uppercase()));
         let mut pins: Vec<&str> = c.pins.keys().map(String::as_str).collect();
         pins.sort_by_key(|p| natural(p));
         let _ = writeln!(out, "\n# {r} ({}, {})", c.value, c.lib_id);
         if non_electrical(r, c).is_some() {
             for p in &pins {
+                if is_ground_net(&short(&net_name(r, p))) {
+                    continue;
+                }
                 let _ = writeln!(
                     out,
-                    "\n[[undriven]]\npin = \"{r}.{p}\"\nsource = \"{GUESS}: a test point, which only a probe touches\""
+                    "\n[[undriven]]\npin = \"{r}.{p}\"\nsource = \"{ASSUMED}: a test point, which only a probe touches\""
                 );
-                guessed += 1;
             }
             continue;
         }
@@ -133,11 +181,13 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
                 continue;
             }
             let net = net_name(r, p);
-            // One entry per net: a connector's second VBUS or GND pin is on the same net as its first.
-            if !seen.insert(pin.net) {
+            let g = guess(&short(&net), usb, driven(pin.net));
+            // An [[undriven]] entry covers one pin, so every pin on the net gets one. An input covers the whole
+            // net, so a connector's second VBUS pin needs none.
+            if !matches!(g, Guess::Undriven(_)) && !seen.insert(pin.net) {
                 continue;
             }
-            match guess(design, lib, r, pin.net, &short(&net)) {
+            match g {
                 Guess::Ground => {}
                 Guess::Undriven(why) => {
                     guessed += 1;
@@ -152,6 +202,7 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
                     min,
                     max,
                     why,
+                    reverse,
                     fault,
                 } => {
                     let Some(to) = &ground else {
@@ -168,6 +219,9 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
                         num(max),
                         quote(&format!("{GUESS}: {why}"))
                     );
+                    if let Some(rev) = reverse {
+                        let _ = writeln!(out, "reverse = {}", quote(&rev));
+                    }
                     if let Some((case, fmin, fmax, fwhy)) = fault {
                         let _ = writeln!(
                             out,
@@ -201,24 +255,64 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
     out
 }
 
-fn guess(design: &Design, lib: &Library, connector: &str, net: usize, name: &str) -> Guess {
+/// Whether the output pin a step names (`U6.19, which reaches...`) surely drives its net: a push-pull output
+/// on a fitted part. A bidirectional or tri-state pin, or a module plugged in by hand, may leave it to whatever
+/// is plugged in.
+fn drives_out(design: &Design, step: &str) -> bool {
+    let pin = step.split([',', ' ']).next().unwrap_or("");
+    let Some((r, p)) = pin.split_once('.') else {
+        return false;
+    };
+    design
+        .components
+        .get(r)
+        .is_some_and(|c| !c.dnp && c.in_bom && c.on_board && c.pins.get(p).is_some_and(|q| q.kind == PinKind::Output))
+}
+
+/// A ground net's name: GND…, AGND, DGND, PGND, SGND, 0V or VSS. Not VSS1 or VSS_15, which may be a negative
+/// rail.
+fn is_ground_net(name: &str) -> bool {
+    let n = name.to_ascii_uppercase();
+    n.starts_with("GND") || matches!(n.as_str(), "AGND" | "DGND" | "PGND" | "SGND" | "0V" | "VSS")
+}
+
+/// `VBUS`, `VBUS1`, `USB_VBUS`; not `VBUS_DET` or `VBUS_SENSE`.
+fn is_vbus(upper: &str) -> bool {
+    let words: Vec<&str> = upper
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    words.iter().any(|w| {
+        w.strip_prefix("VBUS")
+            .is_some_and(|d| d.chars().all(|c| c.is_ascii_digit()))
+    }) && !words.iter().any(|w| SIGNAL_WORDS.contains(w))
+}
+
+/// Words that make a net a signal, whatever voltage its name gives: `EN_3V3`, `PG_5V`, `VBUS_DET`.
+const SIGNAL_WORDS: &[&str] = &[
+    "EN", "PG", "OK", "SENSE", "SNS", "DET", "DETECT", "TX", "RX", "SDA", "SCL", "CS", "CLK", "INT", "RST", "RESET",
+    "IO", "LED", "FLT", "FAULT", "ALERT", "MON", "ADC", "SIG", "CTRL", "SEL", "OC", "PWR_EN", "ON", "OFF",
+];
+
+/// What init makes of a connector pin's net, from its name (`usb`: the connector is a USB one) and whether the
+/// board drives it (`driven`: the step that sets it).
+fn guess(name: &str, usb: bool, driven: Option<String>) -> Guess {
     let upper = name.to_ascii_uppercase();
-    if is_ground_name(&upper) {
+    if is_ground_net(&upper) {
         return Guess::Ground;
     }
-    // A net the board drives itself: a regulator's output, or a power output on another part.
-    if let Some(driver) = board_drives(design, lib, connector, net) {
+    if let Some(step) = driven {
         return Guess::Undriven(format!(
-            "the board drives this net itself ({driver}), so the connector takes it out rather than bringing \
-             it in; if something plugged in can also drive it, make this an [[input]]"
+            "the board drives this net itself ({step}), so the connector takes it out rather than bringing it \
+             in; if something plugged in can also drive it, make this an [[input]]"
         ));
     }
     let words: Vec<&str> = upper
         .split(|c: char| !c.is_ascii_alphanumeric() && c != '+' && c != '-' && c != '.')
         .filter(|w| !w.is_empty())
         .collect();
-    let has = |w: &str| words.iter().any(|x| x.trim_matches(['+', '-']) == w);
-    if upper.contains("VBUS") {
+    let signal = words.iter().any(|w| SIGNAL_WORDS.contains(&w.trim_matches(['+', '-'])));
+    if is_vbus(&upper) {
         return Guess::Input {
             name: "VBUS".into(),
             min: 4.0,
@@ -226,39 +320,41 @@ fn guess(design: &Design, lib: &Library, connector: &str, net: usize, name: &str
             why: "a USB VBUS pin, taken as 4.0 to 5.5 V to cover any USB 5 V source; check it against the USB \
                   spec the port follows and any power delivery contract"
                 .into(),
+            reverse: usb.then(|| "a USB plug can't put VBUS on its ground contacts".to_string()),
             fault: None,
         };
     }
-    let usb_data = [
-        "D+", "D-", "DP", "DM", "DP1", "DN1", "DP2", "DN2", "USB_DP", "USB_DM", "USB_D+", "USB_D-",
-    ]
-    .iter()
-    .any(|w| words.contains(w))
-        || (upper.contains("USB") && (upper.ends_with("_P") || upper.ends_with("_N")));
-    if usb_data {
-        return Guess::Input {
-            name: "USB data".into(),
-            min: 0.0,
-            max: 3.6,
-            why: "a USB 2.0 data line, taken as 0 to 3.6 V, the most full-speed signalling drives".into(),
-            fault: Some((
-                "USB data shorted to VBUS".into(),
-                0.0,
-                5.5,
-                "USB 2.0 asks a port's data lines to survive a short to VBUS (taken as up to 5.5 V)".into(),
-            )),
-        };
+    if usb && !signal {
+        let data = ["D+", "D-", "DP", "DM", "DN", "DP1", "DN1", "DP2", "DN2", "DM1", "DM2"]
+            .iter()
+            .any(|w| words.contains(w));
+        if data {
+            return Guess::Input {
+                name: "USB data".into(),
+                min: 0.0,
+                max: 3.6,
+                why: "a USB 2.0 data line, taken as 0 to 3.6 V, the most full-speed signalling drives".into(),
+                reverse: None,
+                fault: Some((
+                    "USB data shorted to VBUS".into(),
+                    0.0,
+                    5.5,
+                    "USB 2.0 asks a port's data lines to survive a short to VBUS (taken as up to 5.5 V)".into(),
+                )),
+            };
+        }
+        if ["CC", "CC1", "CC2"].iter().any(|w| words.contains(w)) {
+            return Guess::Input {
+                name: "CC".into(),
+                min: 0.0,
+                max: 5.5,
+                why: "a USB Type-C CC pin, taken as 0 to 5.5 V, the most VCONN can be".into(),
+                reverse: None,
+                fault: None,
+            };
+        }
     }
-    if has("CC1") || has("CC2") || has("CC") {
-        return Guess::Input {
-            name: "CC".into(),
-            min: 0.0,
-            max: 5.5,
-            why: "a USB Type-C CC pin, taken as 0 to 5.5 V, the most VCONN can be".into(),
-            fault: None,
-        };
-    }
-    if let Some(v) = words.iter().find_map(|w| volts_in(w)) {
+    if !signal && let Some(v) = words.iter().find_map(|w| volts_in(w)) {
         let (lo, hi) = if v < 0.0 {
             (v * 1.1, v * 0.9)
         } else {
@@ -269,9 +365,11 @@ fn guess(design: &Design, lib: &Library, connector: &str, net: usize, name: &str
             min: round(lo),
             max: round(hi),
             why: format!(
-                "the net is named {name}, so it is taken as {} V ±10 %; replace it with the supply's real range",
+                "the net is named {name} and nothing on the board drives it, so it is taken as a {} V supply \
+                 ±10 %; replace it with the supply's real range",
                 num(v)
             ),
+            reverse: None,
             fault: None,
         };
     }
@@ -297,35 +395,6 @@ fn volts_in(word: &str) -> Option<f64> {
         format!("{whole}.{frac}").parse().ok()?
     };
     (v > 0.0 && v <= 1000.0).then_some(if neg { -v } else { v })
-}
-
-/// What on the board drives `net`, if anything does: a part file's `regulates` drive, or a power output pin
-/// on a part that isn't a connector.
-fn board_drives(design: &Design, lib: &Library, connector: &str, net: usize) -> Option<String> {
-    for (r, p) in &design.nets[net].pins {
-        if r == connector {
-            continue;
-        }
-        let Some(c) = design.components.get(r) else { continue };
-        // A part left off the board (a module plugged in by hand) comes from outside, like a connector's.
-        if c.dnp || !c.in_bom || !c.on_board || is_connector(lib, c) {
-            continue;
-        }
-        if let Some(part) = lib.part_for(c) {
-            let name = part.pins.get(p).map_or("", String::as_str);
-            if part
-                .drives
-                .iter()
-                .any(|d| d.kind == DriveKind::Regulates && d.pin == name && !d.feedback)
-            {
-                return Some(format!("{} ({}) regulates it", r, part.mpn));
-            }
-        }
-        if c.pins.get(p).is_some_and(|q| q.kind == PinKind::PowerOut) {
-            return Some(format!("{r}.{p} is a power output"));
-        }
-    }
-    None
 }
 
 fn natural(n: &str) -> (String, u64, String) {
@@ -354,7 +423,44 @@ fn quote(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::volts_in;
+    use super::{Guess, guess, is_ground_net, is_vbus, volts_in};
+
+    fn kind(name: &str, usb: bool) -> &'static str {
+        match guess(name, usb, None) {
+            Guess::Ground => "ground",
+            Guess::Input { name, .. } if name == "VBUS" => "vbus",
+            Guess::Input { name, .. } if name == "USB data" => "data",
+            Guess::Input { name, .. } if name == "CC" => "cc",
+            Guess::Input { .. } => "supply",
+            Guess::Undriven(_) => "undriven",
+            Guess::Unknown => "unknown",
+        }
+    }
+
+    #[test]
+    fn guesses_from_net_names() {
+        assert_eq!(kind("+12V", false), "supply");
+        assert_eq!(kind("3V3_D", false), "supply");
+        // A signal named after its logic level is no supply.
+        for signal in ["UART_TX_3V3", "EN_3V3", "PG_5V", "VCC_5V_EN", "SDA_3V3"] {
+            assert_eq!(kind(signal, false), "unknown", "{signal}");
+        }
+        assert_eq!(kind("VBUS1", true), "vbus");
+        assert_eq!(kind("VBUS_DET", true), "unknown");
+        assert_eq!(kind("USB1_D+", true), "data");
+        assert_eq!(kind("USB_DN", true), "data");
+        // Data and CC names count only on a USB connector.
+        assert_eq!(kind("DP_AUX", false), "unknown");
+        assert_eq!(kind("CC_LED", false), "unknown");
+        assert_eq!(kind("CC1", true), "cc");
+        assert_eq!(kind("GND", false), "ground");
+        assert!(matches!(
+            guess("+5V", false, Some("U1 regulates it".into())),
+            Guess::Undriven(_)
+        ));
+        assert!(is_ground_net("AGND") && is_ground_net("VSS") && !is_ground_net("VSS_15"));
+        assert!(is_vbus("USB_VBUS") && !is_vbus("VBUS_SENSE"));
+    }
 
     #[test]
     fn voltages_from_net_names() {

@@ -39,10 +39,12 @@ fn usb_pins_get_usb_ranges_and_a_short_to_vbus() {
     let short = at("J5.A6", true);
     assert_eq!(short.max, Max::Value(5.5));
     assert_eq!(short.fault.as_deref(), Some("J5 USB data shorted to VBUS"));
-    // Every entry is measured from a ground pin.
-    for i in &inputs.inputs {
+    // Every entry but the ground reference is measured from a ground pin.
+    for i in inputs.inputs.iter().filter(|i| i.name != "ground") {
         assert_ne!(i.pin, i.to);
     }
+    // A USB plug can't reverse VBUS.
+    assert!(vbus.reverse.is_some());
 }
 
 #[test]
@@ -55,9 +57,15 @@ fn nets_the_board_drives_and_unnamed_signals() {
     assert!(!inputs.inputs.iter().any(|i| i.pin.to_string() == "J4.1"));
     // Each guessed pin is listed once, though a USB data pin has a fault-case entry too.
     let guesses = gerberus::init::guesses(&inputs);
+    let guessed = |src: &str| src.starts_with(gerberus::init::GUESS);
     assert_eq!(
         guesses.len(),
-        inputs.inputs.iter().filter(|i| i.fault.is_none()).count() + inputs.undriven.len()
+        inputs
+            .inputs
+            .iter()
+            .filter(|i| i.fault.is_none() && guessed(&i.source))
+            .count()
+            + inputs.undriven.iter().filter(|u| guessed(&u.source)).count()
     );
 }
 
@@ -95,4 +103,17 @@ fn command_writes_and_check_says_guesses() {
     let v: serde_json::Value = serde_json::from_slice(&doctor.stdout).unwrap();
     assert_eq!(v["items"][0]["rule"], "guess");
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A file with no other input still knows ground: init writes it as a 0 V reference.
+#[test]
+fn ground_is_known_without_other_inputs() {
+    let design = kicad::load(&root("tests/fixtures/kitchen-sink/power.kicad_sch")).unwrap();
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let text = gerberus::init::template(&design, &lib, "power");
+    let inputs: BoardInputs = toml::from_str(&text).unwrap();
+    assert!(inputs.problems(&design).is_empty(), "{:?}", inputs.problems(&design));
+    let v = gerberus::voltage::compute(&design, &lib, &inputs);
+    let gnd = design.nets.iter().position(|n| n.name == "GND").unwrap();
+    assert_eq!(v.nets[gnd].span, gerberus::voltage::Span::exact(0.0), "{text}");
 }
