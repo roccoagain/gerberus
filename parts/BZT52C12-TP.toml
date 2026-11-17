@@ -1,0 +1,35 @@
+mpn = "BZT52C12-TP"
+manufacturer = "Micro Commercial Co"
+description = "12 V 500 mW Zener diode, SOD-123"
+class = "diode"
+theta_ja = { value = 250, page = 1, note = "thermal resistance junction to ambient, maximum ratings" }
+tj_max = { value = 150, page = 1, note = "operating junction temperature range −65 to +150 °C, maximum ratings; PD 500 mW, derated with ambient per Fig. 1 (p3)" }
+
+# A Zener has no class of its own. `tvs` would make `check` call any rail above breakdown.min a part that
+# "conducts continuously and overheats", which is what a resistor-fed Zener clamp is meant to do, so the class
+# is `diode` and the Zener voltage is recorded in `breakdown` as the format guide says for Zener parts.
+# The series sheet's ordering information (p4) gives "Part Number-TP" for tape and reel, so BZT52C12-TP is the
+# BZT52C12 row of the p2 table.
+
+[datasheet]
+title = "BZT52C2V4 thru BZT52C75, 500 mW Zener Diode, 2.4 to 75 Volts, SOD-123"
+document = "Rev.3-1-01012019"
+url = "https://www.lcsc.com/datasheet/C668891.pdf"
+
+# SOD-123, cathode mark (p1); the datasheet gives no pin numbers.
+[pins]
+1 = "K"
+2 = "A"
+
+[[limit]]
+pins = ["K"]
+to = "A"
+abs_max = { unknown = "the maximum ratings give power (PD 500 mW) and forward voltage, not a reverse voltage: past VZ the reverse voltage is set by the Zener current" }
+recommended = { unknown = "the datasheet has no recommended operating conditions; the reverse-voltage figures are VZ (in breakdown) and the IR test point (0.1 uA max at VR = 8 V, p2)" }
+breakdown = { min = 11.4, max = 12.7, page = 2, note = "VZ at IZT = 5 mA, 25 °C; ZZT 25 ohm max at IZT; temperature coefficient 6.0 to 10.0 mV/°C at IZTC" }
+
+[[drive]]
+kind = "forward"
+pin = "A"
+to = "K"
+range = { min = { unknown = "only a maximum forward voltage is given" }, max = 0.9, page = 1, note = "maximum forward voltage VF at IF = 10 mA" }

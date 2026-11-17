@@ -1,0 +1,189 @@
+mpn = "TPA3118D2DAPR"
+manufacturer = "Texas Instruments"
+description = "2 x 30 W filter-free class-D stereo amplifier, 4.5 V to 26 V, HTSSOP-32 PowerPAD down (DAP)"
+class = "ic"
+temperature = { min = -40, max = 85, page = 5, note = "TA operating free-air temperature; printed in the absolute maximum ratings table, the recommended operating conditions give none" }
+theta_ja = { value = 22, page = 6, note = "RθJA, TPA3118D2 DAP 32 pins, on the TPA3118D2EVM layout (note 3)" }
+tj_max = { value = 150, page = 5, note = "TJ operating junction temperature max, absolute maximum ratings (no recommended TJ is given); thermal trip point 150+ °C (page 7)" }
+
+[datasheet]
+title = "TPA3116D2 15-W, 30-W, 50-W Filter-Free Class-D Stereo Amplifier Family With AM Avoidance"
+document = "SLOS708G, revised December 2017"
+url = "https://www.ti.com/lit/ds/symlink/tpa3118d2.pdf"
+
+# Pin Functions table (page 4), DAP package (page 3); TPA3118D2DAPR is the HTSSOP (DAP) 32-pin, large T&R part in
+# the orderable addendum (page 33). Pin 33 is the PowerPAD (type G): "Connect to GND for best system performance. If
+# not connected to GND, leave floating." The absolute maximum ratings (page 5) name the audio inputs INPL, INNL,
+# INPR and INNR; the pin table names them LINP, LINN, RINP and RINN.
+[pins]
+1 = "MODSEL"
+2 = "SDZ"
+3 = "FAULTZ"
+4 = "RINP"
+5 = "RINN"
+6 = "PLIMIT"
+7 = "GVDD"
+8 = "GAIN/SLV"
+9 = "GND"
+10 = "LINP"
+11 = "LINN"
+12 = "MUTE"
+13 = "AM2"
+14 = "AM1"
+15 = "AM0"
+16 = "SYNC"
+17 = "AVCC"
+18 = "PVCC"
+19 = "PVCC"
+20 = "BSNL"
+21 = "OUTNL"
+22 = "GND"
+23 = "OUTPL"
+24 = "BSPL"
+25 = "GND"
+26 = "BSNR"
+27 = "OUTNR"
+28 = "GND"
+29 = "OUTPR"
+30 = "BSPR"
+31 = "PVCC"
+32 = "PVCC"
+33 = "PowerPAD"
+
+[[limit]]
+pins = ["PVCC", "AVCC"]
+to = "GND"
+abs_max = { min = -0.3, max = 30, page = 5, note = "supply voltage VCC, PVCC, AVCC" }
+recommended = { min = 4.5, max = 26, page = 5, note = "VCC supply voltage, PVCC, AVCC" }
+
+[[limit]]
+pins = ["LINP", "LINN", "RINP", "RINN"]
+to = "GND"
+abs_max = { min = -0.3, max = 6.3, page = 5, note = "input voltage VI, printed as INPL, INNL, INPR, INNR" }
+recommended = { unknown = "the recommended operating conditions give no audio input range; the pin table (page 4) says only that the inputs are biased at 3 V and must be AC-coupled (page 14)" }
+
+[[limit]]
+pins = ["PLIMIT", "GAIN/SLV", "SYNC"]
+to = "GND"
+abs_max = { min = -0.3, max = { pin = "GVDD", plus = 0.3 }, page = 5, derived = "-0.3 .. GVDD + 0.3; input voltage VI, PLIMIT, GAIN / SLV, SYNC" }
+recommended = { unknown = "the recommended operating conditions give only VIH min 2 V and VIL max 0.8 V for SYNC, and nothing for PLIMIT or GAIN/SLV (page 5); page 14 says SYNC has TTL levels with compliance to GVDD" }
+
+[[limit]]
+pins = ["AM0", "AM1", "AM2", "MUTE", "SDZ", "MODSEL"]
+to = "GND"
+abs_max = { min = -0.3, max = { pin = "PVCC", plus = 0.3 }, page = 5, derived = "-0.3 .. PVCC + 0.3; input voltage VI, AM0, AM1, AM2, MUTE, SDZ, MODSEL. Slew rate at most 10 V/ms, or a 100 kΩ series resistor (note 2)" }
+recommended = { unknown = "the recommended operating conditions give only VIH min 2 V and VIL max 0.8 V (page 5), no input range; the pin table says TTL levels with compliance to AVCC (page 4)" }
+
+[[limit]]
+pins = ["FAULTZ"]
+to = "GND"
+abs_max = { unknown = "the absolute maximum ratings give no FAULTZ voltage; it is an open-drain output (page 4)" }
+recommended = { unknown = "the recommended operating conditions give only VOL max 0.8 V with RPULL-UP = 100 kΩ to PVCC = 26 V (page 5), a test condition rather than a pin range" }
+
+[[limit]]
+pins = ["GVDD"]
+to = "GND"
+abs_max = { unknown = "the absolute maximum ratings give no GVDD voltage; GVDD is the internal gate-drive supply output (page 4)" }
+recommended = { unknown = "the datasheet gives no GVDD pin range; it is an output, decoupled with 1 µF and loaded only by the PLIMIT and GAIN/SLV dividers (pages 4, 16)" }
+
+[[limit]]
+pins = ["OUTPL", "OUTNL", "OUTPR", "OUTNR"]
+to = "GND"
+abs_max = { unknown = "the absolute maximum ratings give no output voltage" }
+recommended = { unknown = "the datasheet gives no output voltage range; the outputs are full H-bridge switch nodes between GND and PVCC (page 16)" }
+
+[[limit]]
+pins = ["BSPL", "BSNL", "BSPR", "BSNR"]
+to = "GND"
+abs_max = { unknown = "the absolute maximum ratings give no bootstrap pin voltage, from GND or from the outputs" }
+recommended = { unknown = "the datasheet gives no bootstrap voltage; page 16 asks only for a 220 nF X5R capacitor rated at least 16 V from each BSxx pin to its output" }
+
+[[limit]]
+pins = ["PowerPAD"]
+to = "GND"
+abs_max = { unknown = "the absolute maximum ratings give no PowerPAD voltage; the pin table says connect it to GND or leave it floating (page 4)" }
+recommended = { unknown = "the pin table says connect the PowerPAD to GND or leave it floating (page 4), but gives no voltage range" }
+
+# The pin table (page 4) says each audio input is "Biased at 3 V", and page 15 "biased to 3 Vdc". That is a
+# nominal value with no tolerance, so the bias range is unknown. Page 4 also says to connect LINP and LINN to GND
+# for PBTL mode, where the bias is moot.
+[[drive]]
+kind = "biases"
+pin = "RINP"
+to = "GND"
+supply = "AVCC"
+range = { unknown = "the inputs are biased internally at a nominal 3 V (pin table, page 4; page 15), with no minimum or maximum" }
+
+[[drive]]
+kind = "biases"
+pin = "RINN"
+to = "GND"
+supply = "AVCC"
+range = { unknown = "the inputs are biased internally at a nominal 3 V (pin table, page 4; page 15), with no minimum or maximum" }
+
+[[drive]]
+kind = "biases"
+pin = "LINP"
+to = "GND"
+supply = "AVCC"
+range = { unknown = "the inputs are biased internally at a nominal 3 V (pin table, page 4; page 15), with no minimum or maximum" }
+
+[[drive]]
+kind = "biases"
+pin = "LINN"
+to = "GND"
+supply = "AVCC"
+range = { unknown = "the inputs are biased internally at a nominal 3 V (pin table, page 4; page 15), with no minimum or maximum" }
+
+# GVDD is an internal LDO fed from AVCC (page 28). Its range is specified at TA = 25 °C and AVCC = PVCC = 12 V to
+# 24 V only; the datasheet gives no dropout, so there is no headroom and the low end is only a floor.
+[[drive]]
+kind = "regulates"
+pin = "GVDD"
+to = "GND"
+supply = "AVCC"
+range = { min = 6.4, max = 7.4, page = 6, note = "GVDD gate drive supply, IGVDD < 200 µA; DC electrical characteristics at TA = 25 °C, AVCC = PVCC = 12 V to 24 V" }
+
+# The four outputs are the H-bridge switch nodes (pin table, page 4: PO; page 16: NMOS full bridge).
+[[drive]]
+kind = "switches"
+pin = "OUTPL"
+to = "GND"
+supply = "PVCC"
+range = { unknown = "the datasheet gives no output swing; undershoot below GND and overshoot above PVCC are not given" }
+
+[[drive]]
+kind = "switches"
+pin = "OUTNL"
+to = "GND"
+supply = "PVCC"
+range = { unknown = "the datasheet gives no output swing; undershoot below GND and overshoot above PVCC are not given" }
+
+[[drive]]
+kind = "switches"
+pin = "OUTPR"
+to = "GND"
+supply = "PVCC"
+range = { unknown = "the datasheet gives no output swing; undershoot below GND and overshoot above PVCC are not given" }
+
+[[drive]]
+kind = "switches"
+pin = "OUTNR"
+to = "GND"
+supply = "PVCC"
+range = { unknown = "the datasheet gives no output swing; undershoot below GND and overshoot above PVCC are not given" }
+
+# No [[supply]]: ICC max 35 mA (PVCC = 12 V) and 50 mA (PVCC = 24 V) on page 6 are quiescent currents with no load
+# or filter, not the most the part draws while driving a speaker, and no loaded maximum is given.
+
+[[esd]]
+model = "hbm"
+volts = 2000
+page = 5
+note = "HBM per ANSI/ESDA/JEDEC JS-001"
+
+[[esd]]
+model = "cdm"
+volts = 500
+page = 5
+note = "CDM per JEDEC JESD22-C101"

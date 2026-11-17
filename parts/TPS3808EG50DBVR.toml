@@ -1,0 +1,88 @@
+# The schematic orders TPS3808EG50DBVR. SBVS050N does not list that part number: its device table (page 3) and
+# orderable addendum (pages 19 to 22) list TPS3808G50DBVR (5 V rail, VIT 4.65 V, SOT-23 DBV, large T&R) and no
+# part number with an "E" after TPS3808. The values here are read for TPS3808G50DBVR, which is a [[variant]] below;
+# that they hold for the "E" part is an assumption the datasheet doesn't back. Check the order code with TI or the
+# distributor.
+mpn = "TPS3808EG50DBVR"
+manufacturer = "Texas Instruments"
+description = "Supply voltage supervisor, 4.65 V fixed threshold (5 V rail), programmable delay, open-drain RESET, SOT-23-6 (DBV)"
+class = "ic"
+temperature = { min = -40, max = 125, page = 22, note = "Op temp column of the orderable addendum, TPS3808G50DBVR; the electrical characteristics are specified over TJ -40 to 125 °C (page 6) and note 2 on page 5 takes TJ = TA; the recommended operating conditions give no temperature" }
+theta_ja = { value = 180.9, page = 5, note = "RθJA, DBV (SOT-23) 6 pins" }
+tj_max = { value = 150, page = 5, note = "operating junction TJ max, absolute maximum ratings (the recommended operating conditions give no TJ); the electrical characteristics hold only up to TJ = 125 °C (page 6)" }
+
+[datasheet]
+title = "TPS3808 Low-Quiescent-Current, Programmable-Delay Supervisory Circuit"
+document = "SBVS050N, revised August 2026"
+url = "https://www.ti.com/lit/ds/symlink/tps3808.pdf"
+
+[[variant]]
+mpn = "TPS3808G50DBVR"
+
+# Table 5-1 Pin Functions, SOT-23 column (page 4). The datasheet prints RESET and MR with an overbar (active low);
+# the symbol names them RESET_N and MR_N. MR is pulled up to VDD internally (RMR 70 kΩ min, page 6). RESET is an
+# open-drain output; a 10 kΩ to 1 MΩ pull-up "allows the reset pin to attain voltages higher than VDD" (page 4).
+[pins]
+1 = "RESET"
+2 = "GND"
+3 = "MR"
+4 = "CT"
+5 = "SENSE"
+6 = "VDD"
+
+[[limit]]
+pins = ["VDD"]
+to = "GND"
+abs_max = { min = -0.3, max = 7, page = 5, note = "VDD" }
+recommended = { min = 1.7, max = 6.5, page = 5, note = "VDD input supply range; the electrical characteristics allow 1.65 V for 0 °C < TJ < 85 °C (page 6)" }
+
+[[limit]]
+pins = ["SENSE"]
+to = "GND"
+abs_max = { min = -0.3, max = 7, page = 5, note = "VSENSE (row VRESET, VMR, VSENSE)" }
+recommended = { min = 0, max = 6.5, page = 5, note = "VSENSE SENSE pin voltage" }
+
+[[limit]]
+pins = ["MR"]
+to = "GND"
+abs_max = { min = -0.3, max = 7, page = 5, note = "VMR (row VRESET, VMR, VSENSE)" }
+recommended = { min = 0, max = 6.5, page = 5, note = "VMR MR pin voltage" }
+
+[[limit]]
+pins = ["RESET"]
+to = "GND"
+abs_max = { min = -0.3, max = 7, page = 5, note = "VRESET (row VRESET, VMR, VSENSE)" }
+recommended = { min = 0, max = 6.5, page = 5, note = "VRESET RESET pin voltage; open drain, so it may sit above VDD" }
+
+[[limit]]
+quantity = "current"
+pins = ["RESET"]
+abs_max = { min = -0.005, max = 0.005, page = 5, note = "RESET pin current, –5 to 5 mA" }
+recommended = { min = 0.0000003, max = 0.005, page = 5, note = "IRESET RESET pin current, 0.0003 to 5 mA as printed" }
+
+[[limit]]
+pins = ["CT"]
+to = "GND"
+abs_max = { min = -0.3, max = { pin = "VDD", plus = 0.3 }, page = 5, derived = "-0.3 .. VDD + 0.3; VCT, -0.3 to VDD + 0.3 as printed" }
+recommended = { min = { unknown = "the recommended operating conditions give no minimum for V(Ct)" }, max = { pin = "VDD" }, page = 5, note = "V(Ct) CT pin voltage, max VDD" }
+
+# No [[drive]]: RESET is open drain (page 4), so it only pulls low; VOL max 0.4 V at IOL = 1 mA for
+# 1.8 V ≤ VDD ≤ 6.5 V (page 6). The symbol's pin type says open drain to the checkers.
+
+# IDD max 6 µA at VDD = 6.5 V, RESET not asserted, MR, RESET and CT open (page 6). With MR pulled low the internal
+# pull-up (RMR 70 kΩ min) adds VDD / RMR; IDD with RESET asserted is not given.
+[[supply]]
+pins = ["VDD"]
+current = { min = 0, max = 0.00009886, page = 6, derived = "0 .. 0.000006 + 6.5 / 70000; IDD max 6 µA at VDD = 6.5 V plus 6.5 V across the MR pull-up at its 70 kΩ minimum", note = "IDD with MR held low; IDD while RESET is asserted is not given" }
+
+[[esd]]
+model = "hbm"
+volts = 2000
+page = 5
+note = "HBM per ANSI/ESDA/JEDEC JS-001, all pins"
+
+[[esd]]
+model = "cdm"
+volts = 500
+page = 5
+note = "CDM per JEDEC JESD22-C101, all pins"

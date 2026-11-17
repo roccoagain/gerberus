@@ -1,0 +1,23 @@
+mpn = "SRP1038A-100M"
+manufacturer = "Bourns"
+description = "10 uH shielded power inductor, 7.5 A Irms, 12 A Isat, 11.0 x 10.0 x 3.8 mm"
+class = "inductor"
+tolerance = { value = 0.2, page = 1, note = "10 uH ±20 % at 100 kHz, 1 V" }
+temperature = { min = -55, max = 150, page = 1, note = "operating temperature, temperature rise included" }
+
+[datasheet]
+title = "SRP1038A Series - Shielded Power Inductors"
+document = "REV. 07/20"
+url = "https://www.lcsc.com/datasheet/C780184.pdf"
+
+[pins]
+1 = "1"
+2 = "2"
+
+# DCR 30 mohm max, 27 mohm typ (p1); no field for it here.
+[[limit]]
+quantity = "current"
+pins = ["1"]
+to = "2"
+abs_max = { unknown = "the datasheet gives saturation and heat-rating currents, not an absolute maximum" }
+recommended = { min = -7.5, max = 7.5, page = 1, note = "Irms 7.5 A (40 °C temperature rise at rated Irms); Isat 12 A (inductance drops 20 %). The table doesn't say whether Irms and Isat are min, typ or max" }

@@ -395,7 +395,18 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             }
         }
         let need = format!("{} V contact or {} V air ({})", level.contact, level.air, level.reason);
-        let (verdict, text) = if !weak.is_empty() {
+        let (verdict, text) = if !weak.is_empty() && !unknown.is_empty() {
+            // A part with no part file may be the clamp (an ESD diode whose part number no file covers), so a
+            // weak pin can't fail the net.
+            (
+                Verdict::Unknown,
+                format!(
+                    "{at} has no clamp that a part file describes, and {}; {no_file}: if one of them is a clamp, \
+                     its part file settles this",
+                    weak.join("; ")
+                ),
+            )
+        } else if !weak.is_empty() {
             (
                 Verdict::Fail,
                 format!(
