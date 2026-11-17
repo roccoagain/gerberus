@@ -91,6 +91,9 @@ For an AI agent working in a board's repository, `gerberus skill install` adds t
 (set up inputs.toml, follow `gerberus doctor`, run the checks) and `datasheet-to-part` (read a datasheet into a
 part file, verified against its pages and read twice).
 
+A finding the designers accept on purpose goes in a `waivers.toml` next to the schematic, with the reason; see
+[waivers](docs/waivers.md).
+
 Run `gerberus --help` for every command and option.
 
 ## Links

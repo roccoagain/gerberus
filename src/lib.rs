@@ -23,6 +23,7 @@ pub mod spice;
 pub mod thermal;
 pub mod update;
 pub mod voltage;
+pub mod waivers;
 
 /// Loads a design from any supported format, chosen by file extension: a KiCad `.kicad_sch`, or an Altium
 /// `.PrjPcb` project or lone `.SchDoc` sheet.
