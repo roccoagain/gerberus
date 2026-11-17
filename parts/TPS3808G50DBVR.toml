@@ -1,7 +1,6 @@
 # The amp board orders TPS3808EG50DBVR, which SBVS050N does not list: its device table (page 3) and orderable
-# addendum (pages 19 to 22) have no part number with an "E" after TPS3808. So this file is keyed by the part the
-# datasheet does list, and the amp board's U103 stays UNCHECKED until a datasheet names the E part (as with
-# PESD5V0S1BAF).
+# addendum (pages 19 to 22) have no part number with an "E" after TPS3808. The E part has its own datasheet
+# (SNVSCE0B) and its own file, TPS3808EG50DBVR.toml; this file stays for boards that use the original part.
 mpn = "TPS3808G50DBVR"
 manufacturer = "Texas Instruments"
 description = "Supply voltage supervisor, 4.65 V fixed threshold (5 V rail), programmable delay, open-drain RESET, SOT-23-6 (DBV)"

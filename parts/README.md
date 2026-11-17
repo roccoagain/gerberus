@@ -464,6 +464,7 @@ against the PDF at that URL.
 | kitchen-sink | the parts above, plus USB4105-GF-A, 0402WGF5101TCE, TPD1E05U06DPYR and TVS0500DRVR |
 | audio board rev 2 (B1narySolutions/amp-hardware, not a fixture) | TLV9061QDBVRQ1, AO3401A, 2N7002NXAKR, PESD5V0S1BA |
 | amp board (B1narySolutions/amp-hardware, not a fixture) | TPA3118D2DAPR, TPA6130A2RTJR, TPS3808EG50DBVR, NSVBAT54HT1G, BZT52C12-TP, MPZ1608S221ATA00, SRP1038A-100M |
+| TI parts, on no board yet | TPS3808G50DBVR (the amp board uses its E successor) |
 | JLCPCB basic and common parts, on no board yet | AO3400A, AMS1117-3.3, USBLC6-2SC6, LM358DR2G; the resistor and capacitor families above |
 
 Not covered: footprint-only parts with no part number (Tag-Connect pads, SWD pads, solder jumpers).
@@ -498,7 +499,8 @@ Found by the blind second reading of every file (November 2026):
   its use as a reverse-polarity switch (supply into D) and would be wrong in a high-side switch fed at S;
   2N7002NXAKR and AO3400A have no drive and no channel, so a drain net they alone switch comes out UNKNOWN.
 - **TPS3808EG50DBVR** (TPS3808E datasheet SNVSCE0B): RESET is open drain, which no drive kind describes, so the
-  net it pulls low comes out UNKNOWN. The CT pin's recommended minimum isn't given.
+  net it pulls low comes out UNKNOWN. The CT pin's recommended minimum isn't given, and the supply current
+  adds the MR pull-up current at its 90 kΩ typical, the only value given.
 - **TPA3118D2DAPR, TPA6130A2RTJR**: the datasheets give no bias voltage range for the audio inputs (TPA3118: "biased
   at 3 V", no min or max; TPA6130A2: none), no output or charge-pump rail range, and no supply current under load,
   so those stay UNKNOWN.

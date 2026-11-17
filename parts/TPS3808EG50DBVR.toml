@@ -62,7 +62,7 @@ recommended = { min = 0, max = 0.005, page = 5, note = "IRESET output pin curren
 
 [[supply]]
 pins = ["VDD"]
-current = { min = 0, max = 0.0000015, page = 6, note = "IDD max 1.5 µA at VDD = 3.3 V and 6 V, MR open, -40 to 125 C; excludes current through the 90 kΩ MR pull-up when MR is held low" }
+current = { min = 0, max = 0.00006817, page = 6, derived = "0 .. 0.0000015 + 6 / 90000; IDD max 1.5 µA at VDD = 6 V with MR open, plus 6 V across the internal MR pull-up when MR is held low", note = "the MR pull-up is given only as 90 kΩ typical (page 5), so this adds a typical share to a maximum" }
 
 [[esd]]
 model = "hbm"
