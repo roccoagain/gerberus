@@ -65,7 +65,7 @@ Behaviour Gerberus doesn't model yet:
 
 - [x] Electrical diff between board revisions (`gerberus diff`). *(Copies: Altium / Cadence design compare)*
 - [ ] MCP server so AI agents can query nets, run checks and explain findings. *(New: no paid tool is built for agents)*
-- [ ] CI integration and a pass/fail badge for the README.
+- [x] CI integration and a pass/fail badge for the README (`action.yml`, [docs/ci.md](docs/ci.md)).
 
 ## Signature features (new, not copies)
 
