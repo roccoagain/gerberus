@@ -18,6 +18,7 @@ const USAGE: &str = "usage:
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
   gerberus part show <MPN> [--parts DIR]...
+  gerberus part new <design> <REF or MPN> [--stdout] [--force]
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
@@ -77,6 +78,11 @@ It exits with status 1 when any error FAILs.
 writes for it (see parts/README.md, \"Part families\"). Save it and run `datasheet verify` on it to check a
 family's values against its datasheet.
 
+`part new` starts a part file for a part on the schematic, named by its reference (U2) or part number: the pin
+map, class and datasheet link from the symbol, and every limit unknown until it is read from the datasheet. It
+writes `parts/<MPN>.toml` next to the schematic (never over an existing file unless --force), or prints it with
+--stdout.
+
 `datasheet` checks part files against their datasheets (see .claude/skills/datasheet-to-part). `verify` downloads each
 file's datasheet (cached in --cache, default ~/.cache/gerberus/datasheets), or reads --pdf, and looks for every
 cited value on its page: in the right MIN/TYP/MAX column, in the right unit, on a row that names the pin. It
@@ -125,6 +131,9 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "si" => si(Path::new(path), rest),
         [cmd, sub, rest @ ..] if cmd == "datasheet" => datasheet(sub, rest),
         [cmd, sub, mpn, rest @ ..] if cmd == "part" && sub == "show" && !mpn.starts_with("--") => part_show(mpn, rest),
+        [cmd, sub, path, which, rest @ ..] if cmd == "part" && sub == "new" && !which.starts_with("--") => {
+            part_new(Path::new(path), which, rest)
+        }
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);
@@ -138,6 +147,58 @@ fn run(args: &[String]) -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
+    let (mut stdout, mut force) = (false, false);
+    for a in rest {
+        match a.as_str() {
+            "--stdout" => stdout = true,
+            "--force" => force = true,
+            _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
+        }
+    }
+    let design = gerberus::load(path)?;
+    let source = path
+        .file_name()
+        .map_or_else(|| path.display().to_string(), |f| f.to_string_lossy().into());
+    let (mpn, text) = gerberus::part_new::template(&design, which, &source)?;
+    // A part the library already covers, by a file or a family, doesn't need one unless asked.
+    let local = path.parent().unwrap_or(Path::new(".")).join("parts");
+    let dirs: Vec<PathBuf> = if local.is_dir() { vec![local] } else { vec![] };
+    let mut lib = load_library(&dirs)?;
+    lib.expand_families(&design);
+    if !force && let Some(file) = lib.files.get(&mpn) {
+        return Err(format!(
+            "{mpn} already has a part file: {} (`gerberus part show {mpn}` prints it); --force writes a new one \
+             anyway",
+            file.display()
+        ));
+    }
+    // What `check` would load, so the file is never one it rejects.
+    let part: gerberus::limits::Part = toml::from_str(&text).map_err(|e| format!("the template doesn't parse: {e}"))?;
+    let problems = part.problems();
+    if !problems.is_empty() {
+        return Err(format!("the template has problems: {}", problems.join("; ")));
+    }
+    if stdout {
+        print!("{text}");
+        return Ok(true);
+    }
+    let dir = path.parent().unwrap_or(Path::new(".")).join("parts");
+    let file = dir.join(gerberus::doctor::file_name(&mpn));
+    if file.exists() && !force {
+        return Err(format!("{} already exists; --force replaces it", file.display()));
+    }
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    std::fs::write(&file, &text).map_err(|e| format!("{}: {e}", file.display()))?;
+    println!("wrote {}", file.display());
+    println!(
+        "next: fill in each \"{}\" from the datasheet (parts/README.md), then run `gerberus datasheet verify {}`",
+        gerberus::part_new::NOT_READ,
+        file.display()
+    );
+    Ok(true)
 }
 
 fn part_show(mpn: &str, rest: &[String]) -> Result<bool, String> {

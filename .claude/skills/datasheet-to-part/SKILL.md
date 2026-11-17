@@ -20,7 +20,9 @@ sheet must list the part number or decode it in its ordering section.
 
 ## 2. First reading
 
-Write `parts/<MPN>.toml`. For each number:
+Start `parts/<MPN>.toml` with `gerberus part new <schematic> <reference>` when the part is on a board: it takes the
+pin map, class and datasheet link from the symbol and marks every value "not read from the datasheet yet". Check
+the pin map against the datasheet's pin table, then replace each unread value. For each number:
 
 1. Take it from the right table: absolute maximum ratings → `abs_max`; recommended operating conditions →
    `recommended` (or, where there is no such table, the operating ranges `parts/README.md` lists).

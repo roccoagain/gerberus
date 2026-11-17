@@ -205,6 +205,15 @@ note = "..."
 - Rated values of passives and connectors go in `recommended`, not `abs_max`: a capacitor's rated voltage is the
   most it may see continuously, and the withstanding-voltage test above it is a short test, not a rating.
 
+### Starting a part file
+
+`gerberus part new board.kicad_sch U2` writes `parts/<MPN>.toml` next to the schematic from U2's symbol: the part
+number, the pin map (symbol pin names, without KiCad's overbar markup), a class guessed from the reference and
+symbol, the datasheet link, and one `[[limit]]` whose ranges are `{ unknown = "not read from the datasheet yet" }`.
+The file loads as it is, so `check` runs and reports those pins UNKNOWN until each value is read, and `gerberus
+doctor` lists it as a file to fill in. Name the part by reference or part number; `--stdout` prints the file
+instead, and `--force` writes one over an existing file or for a part the library already has.
+
 ### Checking a part file
 
 Every value is read twice from the datasheet, by readers who haven't seen each other's work, and checked against

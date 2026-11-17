@@ -26,12 +26,14 @@ pub struct Setup {
     pub inputs_missing: bool,
     /// The `parts/` folder next to the schematic.
     pub parts: PathBuf,
+    /// The design, as given on the command line, for the commands the help suggests.
+    pub design: String,
 }
 
 /// One thing to add.
 #[derive(Debug, Clone, Serialize)]
 pub struct Item {
-    /// `inputs`, `part-file` or `pin-limits`.
+    /// `inputs`, `part-file`, `fill-in`, `pin-limits` or `drive`.
     pub rule: &'static str,
     pub title: String,
     /// UNKNOWN findings that wait on this.
@@ -70,6 +72,8 @@ enum Key {
     Pins(String),
     /// A part whose power output no part file says the voltage of, by reference.
     Drive(String),
+    /// A part number whose part file, started by `part new`, still has values not read from the datasheet.
+    Fill(String),
 }
 
 pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, volts: &Voltages) -> Doctor {
@@ -98,6 +102,9 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
             let k = Key::Pins(mpn(&f.reference));
             pins.entry(k.clone()).or_default().insert(pin.to_string());
             keys.insert(k);
+        }
+        if f.message.contains(crate::part_new::NOT_READ) && design.components.contains_key(&f.reference) {
+            keys.insert(Key::Fill(mpn(&f.reference)));
         }
         if design.components.contains_key(&f.reference) && unchecked(&f.reference) {
             keys.insert(Key::Part(mpn(&f.reference)));
@@ -206,6 +213,32 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
                                          drives\" in parts/README.md)"
                             .into(),
                     },
+                });
+            }
+            Key::Fill(m) => {
+                let file = lib.files.get(m).map(|f| f.display().to_string()).unwrap_or_default();
+                let datasheet = lib
+                    .parts
+                    .get(m)
+                    .and_then(|p| p.datasheet.as_ref())
+                    .map(|d| d.url.clone());
+                items.push(Item {
+                    rule: "fill-in",
+                    title: format!("fill in {file}: {}", waiting(found.len())),
+                    unknown: found.len(),
+                    references: refs_of(m),
+                    mpn: Some(m.clone()),
+                    pins: vec![],
+                    datasheet: datasheet.clone().filter(|u| !u.is_empty()),
+                    file: file.clone(),
+                    notes: vec![format!("it still has values marked \"{}\"", crate::part_new::NOT_READ)],
+                    help: format!(
+                        "read them from the datasheet{}, then run `gerberus datasheet verify {file}`",
+                        datasheet
+                            .filter(|u| !u.is_empty())
+                            .map(|u| format!(" ({u})"))
+                            .unwrap_or_default()
+                    ),
                 });
             }
             Key::Pins(m) => {
@@ -373,15 +406,17 @@ fn part_item(design: &Design, lib: &Library, setup: &Setup, m: &str, refs: Vec<S
         file: file.display().to_string(),
         notes,
         help: format!(
-            "write {} from the datasheet: parts/README.md says how, and an agent can do it with the \
-             datasheet-to-part skill",
-            file.display()
+            "start {} with `gerberus part new {} {}`, then fill it in from the datasheet: parts/README.md says \
+             how, and an agent can do it with the datasheet-to-part skill",
+            file.display(),
+            setup.design,
+            c.reference
         ),
     }
 }
 
 /// A file name for a part number: characters a file name can't hold become `_`.
-fn file_name(mpn: &str) -> String {
+pub fn file_name(mpn: &str) -> String {
     let safe: String = mpn
         .chars()
         .map(|c| {
@@ -532,5 +567,6 @@ pub fn setup(design: &Path, inputs: Option<&Path>) -> Setup {
         inputs_missing: !path.exists(),
         inputs: path,
         parts: dir.join("parts"),
+        design: design.display().to_string(),
     }
 }
