@@ -33,6 +33,8 @@ CI (`.github/workflows/ci.yml`) runs on pushes to main, on every pull request, a
 - `cargo deny check` (`deny.toml`): RustSec advisories, permissive licenses only, crates.io only.
 - Line coverage with `cargo llvm-cov`, shown in the job summary and failing below 80% (about 86% today).
 - `cargo machete`: no unused dependencies.
+- `CI OK` passes only when every job above passed; it is the one check the main ruleset requires. Add new jobs
+  to its `needs`.
 - `actionlint` and `zizmor` on the workflows and `action.yml`: mistakes, script injection, unpinned actions.
   Actions are pinned to commit hashes; Dependabot (`.github/dependabot.yml`) proposes weekly updates for them and
   for `Cargo.lock`, each a week after release.

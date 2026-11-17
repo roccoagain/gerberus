@@ -197,3 +197,20 @@ jobs:
       # install-action doesn't carry actionlint; its own image includes shellcheck for the `run:` scripts.
       - run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color .github/workflows/ci.yml
       - run: zizmor --offline .github/workflows/ci.yml .github/dependabot.yml action.yml
+
+  # The one check to require on main: it passes only when every job above passed, so a new job is covered
+  # without touching the ruleset. Add each new job to `needs`.
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [fmt, clippy, test, test-other-os, msrv, deny, coverage, unused-deps, workflows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = success ] || { echo "a required job ended as '$r'" >&2; exit 1; }
+          done
