@@ -12,8 +12,9 @@ first. On the capstone audio board rev 2 it starts:
 todo[part-file]: write a part file for PESD5V0S1BAF: 20 unknown results wait on it
   --> D1, D2, D3, D4, D5
    = note: datasheet: https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf
-   = note: save the PDF as audio-board-rev2/datasheets/PESD5V0S1BAF.pdf: `datasheet verify` reads it from there,
-           and an agent reads it to fill the file in
+   = note: if the link doesn't download, or you already have the PDF, save the PDF as
+           audio-board-rev2/datasheets/PESD5V0S1BAF.pdf: `datasheet verify` reads it from there, and an agent
+           reads it to fill the file in
    = help: start audio-board-rev2/parts/PESD5V0S1BAF.toml with `gerberus part new audio-board-rev2/board.kicad_sch
            D1`, then fill it in from the datasheet: parts/README.md says how, and an agent can do it with the
            datasheet-to-part skill

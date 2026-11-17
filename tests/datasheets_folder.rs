@@ -57,6 +57,40 @@ fn a_saved_pdf_is_found_in_any_letter_case() {
     );
     assert_eq!(out.status.code(), Some(1), "{all}");
     assert!(!all.contains("downloading"), "{all}");
+    assert!(all.contains("reading the saved copy"), "{all}");
+    // Run from inside parts/ with a bare file name, it still finds the board's folder.
+    let out = Command::new(env!("CARGO_BIN_EXE_gerberus"))
+        .args(["datasheet", "verify", "0402WGF1001TCE.toml"])
+        .current_dir(dir.join("parts"))
+        .env("GERBERUS_NO_UPDATE_CHECK", "1")
+        .output()
+        .unwrap();
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(all.contains("reading the saved copy"), "{all}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A PDF named after the part file, rather than its part number, is found too.
+#[test]
+fn a_pdf_named_after_the_file_is_found() {
+    let dir = std::env::temp_dir().join(format!("gerberus-stem-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("datasheets")).unwrap();
+    let part = dir.join("parts/SM04B-GHS-TB_LF_SN.toml");
+    assert_eq!(saved_name("SM04B-GHS-TB(LF)(SN)"), "SM04B-GHS-TB_LF__SN_.pdf");
+    std::fs::write(dir.join("datasheets/SM04B-GHS-TB_LF_SN.pdf"), b"x").unwrap();
+    assert!(saved_for(&part, "SM04B-GHS-TB(LF)(SN)").is_some());
+    // An exact match wins over one in another letter case.
+    std::fs::write(dir.join("datasheets/sm04b-ghs-tb_lf__sn_.pdf"), b"x").unwrap();
+    std::fs::write(dir.join("datasheets/SM04B-GHS-TB_LF__SN_.pdf"), b"x").unwrap();
+    assert_eq!(
+        saved_for(&part, "SM04B-GHS-TB(LF)(SN)").unwrap(),
+        dir.join("datasheets/SM04B-GHS-TB_LF__SN_.pdf")
+    );
     std::fs::remove_dir_all(&dir).unwrap();
 }
 

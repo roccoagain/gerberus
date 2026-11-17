@@ -256,7 +256,11 @@ pub fn diagnose(
                     file: file.clone(),
                     notes: vec![
                         format!("it still has values marked \"{}\"", crate::part_new::NOT_READ),
-                        saved_note(setup, m),
+                        saved_note(
+                            lib.files.get(m).map_or(&setup.parts.join(file_name(m)), |f| f),
+                            lib.parts.get(m).map_or(m, |p| p.mpn.as_str()),
+                            datasheet.as_ref().is_some_and(|u| !u.is_empty()),
+                        ),
                     ],
                     help: format!(
                         "read them from the datasheet{}, then run `gerberus datasheet verify {file}`",
@@ -426,14 +430,19 @@ pub fn diagnose(
     }
 }
 
-/// Where the part's datasheet is saved in the board's `datasheets/` folder, or the name to save it under.
-fn saved_note(setup: &Setup, mpn: &str) -> String {
-    let dir = crate::datasheet::folder_beside(&setup.parts);
-    match crate::datasheet::saved_in(&dir, mpn) {
+/// Where the part's datasheet is saved, or where to save it: the same place `datasheet verify` reads for the part
+/// file at `file`, whose part number is `mpn`. `linked`: the symbol or file has a link to download it from.
+fn saved_note(file: &Path, mpn: &str, linked: bool) -> String {
+    match crate::datasheet::saved_for(file, mpn) {
         Some(p) => format!("datasheet saved: {}", p.display()),
         None => format!(
-            "save the PDF as {}: `datasheet verify` reads it from there, and an agent reads it to fill the file in",
-            dir.join(crate::datasheet::saved_name(mpn)).display()
+            "{} save the PDF as {}: `datasheet verify` reads it from there, and an agent reads it to fill the file in",
+            if linked {
+                "if the link doesn't download, or you already have the PDF,"
+            } else {
+                "once you find it,"
+            },
+            crate::datasheet::save_as(file, mpn).display()
         ),
     }
 }
@@ -451,7 +460,7 @@ fn part_item(design: &Design, lib: &Library, setup: &Setup, m: &str, refs: Vec<S
         Some(url) => notes.push(format!("datasheet: {url}")),
         None => notes.push("the symbol has no datasheet link: find the PDF by the part number".into()),
     }
-    notes.push(saved_note(setup, m));
+    notes.push(saved_note(&setup.parts.join(file_name(m)), m, datasheet.is_some()));
     if let Some(e) = lib.family_errors.get(m) {
         notes.push(format!("a built-in part family matches {m:?} but can't rate it: {e}"));
     }
