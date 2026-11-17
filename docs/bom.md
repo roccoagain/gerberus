@@ -35,7 +35,11 @@ the `MPN` field when gerberus has one (a built-in family such as Yageo RC_L or S
 When such a line is short of stock or rated too low, LCSC's similar parts are looked up in full and the ones
 with the same value and size, ratings at least as good and enough stock are offered in a `help:` line, JLCPCB
 basic parts first. These are checked against the numbers above, so unlike other parts' candidates they can be
-used as they are.
+used as they are. None are offered when a rating to check against is unknown: LCSC sometimes leaves out a
+capacitor's dielectric, and without it (or a part file for the MPN) an X7R part could be offered for a C0G one.
+
+Part numbers match when they differ only by a packing or plating suffix after a comma or bracket
+(`PESD5V0S1BA,115`, `S2B-XH-A(LF)(SN)`); letters added to the part number itself (`PESD5V0S1BAF`) are another part.
 
 ## Built by JLCPCB
 
@@ -50,8 +54,9 @@ For a board JLCPCB will assemble from LCSC's stock:
   the replacement is up to you; rerun to check it.
 - The closing notes count JLCPCB extended parts (JLCPCB charges a loading fee for each one), and a resistor or
   capacitor on an extended part gets a basic equivalent when LCSC's similar parts include one.
-- Stock is LCSC's. JLCPCB keeps its own assembly stock of the same C numbers, which can differ, so check a part
-  LCSC is short of in JLCPCB's parts library before replacing it.
+- Stock is LCSC's retail stock. JLCPCB keeps its own assembly stock of the same C numbers, which can differ.
+  LCSC running short of a JLCPCB basic part is therefore a warning, not an error; check JLCPCB's parts library
+  before replacing it.
 
 The report is rustc-style like `check`'s: `--all` lists the lines with nothing wrong, `--color` sets colour, and
 `--parts DIR` adds a part folder (a `parts/` folder next to the schematic is read anyway).

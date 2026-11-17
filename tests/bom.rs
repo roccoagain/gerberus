@@ -754,3 +754,80 @@ fn for_jlcpcb_a_missing_lcsc_number_is_an_error_with_a_search_link() {
         "{text}"
     );
 }
+
+#[test]
+fn packing_suffixes_after_a_comma_or_bracket_are_the_same_part() {
+    let r = run(
+        vec![
+            part("D1", "X:Y", "PESD5V0S1BA", "C1"),
+            part("J1", "X:Y", "S2B-XH-A", "C2"),
+            part("D2", "X:Y", "PESD5V0S1BAF", "C1"),
+        ],
+        vec![
+            (
+                "C1",
+                Some(listing("C1", "PESD5V0S1BA,115", "Nexperia", 9000, "normal", vec![])),
+            ),
+            (
+                "C2",
+                Some(listing("C2", "S2B-XH-A(LF)(SN)", "JST", 9000, "normal", vec![])),
+            ),
+        ],
+        10,
+    );
+    // A letter after the part number is another part.
+    assert_eq!(
+        errors(&r),
+        ["D2: LCSC C1 is Nexperia PESD5V0S1BA,115, but the MPN field says PESD5V0S1BAF"]
+    );
+}
+
+#[test]
+fn no_capacitor_equivalent_is_offered_without_a_known_dielectric() {
+    let cap = |code: &str, stock: u64, diel: Option<&str>, similar: Vec<Similar>| Listing {
+        package: "1206".into(),
+        params: [
+            ("Capacitance", "470nF"),
+            ("Tolerance", "±5%"),
+            ("Voltage Rating", "25V"),
+        ]
+        .into_iter()
+        .chain(diel.map(|d| ("Temperature Coefficient", d)))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect(),
+        ..listing(code, code, "Acme", stock, "normal", similar)
+    };
+    let r = jlcpcb(
+        vec![passive("C1", "470nF", "Capacitor_SMD:C_1206_3216Metric", "", "C1")],
+        vec![
+            (
+                "C1",
+                Some(cap("C1", 7, None, vec![similar("C2", "Other", 9000, "1206")])),
+            ),
+            ("C2", Some(cap("C2", 9000, Some("X7R"), vec![]))),
+        ],
+    );
+    let stock = r[0].findings.iter().find(|f| f.topic == Topic::Stock).unwrap();
+    assert_eq!(stock.help, None);
+    assert!(
+        stock.notes.iter().any(|n| n.contains("gives the dielectric")),
+        "{:?}",
+        stock.notes
+    );
+}
+
+#[test]
+fn for_jlcpcb_lcsc_running_out_of_a_basic_part_is_a_warning() {
+    let r = jlcpcb(
+        vec![
+            passive("R1", "10k", R0603, "", "C1"),
+            passive("R2", "1k", R0603, "", "C2"),
+        ],
+        vec![
+            ("C1", Some(resistor("C1", "A", "10kΩ", "0603", 0, true, vec![]))),
+            ("C2", Some(resistor("C2", "B", "1kΩ", "0603", 0, false, vec![]))),
+        ],
+    );
+    let sev = |i: usize| r[i].findings.iter().find(|f| f.topic == Topic::Stock).unwrap().severity;
+    assert_eq!((sev(0), sev(1)), (Severity::Warning, Severity::Error));
+}

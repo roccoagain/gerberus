@@ -155,6 +155,38 @@ impl Spec {
         s
     }
 
+    /// The ratings a part of this kind needs before another can be shown to be as good: tolerance, and power for
+    /// a resistor or rated voltage and dielectric for a capacitor.
+    pub fn missing_ratings(&self) -> Vec<&'static str> {
+        let mut m = vec![];
+        if self.value.is_none() {
+            m.push("value");
+        }
+        if self.size.is_none() {
+            m.push("size");
+        }
+        if self.tolerance.is_none() {
+            m.push("tolerance");
+        }
+        match self.kind {
+            Some(Kind::Resistor) => {
+                if self.power.is_none() {
+                    m.push("rated power");
+                }
+            }
+            Some(Kind::Capacitor) => {
+                if self.voltage.is_none() {
+                    m.push("rated voltage");
+                }
+                if self.dielectric.is_none() {
+                    m.push("dielectric");
+                }
+            }
+            None => m.push("kind"),
+        }
+        m
+    }
+
     /// `2.2 Ω ±1% 100 mW 0603 resistor`.
     pub fn describe(&self) -> String {
         let mut words = vec![];

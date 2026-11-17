@@ -893,6 +893,14 @@ impl Default for Options {
     }
 }
 
+/// Whether a distributor's part number is the schematic's, allowing a packing or plating suffix the schematic
+/// leaves off: `PESD5V0S1BA,115` and `S2B-XH-A(LF)(SN)` are `PESD5V0S1BA` and `S2B-XH-A`. Only a suffix after a
+/// comma or bracket counts, since letters after a part number often name another package (`PESD5V0S1BAF`).
+fn same_mpn(distributor: &str, schematic: &str) -> bool {
+    let base = |s: &str| squash(s.split([',', '(']).next().unwrap_or(s));
+    squash(distributor) == squash(schematic) || base(distributor) == base(schematic)
+}
+
 /// Upper case with everything but letters and digits removed, so `SM04B-GHS-TB(LF)(SN)` and
 /// `SM04B-GHS-TB_LF_SN` match.
 fn squash(s: &str) -> String {
@@ -1154,7 +1162,7 @@ fn judge(
     match (want, &have) {
         (Some(w), Some(h)) if h.kind.is_some() => {
             let cmp = compare(w, h);
-            let mpn_differs = line.has_mpn_field && squash(&l.mpn) != squash(&line.mpn);
+            let mpn_differs = line.has_mpn_field && !same_mpn(&l.mpn, &line.mpn);
             if !cmp.different.is_empty() {
                 spec_problem = true;
                 let i = push(
@@ -1215,7 +1223,7 @@ fn judge(
             }
         }
         _ => {
-            if line.has_mpn_field && squash(&l.mpn) != squash(&line.mpn) {
+            if line.has_mpn_field && !same_mpn(&l.mpn, &line.mpn) {
                 push(
                     out,
                     Severity::Error,
@@ -1268,22 +1276,37 @@ fn judge(
         ""
     };
     let mut stock: Option<usize> = None;
+    // JLCPCB keeps its own stock of its basic parts, apart from LCSC's retail stock, so LCSC running short of one
+    // is a warning for a JLCPCB build.
+    let basic_for_jlcpcb = opts.jlcpcb && l.assembly.as_deref() == Some("basic");
+    let short = if basic_for_jlcpcb {
+        Severity::Warning
+    } else {
+        Severity::Error
+    };
     if l.stock == 0 {
         stock = Some(push(
             out,
-            Severity::Error,
+            short,
             Topic::Stock,
             format!("{src} has none of {code} in stock"),
         ));
     } else if l.stock < needed {
         stock = Some(push(
             out,
-            Severity::Error,
+            short,
             Topic::Stock,
             format!(
                 "{src} has {} of {code}; {} boards need {needed} ({per_board} each{shared})",
                 l.stock, opts.boards
             ),
+        ));
+    }
+
+    if basic_for_jlcpcb && let Some(i) = stock {
+        out[i].notes.push(format!(
+            "this is LCSC's retail stock; {code} is a JLCPCB basic part, which JLCPCB stocks for assembly \
+             separately, so check JLCPCB's parts library before replacing it"
         ));
     }
 
@@ -1298,7 +1321,14 @@ fn judge(
         let wanted_basic = opts.jlcpcb && extended;
         if stock.is_some() || fix_rating || wanted_basic {
             let floor = floor_spec(w, h, fix_rating);
-            let found = equivalents(l, &floor, needed.max(1), source);
+            // An equivalent is only offered when every rating it must meet is known: LCSC sometimes leaves out a
+            // capacitor's dielectric, and then an X7R part could be offered for a C0G one.
+            let missing = floor.missing_ratings();
+            let found = if missing.is_empty() {
+                equivalents(l, &floor, needed.max(1), source)
+            } else {
+                vec![]
+            };
             let target = stock.or(identity);
             let basic: Vec<&(Listing, Spec)> = found
                 .iter()
@@ -1332,6 +1362,11 @@ fn judge(
                         pick(&all)
                     ));
                 }
+                Some(i) if !missing.is_empty() => out[i].notes.push(format!(
+                    "no equivalents are offered: neither the MPN field's part file nor {src} gives the {}, so a \
+                     replacement can't be checked against it",
+                    missing.join(" or ")
+                )),
                 Some(i) => {
                     out[i].notes.push(format!(
                         "none of {src}'s similar parts has the same value, size and ratings with enough stock"
