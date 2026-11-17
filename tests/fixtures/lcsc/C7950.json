@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817765,
+  "fetched": 1794909537,
   "listing": {
     "code": "C7950",
     "mpn": "LM358DR2G",
     "manufacturer": "onsemi",
-    "stock": 390110,
+    "stock": 373100,
     "status": "normal",
     "assembly": "basic",
     "package": "SOIC-8",
@@ -13,7 +13,7 @@
         "code": "C18723607",
         "mpn": "LM358BDTR(XBLW)",
         "manufacturer": "XBLW",
-        "stock": 3070,
+        "stock": 3080,
         "status": "normal",
         "package": "SOP-8",
         "description": "40mA 2 5mV 90dB 45nA 500uA 1MHz SOP-8 Instrumentation, Op Amps, Buffer Amps RoHS"
@@ -31,7 +31,7 @@
         "code": "C2683482",
         "mpn": "LM358D",
         "manufacturer": "IDCHIP",
-        "stock": 117520,
+        "stock": 117000,
         "status": "normal",
         "package": "SOP-8",
         "description": "Standard (General Purpose) Amplifier 2 Circuit SOP-8"
@@ -54,6 +54,22 @@
         "package": "SOP-8",
         "description": "60mA 2 7mV 500nA 65dB 2mA SOP-8 Instrumentation, Op Amps, Buffer Amps"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Common Mode Rejection Ratio(CMRR)": "70dB",
+      "Dual Supply": "-16V~16V",
+      "Features": "Built-in compensation;ESD Protection",
+      "Ib - Input Bias Current": "45nA",
+      "Input Offset Current(Ios)": "5nA",
+      "Input Offset Voltage Drift(Vos TC)": "7uV/℃",
+      "Number of Channels": "2",
+      "Operating Temperature": "0℃~+70℃",
+      "Output Current": "40mA",
+      "Quiescent Current": "700uA",
+      "Single Supply": "3V~32V",
+      "Vos - Input Offset Voltage": "7mV"
+    }
+  },
+  "version": 2
 }

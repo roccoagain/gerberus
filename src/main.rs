@@ -951,9 +951,18 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
         dirs.push(local);
     }
     dirs.extend(parts);
-    let mut lib = load_library(&dirs)?;
-    lib.expand_families(&design);
-    let report = check_with_parts(&design, &mut source, opts, Some(&lib));
+    // A broken part file shouldn't stop a BOM check: without the library, ratings just aren't compared.
+    let lib = match load_library(&dirs) {
+        Ok(mut lib) => {
+            lib.expand_families(&design);
+            Some(lib)
+        }
+        Err(e) => {
+            eprintln!("warning: part files not read, so resistor and capacitor ratings aren't compared: {e}");
+            None
+        }
+    };
+    let report = check_with_parts(&design, &mut source, opts, lib.as_ref());
     let source_name = gerberus::bom::Source::name(&source).to_string();
     print!("{}", gerberus::bom::render(&report, opts, &source_name, &show));
     Ok(report

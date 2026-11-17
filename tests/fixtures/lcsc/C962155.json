@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817740,
+  "fetched": 1794909523,
   "listing": {
     "code": "C962155",
     "mpn": "TPS560430YFDBVR",
     "manufacturer": "TI",
-    "stock": 10719,
+    "stock": 10712,
     "status": "normal",
     "assembly": "extended",
     "package": "SOT-23-6",
@@ -22,7 +22,7 @@
         "code": "C2071735",
         "mpn": "TPS560430YFDBVT",
         "manufacturer": "TI",
-        "stock": 528,
+        "stock": 527,
         "status": "normal",
         "package": "SOT-23-6",
         "description": "Buck Switching Regulator IC Adjustable 1V~34.2V 1 Output 600mA SOT-23-6"
@@ -31,7 +31,7 @@
         "code": "C2071736",
         "mpn": "TPS560430YDBVR",
         "manufacturer": "TI",
-        "stock": 2264,
+        "stock": 2262,
         "status": "normal",
         "package": "SOT-23-6",
         "description": "Buck Switching Regulator IC Adjustable 1V~34.2V 1 Output 600mA SOT-23-6"
@@ -54,6 +54,22 @@
         "package": "SOT-23-6",
         "description": "1.1MHz Step-down type Adjustable 600mA 1V~34.2V SOT-23-6 Voltage Regulators - DC DC Switching Regulators RoHS"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Features": "Cycle-by-cycle current limiting;Hiccup current limiting;Overcurrent Protection;Light load efficient mode",
+      "Frequency - Switching": "2.1MHz",
+      "Function": "Step-down type",
+      "Number of Outputs": "1",
+      "Operating Temperature": "-40℃~+125℃@(TJ)",
+      "Operating Voltage": "4V~36V",
+      "Output Current": "600mA",
+      "Output Type": "Adjustable",
+      "Output Voltage": "1V~34.2V",
+      "Quiescent Current": "80uA",
+      "Switch tube (built-in/external)": "Built-in",
+      "Topology": "Buck"
+    }
+  },
+  "version": 2
 }

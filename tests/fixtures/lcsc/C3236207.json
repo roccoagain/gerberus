@@ -1,5 +1,5 @@
 {
-  "fetched": 1794817741,
+  "fetched": 1794909524,
   "listing": {
     "code": "C3236207",
     "mpn": "TCAN1044AVDDFRQ1",
@@ -13,7 +13,7 @@
         "code": "C1855774",
         "mpn": "TCAN1044VDDFR",
         "manufacturer": "TI",
-        "stock": 7631,
+        "stock": 7619,
         "status": "normal",
         "package": "TSOT-23-8",
         "description": "4.5V~5.5V CAN FD Transceiver 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
@@ -23,6 +23,15 @@
         "mpn": "TCAN1044ADDFRQ1",
         "manufacturer": "TI",
         "stock": 267,
+        "status": "normal",
+        "package": "TSOT-23-8",
+        "description": "4.5V~5.5V CAN FD Transceiver 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
+      },
+      {
+        "code": "C2877177",
+        "mpn": "TCAN1044VDDFRQ1",
+        "manufacturer": "TI",
+        "stock": 51,
         "status": "normal",
         "package": "TSOT-23-8",
         "description": "4.5V~5.5V CAN FD Transceiver 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
@@ -40,20 +49,23 @@
         "code": "C3236208",
         "mpn": "TCAN1057AVDDFRQ1",
         "manufacturer": "TI",
-        "stock": 86,
-        "status": "normal",
-        "package": "TSOT-23-8",
-        "description": "4.5V~5.5V CAN FD Transceiver 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
-      },
-      {
-        "code": "C2877177",
-        "mpn": "TCAN1044VDDFRQ1",
-        "manufacturer": "TI",
-        "stock": 0,
+        "stock": 66,
         "status": "normal",
         "package": "TSOT-23-8",
         "description": "4.5V~5.5V CAN FD Transceiver 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Data Rate": "5Mbps",
+      "Features": "Low-power mode;Wake-up function;Bus Fault Protection;Undervoltage Protection;TXD dominant timeout;Thermal shutdown protection;Hot-swap protection;Integrated level shifting;ESD Protection",
+      "Operating Temperature": "-40℃~+150℃",
+      "Quiescent Supply Current": "1.5uA",
+      "Supply Current": "70mA",
+      "Type": "CAN FD Transceiver",
+      "Voltage - Supply": "4.5V~5.5V",
+      "number of channels": "1"
+    }
+  },
+  "version": 2
 }

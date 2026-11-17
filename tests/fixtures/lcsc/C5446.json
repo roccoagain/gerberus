@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817741,
+  "fetched": 1794909524,
   "listing": {
     "code": "C5446",
     "mpn": "XC6206P332MR-G",
     "manufacturer": "TOREX",
-    "stock": 143285,
+    "stock": 88935,
     "status": "normal",
     "assembly": "basic",
     "package": "SOT-23-3L",
@@ -40,7 +40,7 @@
         "code": "C94700",
         "mpn": "BL8064CB3TR33",
         "manufacturer": "BL",
-        "stock": 42860,
+        "stock": 43010,
         "status": "normal",
         "package": "SOT-23",
         "description": "3.3V Positive Fixed SOT-23 Voltage Regulators - Linear, Low Drop Out (LDO) Regulators"
@@ -49,11 +49,24 @@
         "code": "C5152714",
         "mpn": "SGM2034-3.3YN3G/TR",
         "manufacturer": "SGMICRO",
-        "stock": 3494,
+        "stock": 3353,
         "status": "normal",
         "package": "SOT-23-3",
         "description": "3.3V Positive Fixed SOT-23-3 Voltage Regulators - Linear, Low Drop Out (LDO) Regulators"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Features": "Short Circuit Protection;Over Current Protection",
+      "Number of Outputs": "1",
+      "Operating Temperature": "-40℃~+85℃@(Ta)",
+      "Operating Voltage": "6V",
+      "Output Configuration": "Positive",
+      "Output Current": "200mA",
+      "Output Type": "Fixed",
+      "Output Voltage": "3.3V",
+      "Supply Current (Iq)": "1uA"
+    }
+  },
+  "version": 2
 }

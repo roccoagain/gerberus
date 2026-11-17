@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817763,
+  "fetched": 1794909534,
   "listing": {
     "code": "C3003196",
     "mpn": "MT6701CT-STD-R",
     "manufacturer": "NOVOSENSE",
-    "stock": 876,
+    "stock": 811,
     "status": "normal",
     "assembly": "extended",
     "package": "SOP-8",
@@ -22,11 +22,23 @@
         "code": "C5451785",
         "mpn": "MT6701CT-STD",
         "manufacturer": "NOVOSENSE",
-        "stock": 399,
+        "stock": 398,
         "status": "sold_out",
         "package": "SOP-8",
         "description": "SOP-8 Angle, Linear Position Measuring RoHS"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Current - Supply": "10mA",
+      "Features": "Programmable transmission;Zero position programming;Fault diagnosis",
+      "Height": "1.75mm",
+      "Length": "5mm",
+      "Operating Temperature": "-40℃~+125℃",
+      "Voltage - Supply": "3.3V~5V",
+      "Width": "3.9mm",
+      "output Type": "I2C;SSI"
+    }
+  },
+  "version": 2
 }

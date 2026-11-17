@@ -1,0 +1,43 @@
+{
+  "fetched": 1794909533,
+  "listing": {
+    "code": "C407753",
+    "mpn": "0402WGD1002TCE",
+    "manufacturer": "UNI-ROYAL",
+    "stock": 1291700,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "0402",
+    "similar": [
+      {
+        "code": "C517449",
+        "mpn": "TC0250B1002TCC",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 6400,
+        "status": "normal",
+        "package": "0402",
+        "description": "10kΩ ±0.1% 62.5mW 0402 Thin Film Resistor"
+      },
+      {
+        "code": "C2989267",
+        "mpn": "TC0225B1002TCC",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 32340,
+        "status": "normal",
+        "package": "0402",
+        "description": "10kΩ ±0.1% 62.5mW 0402 Thin Film Resistor"
+      }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Operating Temperature": "-55℃~+155℃",
+      "Power(Watts)": "62.5mW",
+      "Resistance": "10kΩ",
+      "Temperature Coefficient": "±100ppm/℃",
+      "Tolerance": "±0.5%",
+      "Type": "Thick Film Resistor",
+      "Voltage Rating": "50V"
+    }
+  },
+  "version": 2
+}

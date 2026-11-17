@@ -1,13 +1,28 @@
 {
-  "fetched": 1794817763,
+  "fetched": 1794909534,
   "listing": {
     "code": "C2071868",
     "mpn": "AP63200WU-7",
     "manufacturer": "DIODES",
-    "stock": 6926,
+    "stock": 6616,
     "status": "normal",
     "assembly": "extended",
     "package": "TSOT-23-6",
-    "similar": []
-  }
+    "similar": [],
+    "lifecycle": null,
+    "params": {
+      "Features": "Cycle-by-cycle current limiting;Hiccup current limiting;EMI optimization (spread spectrum);Light load efficient mode;Overcurrent Protection",
+      "Frequency - Switching": "500kHz",
+      "Function": "Step-down type",
+      "Number of Outputs": "1",
+      "Operating Temperature": "-40℃~+85℃",
+      "Operating Voltage": "3.8V~32V",
+      "Output Current": "2A",
+      "Output Type": "Adjustable",
+      "Quiescent Current": "22uA",
+      "Switch tube (built-in/external)": "Built-in",
+      "Topology": "Buck"
+    }
+  },
+  "version": 2
 }

@@ -1,13 +1,28 @@
 {
-  "fetched": 1794817760,
+  "fetched": 1794909531,
   "listing": {
     "code": "C2297",
     "mpn": "KT-0805G",
     "manufacturer": "Hubei KENTO Elec",
-    "stock": 785450,
+    "stock": 2227000,
     "status": "normal",
     "assembly": "basic",
     "package": "0805",
-    "similar": []
-  }
+    "similar": [],
+    "lifecycle": null,
+    "params": {
+      "Diode Configuration": "Discrete Diode",
+      "Forward Current": "5mA",
+      "Illumination Color": "Emerald Green",
+      "Lamp Holder Type": "2mm x 1.25mm square LED",
+      "Lens Color": "Water Clear",
+      "Luminous Intensity": "430mcd",
+      "Operating Temperature": "-40℃~+85℃",
+      "Peak Wavelength": "525nm",
+      "Viewing Angle": "120°",
+      "Voltage - Forward(Vf)": "2.6V~3.1V",
+      "Wavelength": "513nm~528nm"
+    }
+  },
+  "version": 2
 }

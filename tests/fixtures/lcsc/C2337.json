@@ -1,13 +1,31 @@
 {
-  "fetched": 1794817765,
+  "fetched": 1794909536,
   "listing": {
     "code": "C2337",
     "mpn": "2.54-1*40P",
     "manufacturer": "BOOMELE(Boom Precision Elec)",
-    "stock": 70260,
+    "stock": 69555,
     "status": "normal",
     "assembly": "extended",
     "package": "Through Hole,P=2.54mm",
-    "similar": []
-  }
+    "similar": [],
+    "lifecycle": null,
+    "params": {
+      "Circluar Pins/Square Pins": "Square pin",
+      "Color": "Black",
+      "Connector Type": "Through Hole",
+      "Contact Material": "Brass",
+      "Contact Plating": "Gold",
+      "Current Rating": "3A",
+      "Insulation Height": "2.5mm",
+      "Length of End Connection Pin": "3mm",
+      "Length of Mating Pin": "6mm",
+      "Number of PINs": "40P",
+      "Number of Rows": "1",
+      "Operating Temperature": "-55℃~+105℃",
+      "Pin Structure": "1x40P",
+      "Pitch": "2.54mm"
+    }
+  },
+  "version": 2
 }

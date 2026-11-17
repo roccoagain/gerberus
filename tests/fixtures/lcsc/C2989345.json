@@ -1,0 +1,61 @@
+{
+  "fetched": 1794909537,
+  "listing": {
+    "code": "C2989345",
+    "mpn": "TC0325D1002T5F",
+    "manufacturer": "UNI-ROYAL",
+    "stock": 4650,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "0603",
+    "similar": [
+      {
+        "code": "C2989264",
+        "mpn": "TC0350B1002T5F",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 13150,
+        "status": "normal",
+        "package": "0603",
+        "description": "10kΩ ±0.1% 100mW 0603 Thin Film Resistor"
+      },
+      {
+        "code": "C2988968",
+        "mpn": "TC0350D1002T5F",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0603",
+        "description": "10kΩ 100mW 75V Thin Film Resistor ±0.5% ±50ppm/℃ 0603 Chip Resistor - Surface Mount"
+      },
+      {
+        "code": "C167144",
+        "mpn": "0603WAD1002T5E",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0603",
+        "description": "10kΩ ±0.5% 100mW 0603 Thick Film Resistor"
+      },
+      {
+        "code": "C2791784",
+        "mpn": "HQ03W5D1002T5E",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0603",
+        "description": "200mW 10kΩ 75V ±0.5% 0603 Chip Resistor - Surface Mount"
+      }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Operating Temperature": "-55℃~+155℃",
+      "Power(Watts)": "100mW",
+      "Resistance": "10kΩ",
+      "Temperature Coefficient": "±25ppm/℃",
+      "Tolerance": "±0.5%",
+      "Type": "Thin Film Resistor",
+      "Voltage Rating": "75V"
+    }
+  },
+  "version": 2
+}

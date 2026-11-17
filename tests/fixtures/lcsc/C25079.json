@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817740,
+  "fetched": 1794909533,
   "listing": {
     "code": "C25079",
     "mpn": "0402WGF1200TCE",
     "manufacturer": "UNI-ROYAL",
-    "stock": 2818900,
+    "stock": 2734700,
     "status": "normal",
     "assembly": "basic",
     "package": "0402",
@@ -54,6 +54,17 @@
         "package": "0402",
         "description": "100mW 120Ω 50V ±100ppm/℃ ±1% 0402 Chip Resistor - Surface Mount"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Operating Temperature": "-55℃~+155℃",
+      "Power(Watts)": "62.5mW",
+      "Resistance": "120Ω",
+      "Temperature Coefficient": "±100ppm/℃",
+      "Tolerance": "±1%",
+      "Type": "Thick Film Resistor",
+      "Voltage Rating": "50V"
+    }
+  },
+  "version": 2
 }

@@ -32,10 +32,16 @@ the `MPN` field when gerberus has one (a built-in family such as Yageo RC_L or S
   but gerberus's other checks read the MPN field's part file, so the help line names the MPN to put there.
   Without a part file for the MPN only value and size are compared, and the note says so.
 
-When such a line is short of stock or rated too low, LCSC's similar parts are looked up in full and the ones
-with the same value and size, ratings at least as good and enough stock are offered in a `help:` line, JLCPCB
-basic parts first. These are checked against the numbers above, so unlike other parts' candidates they can be
-used as they are. None are offered when a rating to check against is unknown: LCSC sometimes leaves out a
+- **UNKNOWN** when the schematic's value can't be read, the footprint gives no chip size, or LCSC's answer has
+  no parameter table (an entry cached by an older gerberus; run without `--offline` to refresh it). An LCSC
+  number whose listing has parameters but no resistance or capacitance is an **ERROR**: it isn't a plain
+  resistor or capacitor. Every part of a line is compared, so one with another footprint is caught too.
+
+When such a line is short of stock or rated too low, the first 8 of LCSC's similar parts are looked up in full,
+and those with the same value and size, ratings at least as good (each rating the schematic's part file doesn't
+give is taken from LCSC's listing) and enough stock are offered in a `help:` line, JLCPCB basic parts first.
+They are checked against LCSC's parameters, not against datasheets, so read the datasheet of the one you pick.
+Similar parts that couldn't be looked up are counted in a note. None are offered when a rating to check against is unknown: LCSC sometimes leaves out a
 capacitor's dielectric, and without it (or a part file for the MPN) an X7R part could be offered for a C0G one.
 
 Part numbers match when they differ only by a packing or plating suffix after a comma or bracket
@@ -53,12 +59,13 @@ For a board JLCPCB will assemble from LCSC's stock:
   instead of unknown, with a link to LCSC's search for its MPN. gerberus can't search LCSC itself, so picking
   the replacement is up to you; rerun to check it.
 - The closing notes count JLCPCB extended parts (JLCPCB charges a loading fee for each one), and a resistor or
-  capacitor on an extended part gets a basic equivalent when LCSC's similar parts include one.
+  capacitor on an extended part gets a `todo[bom-assembly]` line naming a basic equivalent when LCSC's similar
+  parts include one.
 - Stock is LCSC's retail stock. JLCPCB keeps its own assembly stock of the same C numbers, which can differ.
   LCSC running short of a JLCPCB basic part is therefore a warning, not an error; check JLCPCB's parts library
   before replacing it.
 
-The report is rustc-style like `check`'s: `--all` lists the lines with nothing wrong, `--color` sets colour, and
+The report is rustc-style like `check`'s, and its counts are of BOM lines, each at its worst finding: `--all` lists the lines with nothing wrong, `--color` sets colour, and
 `--parts DIR` adds a part folder (a `parts/` folder next to the schematic is read anyway).
 
 ## Mouser and DigiKey

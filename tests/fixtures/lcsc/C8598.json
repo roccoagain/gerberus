@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817762,
+  "fetched": 1794909531,
   "listing": {
     "code": "C8598",
     "mpn": "B5819W SL",
     "manufacturer": "JSCJ",
-    "stock": 71900,
+    "stock": 37160,
     "status": "normal",
     "assembly": "basic",
     "package": "SOD-123",
@@ -13,7 +13,7 @@
         "code": "C77343",
         "mpn": "RB160M-60",
         "manufacturer": "JSCJ",
-        "stock": 40700,
+        "stock": 40550,
         "status": "normal",
         "package": "SOD-123",
         "description": "Standalone 60V 580mV@1A 1A SOD-123 Single Diodes RoHS"
@@ -22,7 +22,7 @@
         "code": "C2923923",
         "mpn": "DSS14",
         "manufacturer": "JSCJ",
-        "stock": 152280,
+        "stock": 152200,
         "status": "normal",
         "package": "SOD-123FL",
         "description": "Diode Independent 40V 1A Surface Mount SOD-123FL"
@@ -40,7 +40,7 @@
         "code": "C2923950",
         "mpn": "DSS24",
         "manufacturer": "JSCJ",
-        "stock": 100300,
+        "stock": 99880,
         "status": "normal",
         "package": "SOD-123FL",
         "description": "Diode Independent 40V 2A Surface Mount SOD-123FL"
@@ -49,11 +49,20 @@
         "code": "C2923958",
         "mpn": "DSS34",
         "manufacturer": "JSCJ",
-        "stock": 77470,
+        "stock": 70610,
         "status": "normal",
         "package": "SOD-123FL",
         "description": "Diode Independent 40V 3A Surface Mount SOD-123FL"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Current - Rectified": "1A",
+      "Diode Configuration": "Standalone",
+      "Non-Repetitive Peak Forward Surge Current": "9A",
+      "Voltage - DC Reverse (Vr) (Max)": "40V",
+      "Voltage - Forward(Vf@If)": "600mV@1A"
+    }
+  },
+  "version": 2
 }

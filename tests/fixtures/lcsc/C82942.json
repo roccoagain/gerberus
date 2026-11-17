@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817761,
+  "fetched": 1794909528,
   "listing": {
     "code": "C82942",
     "mpn": "ME6211C33M5G-N",
     "manufacturer": "MICRONE",
-    "stock": 282390,
+    "stock": 270650,
     "status": "normal",
     "assembly": "extended",
     "package": "SOT-23-5",
@@ -13,7 +13,7 @@
         "code": "C2837689",
         "mpn": "ME6511C33M5G",
         "manufacturer": "MICRONE",
-        "stock": 950,
+        "stock": 940,
         "status": "normal",
         "package": "SOT-23-5L",
         "description": "3.3V Positive Fixed SOT-23-5L Voltage Regulators - Linear, Low Drop Out (LDO) Regulators"
@@ -22,7 +22,7 @@
         "code": "C2925775",
         "mpn": "ME6251C33M5G",
         "manufacturer": "MICRONE",
-        "stock": 1325,
+        "stock": 1265,
         "status": "normal",
         "package": "SOT-23-5",
         "description": "Linear Voltage Regulator IC Positive Fixed 1 Output 500mA SOT-23-5"
@@ -31,7 +31,7 @@
         "code": "C610253",
         "mpn": "ME6231C33M5G",
         "manufacturer": "MICRONE",
-        "stock": 100570,
+        "stock": 97855,
         "status": "normal",
         "package": "SOT-23-5",
         "description": "Linear Voltage Regulator IC Positive Fixed 1 Output 500mA SOT-23-5"
@@ -40,7 +40,7 @@
         "code": "C427602",
         "mpn": "ME6217C33M5G",
         "manufacturer": "MICRONE",
-        "stock": 54155,
+        "stock": 52860,
         "status": "normal",
         "package": "SOT-23-5",
         "description": "3.3V Positive Fixed SOT-23-5 Voltage Regulators - Linear, Low Drop Out (LDO) Regulators"
@@ -54,6 +54,19 @@
         "package": "SOT-23-5",
         "description": "3.3V Positive Fixed SOT-23-5 Voltage Regulators - Linear, Low Drop Out (LDO) Regulators"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Features": "Enable control;Short Circuit Protection;Over Current Protection",
+      "Number of Outputs": "1",
+      "Operating Temperature": "-40℃~+150℃",
+      "Operating Voltage": "6V",
+      "Output Configuration": "Positive",
+      "Output Current": "500mA",
+      "Output Type": "Fixed",
+      "Output Voltage": "3.3V",
+      "Supply Current (Iq)": "60uA"
+    }
+  },
+  "version": 2
 }

@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817740,
+  "fetched": 1794909533,
   "listing": {
     "code": "C25744",
     "mpn": "0402WGF1002TCE",
     "manufacturer": "UNI-ROYAL",
-    "stock": 700,
+    "stock": 0,
     "status": "normal",
     "assembly": "basic",
     "package": "0402",
@@ -13,7 +13,7 @@
         "code": "C2759535",
         "mpn": "HP02WAF1002TCE",
         "manufacturer": "UNI-ROYAL",
-        "stock": 6700,
+        "stock": 6100,
         "status": "normal",
         "package": "0402",
         "description": "10kΩ ±1% 100mW 0402 Thick Film Resistor AEC-Q200"
@@ -22,7 +22,7 @@
         "code": "C2765610",
         "mpn": "CQ02WGF1002TCE",
         "manufacturer": "UNI-ROYAL",
-        "stock": 961900,
+        "stock": 898100,
         "status": "normal",
         "package": "0402",
         "description": "10kΩ ±1% 62.5mW 0402 Thick Film Resistor AEC-Q200"
@@ -31,7 +31,7 @@
         "code": "C407753",
         "mpn": "0402WGD1002TCE",
         "manufacturer": "UNI-ROYAL",
-        "stock": 1294200,
+        "stock": 1291700,
         "status": "normal",
         "package": "0402",
         "description": "10kΩ ±0.5% 62.5mW 0402 Thick Film Resistor"
@@ -49,11 +49,22 @@
         "code": "C2791317",
         "mpn": "HQ02WAF1002TCE",
         "manufacturer": "UNI-ROYAL",
-        "stock": 11500,
+        "stock": 11600,
         "status": "normal",
         "package": "0402",
         "description": "100mW 10kΩ 50V ±100ppm/℃ ±1% 0402 Chip Resistor - Surface Mount"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Operating Temperature": "-55℃~+155℃",
+      "Power(Watts)": "62.5mW",
+      "Resistance": "10kΩ",
+      "Temperature Coefficient": "±100ppm/℃",
+      "Tolerance": "±1%",
+      "Type": "Thick Film Resistor",
+      "Voltage Rating": "50V"
+    }
+  },
+  "version": 2
 }

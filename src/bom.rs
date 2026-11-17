@@ -1043,6 +1043,9 @@ pub fn check_with_parts(design: &Design, source: &mut dyn Source, opts: Options,
                 };
                 let want = lcsc.then(|| want_spec(design, &line, lib)).flatten();
                 judge(&line, l, per_board, &from, opts, want.as_ref(), source, &mut findings);
+                if let Some(w) = &want {
+                    other_references(design, &line, l, w, &mut findings);
+                }
             }
             Health {
                 line,
@@ -1089,6 +1092,36 @@ pub fn check_with_parts(design: &Design, source: &mut dyn Source, opts: Options,
         }
     }
     out
+}
+
+/// The line's other parts share its LCSC number but may have another footprint (or value, written another way):
+/// each that reads differently from the first is compared with LCSC's listing on its own.
+fn other_references(design: &Design, line: &Line, l: &Listing, first: &Spec, out: &mut Vec<Finding>) {
+    let have = Spec::from_lcsc(&l.params, &l.package);
+    if have.kind.is_none() {
+        return;
+    }
+    for r in line.references.iter().skip(1) {
+        let Some(c) = design.components.get(r) else { continue };
+        let s = Spec::from_component(c, None);
+        if s.value == first.value && s.size == first.size {
+            continue;
+        }
+        let cmp = compare(&s, &have);
+        if !cmp.different.is_empty() {
+            let mut f = Finding::new(
+                Severity::Error,
+                Topic::Identity,
+                format!(
+                    "for {r}, LCSC {} is a different part: {}",
+                    l.code,
+                    cmp.different.join("; ")
+                ),
+            );
+            f.notes.push(format!("{} is a {}", l.code, have.describe()));
+            out.push(f);
+        }
+    }
 }
 
 /// What a line's resistor or capacitor should be, from its first part. `None` for anything else.
@@ -1160,9 +1193,59 @@ fn judge(
     let mut fix_rating = false;
     let mut identity: Option<usize> = None;
     match (want, &have) {
-        (Some(w), Some(h)) if h.kind.is_some() => {
+        (Some(_), Some(h)) if h.kind.is_none() && !l.params.is_empty() => {
+            spec_problem = true;
+            let i = push(
+                out,
+                Severity::Error,
+                Topic::Identity,
+                format!(
+                    "{src} {code} is not a plain resistor or capacitor: {src} gives it no resistance or capacitance"
+                ),
+            );
+            identity = Some(i);
+            out[i].help = Some(format!("find the right part at {}", lcsc_search_url(&line.mpn)));
+        }
+        (Some(_), Some(_)) if l.params.is_empty() => {
+            spec_problem = true;
+            push(
+                out,
+                Severity::Unknown,
+                Topic::Identity,
+                format!(
+                    "{src}'s answer for {code} has no parameter table (it was cached by an older gerberus), so it \
+                     wasn't compared with the schematic's value, size and ratings: run without --offline to refresh it"
+                ),
+            );
+        }
+        (Some(w), Some(h)) => {
             let cmp = compare(w, h);
             let mpn_differs = line.has_mpn_field && !same_mpn(&l.mpn, &line.mpn);
+            if cmp.unchecked.contains(&"value") {
+                spec_problem = true;
+                push(
+                    out,
+                    Severity::Unknown,
+                    Topic::Identity,
+                    format!(
+                        "gerberus can't read the schematic's value for {}, so {code} ({}) wasn't checked against it",
+                        line.mpn,
+                        h.describe()
+                    ),
+                );
+            }
+            if cmp.unchecked.contains(&"size") && h.size.is_some() {
+                spec_problem = true;
+                push(
+                    out,
+                    Severity::Unknown,
+                    Topic::Identity,
+                    format!(
+                        "the footprint gives no chip size, so {code}'s {} size wasn't checked against it",
+                        h.size.as_deref().unwrap_or_default()
+                    ),
+                );
+            }
             if !cmp.different.is_empty() {
                 spec_problem = true;
                 let i = push(
@@ -1209,7 +1292,8 @@ fn judge(
                 let unchecked: Vec<&str> = cmp.unchecked.iter().copied().filter(|u| h_has(h, u)).collect();
                 if !unchecked.is_empty() {
                     out[i].notes.push(format!(
-                        "gerberus has no part file for {}, so its {} can't be compared with {}'s {}",
+                        "gerberus doesn't know {}'s {} (no part file, or one that doesn't give them), so they can't be \
+                         compared with {}'s {}",
                         line.mpn,
                         join_and(&unchecked),
                         l.mpn,
@@ -1320,16 +1404,26 @@ fn judge(
         let extended = l.assembly.as_deref() == Some("extended");
         let wanted_basic = opts.jlcpcb && extended;
         if stock.is_some() || fix_rating || wanted_basic {
-            let floor = floor_spec(w, h, fix_rating);
+            let floor = floor_spec(w, h);
             // An equivalent is only offered when every rating it must meet is known: LCSC sometimes leaves out a
             // capacitor's dielectric, and then an X7R part could be offered for a C0G one.
             let missing = floor.missing_ratings();
-            let found = if missing.is_empty() {
+            let looked = if missing.is_empty() {
                 equivalents(l, &floor, needed.max(1), source)
             } else {
-                vec![]
+                Equivalents {
+                    found: vec![],
+                    unread: 0,
+                    capped: false,
+                }
             };
-            let target = stock.or(identity);
+            let found = &looked.found;
+            let scope = if looked.capped {
+                format!("the first {EQUIVALENT_LOOKUPS} of {src}'s similar parts")
+            } else {
+                format!("{src}'s similar parts")
+            };
+            let target = stock.or(identity.filter(|_| fix_rating));
             let basic: Vec<&(Listing, Spec)> = found
                 .iter()
                 .filter(|(e, _)| e.assembly.as_deref() == Some("basic"))
@@ -1369,8 +1463,15 @@ fn judge(
                 )),
                 Some(i) => {
                     out[i].notes.push(format!(
-                        "none of {src}'s similar parts has the same value, size and ratings with enough stock"
+                        "none of {scope} has the same value, size and ratings with enough stock"
                     ));
+                    if looked.unread > 0 {
+                        out[i].notes.push(format!(
+                            "{} of them couldn't be looked up (offline, a failed lookup, or an old cache entry), so \
+                             weren't judged",
+                            looked.unread
+                        ));
+                    }
                     if out[i].help.is_none() {
                         out[i].help = Some(format!("find a {} at {}", floor.describe(), lcsc_search_url(&line.mpn)));
                     }
@@ -1495,12 +1596,9 @@ fn h_has(h: &Spec, what: &str) -> bool {
 }
 
 /// What an equivalent must at least be: the schematic's part, with each rating it doesn't give taken from
-/// LCSC's listing, unless that listing is the part being replaced for its rating.
-fn floor_spec(want: &Spec, lcsc: &Spec, lcsc_too_low: bool) -> Spec {
+/// LCSC's listing. A rating LCSC's part falls short on is one the schematic's part gives, so it comes from there.
+fn floor_spec(want: &Spec, lcsc: &Spec) -> Spec {
     let mut s = want.clone();
-    if lcsc_too_low {
-        return s;
-    }
     s.tolerance = s.tolerance.or(lcsc.tolerance);
     s.voltage = s.voltage.or(lcsc.voltage);
     s.power = s.power.or(lcsc.power);
@@ -1510,21 +1608,45 @@ fn floor_spec(want: &Spec, lcsc: &Spec, lcsc_too_low: bool) -> Spec {
 }
 
 /// LCSC's similar parts that meet `floor` with `needed` in stock, basic parts first, then by stock.
-fn equivalents(l: &Listing, floor: &Spec, needed: u64, source: &mut dyn Source) -> Vec<(Listing, Spec)> {
-    let mut found: Vec<(Listing, Spec)> = l
+/// What [`equivalents`] found, and how far it looked.
+struct Equivalents {
+    found: Vec<(Listing, Spec)>,
+    /// Similar parts whose lookup failed or gave no parameters, so weren't judged.
+    unread: usize,
+    /// Whether there were more candidates than [`EQUIVALENT_LOOKUPS`].
+    capped: bool,
+}
+
+fn equivalents(l: &Listing, floor: &Spec, needed: u64, source: &mut dyn Source) -> Equivalents {
+    let candidates: Vec<&Similar> = l
         .similar
         .iter()
         .filter(|s| s.status == "normal" && s.stock >= needed && s.code != l.code)
-        .take(EQUIVALENT_LOOKUPS)
-        .filter_map(|s| source.listing(&s.code).ok().flatten())
-        .filter(|e| e.status == "normal" && e.stock >= needed)
-        .filter_map(|e| {
-            let s = Spec::from_lcsc(&e.params, &e.package);
-            compare(floor, &s).fits().then_some((e, s))
-        })
         .collect();
+    let mut unread = 0;
+    let mut found = vec![];
+    for c in candidates.iter().take(EQUIVALENT_LOOKUPS) {
+        let e = match source.listing(&c.code) {
+            Ok(Some(e)) if !e.params.is_empty() => e,
+            _ => {
+                unread += 1;
+                continue;
+            }
+        };
+        if e.status != "normal" || e.stock < needed {
+            continue;
+        }
+        let s = Spec::from_lcsc(&e.params, &e.package);
+        if compare(floor, &s).fits() {
+            found.push((e, s));
+        }
+    }
     found.sort_by_key(|(e, _)| (e.assembly.as_deref() != Some("basic"), std::cmp::Reverse(e.stock)));
-    found
+    Equivalents {
+        found,
+        unread,
+        capped: candidates.len() > EQUIVALENT_LOOKUPS,
+    }
 }
 
 /// `value`, `value and size`, `value, size and tolerance`.
@@ -1578,22 +1700,32 @@ pub fn render(report: &[Health], opts: Options, source: &str, show: &crate::diag
             .into_iter()
             .partition(|f| f.topic == Topic::Assembly && f.message.contains(" lines are JLCPCB extended"));
         closing.extend(board.iter().map(|f| f.message.clone()));
+        // Each line counts once, at its worst finding.
+        match h.findings.iter().map(|f| f.severity).min() {
+            Some(Severity::Error) => errors += 1,
+            Some(Severity::Warning) => warnings += 1,
+            Some(Severity::Unknown) => unknown += 1,
+            _ => passed += 1,
+        }
+        // A cheaper JLCPCB basic equivalent is worth seeing even on a line with nothing wrong.
+        let (todo, infos): (Vec<&Finding>, Vec<&Finding>) = infos.into_iter().partition(|f| f.topic == Topic::Assembly);
+        for f in &todo {
+            let mut d = Diagnostic::line(
+                Level::Todo,
+                f.topic.name(),
+                &format!("{}: {}", h.line.references[0], f.message),
+            );
+            d.location = Some(location.clone());
+            d.notes = listing_note(h, source).into_iter().collect();
+            d.render(&mut out, show.style, show.verbose, show.columns());
+        }
         let mut any = false;
         for f in h.findings.iter().filter(|f| f.severity != Severity::Info) {
             any = true;
             let level = match f.severity {
-                Severity::Error => {
-                    errors += 1;
-                    Level::Error
-                }
-                Severity::Warning => {
-                    warnings += 1;
-                    Level::Warning
-                }
-                _ => {
-                    unknown += 1;
-                    Level::Unknown
-                }
+                Severity::Error => Level::Error,
+                Severity::Warning => Level::Warning,
+                _ => Level::Unknown,
             };
             if !show.lists(level) {
                 continue;
@@ -1612,9 +1744,8 @@ pub fn render(report: &[Health], opts: Options, source: &str, show: &crate::diag
             };
             d.render(&mut out, show.style, show.verbose, show.columns());
         }
-        if !any {
-            passed += 1;
-            if show.lists(Level::Pass) {
+        if !any && show.lists(Level::Pass) {
+            {
                 let what = listing_note(h, source).unwrap_or_default();
                 let d = Diagnostic::line(Level::Pass, "bom", &format!("{location}: {what}"));
                 d.render(&mut out, show.style, show.verbose, show.columns());
@@ -1639,7 +1770,7 @@ pub fn render(report: &[Health], opts: Options, source: &str, show: &crate::diag
     let _ = std::fmt::Write::write_fmt(
         &mut out,
         format_args!(
-            "{} lines for {} boards{}\n",
+            "{} lines for {} boards{}; each line is counted once, at its worst finding\n",
             report.len(),
             opts.boards,
             if opts.jlcpcb { ", assembled by JLCPCB" } else { "" }

@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817759,
+  "fetched": 1794909525,
   "listing": {
     "code": "C15850",
     "mpn": "CL21A106KAYNNNE",
     "manufacturer": "Samsung Electro-Mechanics",
-    "stock": 1862940,
+    "stock": 1621920,
     "status": "normal",
     "assembly": "basic",
     "package": "0805",
@@ -13,7 +13,7 @@
         "code": "C7432816",
         "mpn": "CL21A106KAFN3NE",
         "manufacturer": "Samsung Electro-Mechanics",
-        "stock": 1035,
+        "stock": 905,
         "status": "normal",
         "package": "0805",
         "description": "10uF ±10% 25V Ceramic Capacitor X5R 0805"
@@ -31,7 +31,7 @@
         "code": "C19103847",
         "mpn": "HGC0805R5106K250NSLJ",
         "manufacturer": "Chinocera",
-        "stock": 380440,
+        "stock": 352100,
         "status": "normal",
         "package": "0805",
         "description": "10uF ±10% 25V Ceramic Capacitor X5R 0805"
@@ -40,7 +40,7 @@
         "code": "C20070397",
         "mpn": "CSA0805X5R106K250MT",
         "manufacturer": "HRE",
-        "stock": 125780,
+        "stock": 125160,
         "status": "normal",
         "package": "0805",
         "description": "10uF X5R ±10% 25V 0805 Ceramic Capacitors"
@@ -54,6 +54,14 @@
         "package": "0805",
         "description": "10uF X5R ±10% 25V 0805 Ceramic Capacitors RoHS"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Capacitance": "10uF",
+      "Temperature Coefficient": "X5R",
+      "Tolerance": "±10%",
+      "Voltage Rating": "25V"
+    }
+  },
+  "version": 2
 }

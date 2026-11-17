@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817764,
+  "fetched": 1794909535,
   "listing": {
     "code": "C14486",
     "mpn": "NUP2105LT1G",
     "manufacturer": "onsemi",
-    "stock": 134190,
+    "stock": 133380,
     "status": "normal",
     "assembly": "extended",
     "package": "SOT-23",
@@ -31,19 +31,10 @@
         "code": "C5158054",
         "mpn": "NUP2105L",
         "manufacturer": "UMW",
-        "stock": 16160,
+        "stock": 15620,
         "status": "normal",
         "package": "SOT-23",
         "description": "44VC Clamp 8A@8/20us Ipp SOT-23"
-      },
-      {
-        "code": "C20600685",
-        "mpn": "ESD2402EB",
-        "manufacturer": "YANGJIE",
-        "stock": 1640,
-        "status": "normal",
-        "package": "SOT-23",
-        "description": "44VC Clamp 8A@8/20us Ipp TVS DIODE SOT-23"
       },
       {
         "code": "C42420849",
@@ -53,7 +44,30 @@
         "status": "normal",
         "package": "SOT-23",
         "description": "43VC Clamp 8A Ipp TVS DIODE SOT-23"
+      },
+      {
+        "code": "C55114139",
+        "mpn": "DUP2105SOQ-TP",
+        "manufacturer": "TECH PUBLIC",
+        "stock": 2945,
+        "status": "normal",
+        "package": "SOT-23",
+        "description": "45V 8A@8/20us 350W@8/20us 28V Bidirectional 24V SOT-23 TVS Diodes"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Clamping Voltage": "44V",
+      "Number of Channels": "2",
+      "Operating Temperature": "-55℃~+150℃",
+      "Peak Pulse Current (Ipp)": "8A@8/20us",
+      "Peak Pulse Power Dissipation (Ppp)": "350W@8/20us",
+      "Polarity": "Bidirectional",
+      "Reverse Leakage Current (Ir)": "100nA",
+      "Reverse Stand-Off Voltage (Vrwm)": "24V",
+      "Voltage - Breakdown": "32V",
+      "type": "TVS"
+    }
+  },
+  "version": 2
 }

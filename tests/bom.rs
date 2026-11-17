@@ -1,5 +1,5 @@
-//! BOM health against a snapshot of LCSC's answers in `tests/fixtures/lcsc` (taken 2026-11-16), so these
-//! tests never touch the network. Refresh the snapshot with
+//! BOM health against a snapshot of LCSC's answers in `tests/fixtures/lcsc` (taken 2026-11-17, with LCSC's
+//! parameter tables), so these tests never touch the network. Refresh the snapshot with
 //! `gerberus bom <board> --cache tests/fixtures/lcsc --max-age 0` and update the expected findings.
 
 use std::collections::BTreeMap;
@@ -114,6 +114,8 @@ fn can_encoder_rev2() {
     assert_eq!(
         errors(&r),
         [
+            "C4: LCSC has none of C45783 in stock",
+            "R5: LCSC has none of C25744 in stock",
             "U3: LCSC has none of C2932578 in stock",
             "U4: LCSC has none of C3236207 in stock",
         ]
@@ -133,13 +135,22 @@ fn can_encoder_rev2() {
 }
 
 #[test]
-fn can_encoder_rev1_and_sniffer_have_no_errors() {
-    for b in [
-        "tests/fixtures/can-encoder-rev1/can-encoder.kicad_sch",
-        "tests/fixtures/sniffer/sniffer.kicad_sch",
-    ] {
-        assert_eq!(errors(&board(b)), Vec::<String>::new(), "{b}");
-    }
+fn can_encoder_rev1_and_sniffer_have_only_stock_errors() {
+    // JLCPCB basic parts LCSC had run out of on 2026-11-17.
+    assert_eq!(
+        errors(&board("tests/fixtures/sniffer/sniffer.kicad_sch")),
+        [
+            "R1: LCSC has none of C25804 in stock",
+            "R3: LCSC has none of C21190 in stock"
+        ]
+    );
+    assert_eq!(
+        errors(&board("tests/fixtures/can-encoder-rev1/can-encoder.kicad_sch")),
+        [
+            "C4: LCSC has none of C45783 in stock",
+            "R5: LCSC has none of C25744 in stock"
+        ]
+    );
     let f = findings(&board("tests/fixtures/sniffer/sniffer.kicad_sch"));
     assert!(
         f.contains(&("U3".into(), Severity::Warning, Topic::Lifecycle)),
@@ -157,7 +168,10 @@ fn testbed_catches_an_lcsc_number_for_a_different_part() {
     let r = board("tests/fixtures/testbed/testbed.kicad_sch");
     assert_eq!(
         errors(&r),
-        ["U1: LCSC C7950 is onsemi LM358DR2G, but the MPN field says LM358DR"]
+        [
+            "R1: LCSC has none of C25804 in stock",
+            "U1: LCSC C7950 is onsemi LM358DR2G, but the MPN field says LM358DR"
+        ]
     );
     // Parts named only by value can't be compared with LCSC's part number, so they aren't.
     assert!(
@@ -284,7 +298,10 @@ fn a_commodity_resistor_from_one_maker_is_not_a_sourcing_risk() {
     let l = listing("C1", "R1K", "Acme", 1000, "normal", vec![]);
     let r = run(vec![part("R1", "Device:R", "R1K", "C1")], vec![("C1", Some(l))], 1);
     assert!(
-        r[0].findings.iter().all(|f| f.severity == Severity::Info),
+        r[0].findings
+            .iter()
+            .filter(|f| f.topic == Topic::SecondSource)
+            .all(|f| f.severity == Severity::Info),
         "{:?}",
         r[0].findings
     );
@@ -608,7 +625,11 @@ fn an_equivalent_resistor_from_another_maker_is_a_warning_with_the_mpn_to_use() 
     let f = &r[0].findings[0];
     assert_eq!((f.severity, f.topic), (Severity::Warning, Topic::Identity), "{f:?}");
     assert!(f.message.contains("same value and size"), "{}", f.message);
-    assert!(f.notes[0].contains("no part file for RMCF0603FT10K0"), "{:?}", f.notes);
+    assert!(
+        f.notes[0].contains("doesn't know RMCF0603FT10K0's tolerance and rated power"),
+        "{:?}",
+        f.notes
+    );
     assert_eq!(
         f.help.as_deref(),
         Some("set the MPN field to 0603WAF1002T5E so the checks use the part JLCPCB will fit")
@@ -830,4 +851,48 @@ fn for_jlcpcb_lcsc_running_out_of_a_basic_part_is_a_warning() {
     );
     let sev = |i: usize| r[i].findings.iter().find(|f| f.topic == Topic::Stock).unwrap().severity;
     assert_eq!((sev(0), sev(1)), (Severity::Warning, Severity::Error));
+}
+
+#[test]
+fn every_part_of_a_line_and_every_unreadable_value_is_accounted_for() {
+    let ic = Listing {
+        package: "SOT-23".into(),
+        params: [("Supply Voltage".to_string(), "5V".to_string())].into_iter().collect(),
+        ..listing("C3", "IC", "Acme", 9000, "normal", vec![])
+    };
+    let r = jlcpcb(
+        vec![
+            passive("R1", "10k", R0603, "", "C1"),
+            passive("R2", "10k", "Resistor_SMD:R_0805_2012Metric", "", "C1"),
+            passive("R3", "ten", R0603, "", "C2"),
+            passive("R4", "1k", R0603, "", "C3"),
+        ],
+        vec![
+            ("C1", Some(resistor("C1", "A", "10kΩ", "0603", 9000, true, vec![]))),
+            ("C2", Some(resistor("C2", "B", "10kΩ", "0603", 9000, true, vec![]))),
+            ("C3", Some(ic)),
+        ],
+    );
+    let f = findings(&r);
+    // R1 and R2 share a line; R2's footprint is another size.
+    assert_eq!(
+        errors(&r)[0],
+        "R1: for R2, LCSC C1 is a different part: size 0603, not the 0805 of the footprint"
+    );
+    assert!(f.contains(&("R3".into(), Severity::Unknown, Topic::Identity)), "{f:?}");
+    assert!(f.contains(&("R4".into(), Severity::Error, Topic::Identity)), "{f:?}");
+    let text = gerberus::bom::render(
+        &r,
+        Options {
+            boards: 10,
+            jlcpcb: true,
+        },
+        "LCSC",
+        &gerberus::diag::Show::everything(),
+    );
+    // Lines are counted once each: R1+R2, R3, R4.
+    assert!(
+        text.contains("error: 2 errors, 0 warnings, 1 unknown, 0 passed"),
+        "{text}"
+    );
 }

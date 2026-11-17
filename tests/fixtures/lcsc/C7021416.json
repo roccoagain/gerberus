@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817763,
+  "fetched": 1794909534,
   "listing": {
     "code": "C7021416",
     "mpn": "STM32G0B1KBT6TR",
     "manufacturer": "ST",
-    "stock": 372,
+    "stock": 366,
     "status": "normal",
     "assembly": "extended",
     "package": "LQFP-32(7x7)",
@@ -13,7 +13,7 @@
         "code": "C5270165",
         "mpn": "STM32G0B1KBT6",
         "manufacturer": "ST",
-        "stock": 269,
+        "stock": 14,
         "status": "normal",
         "package": "LQFP-32(7x7)",
         "description": "ARM Cortex-M0+ LQFP-32(7x7) Microcontrollers RoHS"
@@ -31,7 +31,7 @@
         "code": "C529348",
         "mpn": "STM32G071KBT6",
         "manufacturer": "ST",
-        "stock": 210,
+        "stock": 200,
         "status": "normal",
         "package": "LQFP-32(7x7)",
         "description": "ARM Cortex-M0+ 32 Bit 64MHz LQFP-32(7x7) Microcontrollers RoHS"
@@ -49,11 +49,26 @@
         "code": "C52711774",
         "mpn": "PY32T090K1BT7",
         "manufacturer": "PUYA",
-        "stock": 45,
+        "stock": 30,
         "status": "normal",
         "package": "LQFP-32(7x7)",
         "description": "ARM Cortex-M0+ 32 Bit 72MHz LQFP-32(7x7) Microcontrollers"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "ADC (Bit)": "12bit",
+      "CPU Core": "ARM Cortex-M0+",
+      "CPU Maximum Speed": "64MHz",
+      "Core Size": "32 Bit",
+      "DAC (Bit)": "12bit",
+      "Number of I/O": "30",
+      "Operating Temperature": "-40℃~+85℃",
+      "Oscillator Type": "Built-in+External",
+      "Program Memory Type": "FLASH",
+      "Program Storage Size": "128KB",
+      "Voltage - Supply": "1.7V~3.6V"
+    }
+  },
+  "version": 2
 }

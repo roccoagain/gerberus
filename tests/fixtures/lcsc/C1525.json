@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817737,
+  "fetched": 1794909529,
   "listing": {
     "code": "C1525",
     "mpn": "CL05B104KO5NNNC",
     "manufacturer": "Samsung Electro-Mechanics",
-    "stock": 6506200,
+    "stock": 4905600,
     "status": "normal",
     "assembly": "basic",
     "package": "0402",
@@ -13,7 +13,7 @@
         "code": "C106994",
         "mpn": "GRM155R71C104KA88J",
         "manufacturer": "muRata",
-        "stock": 10750,
+        "stock": 10650,
         "status": "normal",
         "package": "0402",
         "description": "100nF ±10% 16V Ceramic Capacitor X7R 0402"
@@ -22,7 +22,7 @@
         "code": "C71629",
         "mpn": "GRM155R71C104KA88D",
         "manufacturer": "muRata",
-        "stock": 929700,
+        "stock": 883000,
         "status": "normal",
         "package": "0402",
         "description": "100nF ±10% 16V Ceramic Capacitor X7R 0402"
@@ -49,11 +49,19 @@
         "code": "C913742",
         "mpn": "GRM155R71C104JA88D",
         "manufacturer": "muRata",
-        "stock": 11550,
+        "stock": 11100,
         "status": "normal",
         "package": "0402",
         "description": "100nF ±5% 16V Ceramic Capacitor X7R 0402"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Capacitance": "100nF",
+      "Temperature Coefficient": "X7R",
+      "Tolerance": "±10%",
+      "Voltage Rating": "16V"
+    }
+  },
+  "version": 2
 }

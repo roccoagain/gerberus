@@ -101,11 +101,23 @@ impl Spec {
         };
         if let Some(r) = get("Resistance") {
             s.kind = Some(Kind::Resistor);
-            s.value = crate::voltage::parse_ohms(r);
+            // LCSC writes milliohms as `10mΩ`, which a schematic value never is.
+            s.value = match r.trim().strip_suffix("mΩ") {
+                Some(m) => m.trim().parse::<f64>().ok().map(|v| v * 1e-3),
+                None => crate::voltage::parse_ohms(r),
+            };
             s.power = get("Power(Watts)").and_then(|p| si_number(p, "W"));
         } else if let Some(c) = get("Capacitance") {
             s.kind = Some(Kind::Capacitor);
             s.value = crate::spice::parse_farads(c);
+            // A small capacitor's tolerance is in picofarads (`±0.25pF`): as a fraction of its value.
+            if s.tolerance.is_none()
+                && let (Some(t), Some(v)) = (get("Tolerance"), s.value)
+                && let Some(pf) = t.trim().trim_start_matches('±').trim().strip_suffix("pF")
+                && let Ok(pf) = pf.trim().parse::<f64>()
+            {
+                s.tolerance = Some(pf * 1e-12 / v);
+            }
             s.voltage = get("Voltage Rating")
                 .or(get("Rated Voltage"))
                 .and_then(|v| si_number(v, "V"));
@@ -406,6 +418,12 @@ mod tests {
         assert_eq!(si_number("1kV", "V"), Some(1000.0));
         assert_eq!(percent("±0.25pF"), None);
         assert_eq!(dielectric_in("NP0"), Some("C0G".into()));
+        assert_eq!(
+            Spec::from_lcsc(&params(&[("Resistance", "10mΩ")]), "1206").value,
+            Some(0.01)
+        );
+        let small = Spec::from_lcsc(&params(&[("Capacitance", "10pF"), ("Tolerance", "±0.5pF")]), "0402");
+        assert!((small.tolerance.unwrap() - 0.05).abs() < 1e-9);
     }
 
     #[test]

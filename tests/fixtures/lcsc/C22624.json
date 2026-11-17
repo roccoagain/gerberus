@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817738,
+  "fetched": 1794909521,
   "listing": {
     "code": "C22624",
     "mpn": "B5819WS",
     "manufacturer": "JSCJ",
-    "stock": 629540,
+    "stock": 627080,
     "status": "normal",
     "assembly": "extended",
     "package": "SOD-323",
@@ -13,11 +13,21 @@
         "code": "C77281",
         "mpn": "B1040WS",
         "manufacturer": "JSCJ",
-        "stock": 6000,
+        "stock": 5980,
         "status": "normal",
         "package": "SOD-323",
         "description": "Diode Independent 40V 1A Surface Mount SOD-323"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Current - Rectified": "1A",
+      "Diode Configuration": "Standalone",
+      "Non-Repetitive Peak Forward Surge Current": "1.5A",
+      "Operating Junction Temperature Range": "-55℃~+125℃",
+      "Voltage - DC Reverse (Vr) (Max)": "40V",
+      "Voltage - Forward(Vf@If)": "600mV@1A"
+    }
+  },
+  "version": 2
 }

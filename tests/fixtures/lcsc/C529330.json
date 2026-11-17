@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817761,
+  "fetched": 1794909528,
   "listing": {
     "code": "C529330",
     "mpn": "STM32G030F6P6TR",
     "manufacturer": "ST",
-    "stock": 4394,
+    "stock": 4000,
     "status": "normal",
     "assembly": "extended",
     "package": "TSSOP-20",
@@ -13,11 +13,25 @@
         "code": "C724040",
         "mpn": "STM32G030F6P6",
         "manufacturer": "ST",
-        "stock": 516,
+        "stock": 152,
         "status": "normal",
         "package": "TSSOP-20",
         "description": "ARM Cortex-M0+ 32 Bit 64MHz TSSOP-20 Microcontrollers RoHS"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "ADC (Bit)": "12bit",
+      "CPU Core": "ARM Cortex-M0+",
+      "CPU Maximum Speed": "64MHz",
+      "Core Size": "32 Bit",
+      "Number of I/O": "17",
+      "Operating Temperature": "-40℃~+85℃",
+      "Oscillator Type": "Built-in+External",
+      "Program Memory Type": "FLASH",
+      "Program Storage Size": "32KB",
+      "Voltage - Supply": "2V~3.6V"
+    }
+  },
+  "version": 2
 }

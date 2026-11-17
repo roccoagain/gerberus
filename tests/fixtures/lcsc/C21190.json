@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817761,
+  "fetched": 1794909527,
   "listing": {
     "code": "C21190",
     "mpn": "0603WAF1001T5E",
     "manufacturer": "UNI-ROYAL",
-    "stock": 534500,
+    "stock": 0,
     "status": "normal",
     "assembly": "basic",
     "package": "0603",
@@ -13,7 +13,7 @@
         "code": "C2758735",
         "mpn": "NQ03WAF1001T5E",
         "manufacturer": "UNI-ROYAL",
-        "stock": 97200,
+        "stock": 90900,
         "status": "normal",
         "package": "0603",
         "description": "1kΩ ±1% 100mW 0603 Thick Film Resistor AEC-Q200"
@@ -22,7 +22,7 @@
         "code": "C2759450",
         "mpn": "HP03W5F1001T5E",
         "manufacturer": "UNI-ROYAL",
-        "stock": 25300,
+        "stock": 25400,
         "status": "normal",
         "package": "0603",
         "description": "1kΩ ±1% 200mW 0603 Thick Film Resistor AEC-Q200"
@@ -49,11 +49,22 @@
         "code": "C2989103",
         "mpn": "TC0350D1001T5F",
         "manufacturer": "UNI-ROYAL",
-        "stock": 3450,
+        "stock": 2450,
         "status": "normal",
         "package": "0603",
         "description": "1kΩ ±0.5% 100mW 0603 Thin Film Resistor"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Operating Temperature": "-55℃~+155℃",
+      "Power(Watts)": "100mW",
+      "Resistance": "1kΩ",
+      "Temperature Coefficient": "±100ppm/℃",
+      "Tolerance": "±1%",
+      "Type": "Thick Film Resistor",
+      "Voltage Rating": "75V"
+    }
+  },
+  "version": 2
 }

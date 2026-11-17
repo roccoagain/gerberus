@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817739,
+  "fetched": 1794909532,
   "listing": {
     "code": "C189895",
     "mpn": "SM04B-GHS-TB(LF)(SN)",
     "manufacturer": "JST",
-    "stock": 29790,
+    "stock": 25140,
     "status": "normal",
     "assembly": "extended",
     "package": "SMD,P=1.25mm,Surface Mount,Right Angle",
@@ -13,7 +13,7 @@
         "code": "C2845399",
         "mpn": "HC-GH-4PWT",
         "manufacturer": "HCTL",
-        "stock": 27555,
+        "stock": 27560,
         "status": "normal",
         "package": "SMD,P=1.25mm,Surface Mount,Right Angle",
         "description": "Connector Header 4 position 1.25mm Pitch 1A Surface Mount, Right Angle -25℃~+85℃"
@@ -40,7 +40,7 @@
         "code": "C54431912",
         "mpn": "SH-GH1.25-4PWB",
         "manufacturer": "SHOU HAN",
-        "stock": 7690,
+        "stock": 7360,
         "status": "normal",
         "package": "SMD,P=1.25mm,Surface Mount,Right Angle",
         "description": "Surface Mount, Right Angle GH 50V 4 1 1.25mm 1A 4P -25℃~+85℃ Tin Beige 1x4P SMD,P=1.25mm,Surface Mount,Right Angle Headers, Male Pins RoHS"
@@ -49,11 +49,32 @@
         "code": "C2886767",
         "mpn": "GH125-S04DCA-00",
         "manufacturer": "JUSHUO",
-        "stock": 41130,
+        "stock": 42740,
         "status": "normal",
         "package": "SMD,P=1.25mm,Surface Mount,Right Angle",
         "description": "Connector Header 4 position 1.25mm Pitch 1A Surface Mount, Right Angle -25℃~+85℃"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Color": "White",
+      "Connector Type": "Surface Mount, Right Angle",
+      "Contact Material": "Phosphor Bronze",
+      "Contact Plating": "Tin",
+      "Current Rating": "1A",
+      "Flame Retardant Rating": "UL94V-0",
+      "Number of PINs": "4P",
+      "Number of PINs Per Row": "4",
+      "Number of Rows": "1",
+      "Operating Temperature": "-25℃~+85℃",
+      "Pin Structure": "1x4P",
+      "Pitch": "1.25mm",
+      "Plastic Material": "PA9T",
+      "Reference Series": "GH",
+      "Supplementary Features": "Auxiliary Solder Pin",
+      "Voltage Rating (Max)": "50V",
+      "X-Length of Bottom Edge on Board (Spacing Line)": "8.25mm"
+    }
+  },
+  "version": 2
 }

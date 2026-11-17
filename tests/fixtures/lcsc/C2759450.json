@@ -1,0 +1,61 @@
+{
+  "fetched": 1794909527,
+  "listing": {
+    "code": "C2759450",
+    "mpn": "HP03W5F1001T5E",
+    "manufacturer": "UNI-ROYAL",
+    "stock": 25400,
+    "status": "normal",
+    "assembly": "extended",
+    "package": "0603",
+    "similar": [
+      {
+        "code": "C2784879",
+        "mpn": "PS03W4F1001T5E",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 400,
+        "status": "normal",
+        "package": "0603",
+        "description": "1kΩ ±1% 250mW 0603 Thick Film Resistor AEC-Q200"
+      },
+      {
+        "code": "C2791793",
+        "mpn": "HQ03W5F1001T5E",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0603",
+        "description": "200mW 1kΩ 75V ±100ppm/℃ ±1% 0603 Chip Resistor - Surface Mount"
+      },
+      {
+        "code": "C2772693",
+        "mpn": "ES03W4F1001T5E",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0603",
+        "description": "250mW 1kΩ 150V Thick Film Resistor ±100ppm/℃ ±1% 0603 Chip Resistor - Surface Mount"
+      },
+      {
+        "code": "C2791783",
+        "mpn": "HQ03W5D1001T5E",
+        "manufacturer": "UNI-ROYAL",
+        "stock": 0,
+        "status": "normal",
+        "package": "0603",
+        "description": "200mW 1kΩ 75V ±0.5% 0603 Chip Resistor - Surface Mount"
+      }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Operating Temperature": "-55℃~+155℃",
+      "Power(Watts)": "200mW",
+      "Resistance": "1kΩ",
+      "Temperature Coefficient": "±100ppm/℃",
+      "Tolerance": "±1%",
+      "Type": "Thick Film Resistor",
+      "Voltage Rating": "75V"
+    }
+  },
+  "version": 2
+}

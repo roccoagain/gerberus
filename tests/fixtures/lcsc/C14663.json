@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817759,
+  "fetched": 1794909536,
   "listing": {
     "code": "C14663",
     "mpn": "CC0603KRX7R9BB104",
     "manufacturer": "YAGEO",
-    "stock": 90200,
+    "stock": 1200,
     "status": "normal",
     "assembly": "basic",
     "package": "0603",
@@ -31,7 +31,7 @@
         "code": "C314282",
         "mpn": "0603B104K500CT",
         "manufacturer": "Walsin",
-        "stock": 593600,
+        "stock": 591600,
         "status": "normal",
         "package": "0603",
         "description": "100nF ±10% 50V Ceramic Capacitor X7R 0603"
@@ -54,6 +54,14 @@
         "package": "0603",
         "description": "100nF X7R ±10% 50V 0603 Ceramic Capacitors RoHS"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Capacitance": "100nF",
+      "Temperature Coefficient": "X7R",
+      "Tolerance": "±10%",
+      "Voltage Rating": "50V"
+    }
+  },
+  "version": 2
 }

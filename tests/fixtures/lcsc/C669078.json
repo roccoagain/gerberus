@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817741,
+  "fetched": 1794909535,
   "listing": {
     "code": "C669078",
     "mpn": "OT201616MJBA4SL",
     "manufacturer": "YXC Crystal Oscillators",
-    "stock": 3252,
+    "stock": 2842,
     "status": "normal",
     "assembly": "extended",
     "package": "SMD2016-4P",
@@ -27,6 +27,17 @@
         "package": "SMD2016-4P",
         "description": "±15ppm 16MHz SMD2016-4P Oscillators RoHS"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Current - Supply": "4mA",
+      "Frequency": "16MHz",
+      "Frequency Stability": "±20ppm",
+      "Normal temperature Frequency Tolerance": "±10ppm",
+      "Operating Temperature": "-40℃~+85℃",
+      "Output Type": "CMOS",
+      "Voltage - Supply": "1.8V~3.3V"
+    }
+  },
+  "version": 2
 }

@@ -1,10 +1,10 @@
 {
-  "fetched": 1794817764,
+  "fetched": 1794909535,
   "listing": {
     "code": "C191006",
     "mpn": "TCAN330GDCNR",
     "manufacturer": "TI",
-    "stock": 1446,
+    "stock": 1437,
     "status": "normal",
     "assembly": "extended",
     "package": "SOT-23-8",
@@ -22,7 +22,7 @@
         "code": "C191005",
         "mpn": "TCAN334GDCNR",
         "manufacturer": "TI",
-        "stock": 1281,
+        "stock": 1170,
         "status": "normal",
         "package": "SOT-23-8",
         "description": "3.3V CAN FD Transceiver 5Mbps SOT-23-8 Drivers, Receivers, Transceivers RoHS"
@@ -31,7 +31,7 @@
         "code": "C191007",
         "mpn": "TCAN332GDCNR",
         "manufacturer": "TI",
-        "stock": 497,
+        "stock": 424,
         "status": "normal",
         "package": "SOT-23-8",
         "description": "3.3V CAN FD Transceiver 5Mbps SOT-23-8 Drivers, Receivers, Transceivers RoHS"
@@ -54,6 +54,18 @@
         "package": "TSOT-23-8",
         "description": "CAN FD Transceiver 3V~3.6V 8Mbps TSOT-23-8 Drivers, Receivers, Transceivers RoHS"
       }
-    ]
-  }
+    ],
+    "lifecycle": null,
+    "params": {
+      "Data Rate": "5Mbps",
+      "Features": "Low-power mode;Wake-up function;Silent mode;ESD Protection;TXD dominant timeout;Thermal shutdown protection;Undervoltage Protection;Bus Fault Protection",
+      "Operating Temperature": "-40℃~+125℃",
+      "Quiescent Supply Current": "2.5uA",
+      "Supply Current": "55mA",
+      "Type": "CAN FD Transceiver",
+      "Voltage - Supply": "3V~3.6V",
+      "number of channels": "1"
+    }
+  },
+  "version": 2
 }
