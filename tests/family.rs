@@ -91,7 +91,7 @@ fn uniroyal_part_numbers_decode() {
     assert_eq!(p.tcr.as_ref().unwrap().ppm, 200.0);
     assert_eq!(f.part("0105WHJ0100TCE").unwrap().unwrap().tcr.unwrap().ppm, 300.0);
     assert!(f.part("0105WHF0100TCE").unwrap().is_ok());
-    assert!(f.part("0105WHF910JTCE").unwrap().is_err());
+    assert!(f.part("0105WHF910KTCE").unwrap().is_err());
     // Not rated: the wrong power code for the size, a jumper, 0805 1/4 W at 10 ohm, ±0.5 % below 1 ohm, 0201
     // at ±0.5 %, 0805 1/8 W at 10 Mohm (the range stops below it).
     for mpn in [
