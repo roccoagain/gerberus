@@ -23,6 +23,7 @@ const USAGE: &str = "usage:
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
+  gerberus skill install [DIR] [--force]
   gerberus update
   gerberus --version
 
@@ -91,14 +92,18 @@ writes `parts/<MPN>.toml` next to the schematic, or prints it with --stdout. It 
 one for a part the library, a part family or the symbol's own rating already covers, unless --force; and never
 one for a part number another file in the board's part folders already defines.
 
-`datasheet` checks part files against their datasheets (see .claude/skills/datasheet-to-part). `verify` downloads each
+`datasheet` checks part files against their datasheets (see the datasheet-to-part skill). `verify` downloads each
 file's datasheet (cached in --cache, default ~/.cache/gerberus/datasheets), or reads --pdf, or a PDF saved in the
-board's datasheets/ folder (beside parts/, named after the part number or the part file, with .pdf; read
-before any download), and looks for every
-cited value on its page: in the right MIN/TYP/MAX column, in the right unit, on a row that names the pin. It
+board's datasheets/ folder (beside parts/, named after the part number or the part file, with .pdf; read before
+any download), and looks for every cited value on its page: in the right MIN/TYP/MAX column, in the right unit, on a row that names the pin. It
 needs poppler's `pdftotext`. --all also lists confirmed values. It exits with status 1 when a value is missing
 or mismatched. `blank` prints the part file with every datasheet value replaced by \"?\", for a second reader to
 fill in blind; `compare` lists every value where two readings disagree and exits with status 1 if any do.
+
+`skill install` writes the agent skills that ship with gerberus into DIR/.claude/skills (DIR defaults to the
+current folder, the board's repository): check-board (init, doctor, part files, check) and datasheet-to-part
+(reading a datasheet into a part file, verified and read twice). It won't replace a skill file that differs from
+the one it ships, unless --force; run it again after `gerberus update` to bring them up to date.
 
 `update` updates gerberus to the latest release with `gerberus-update`, which the installers put next to it.
 Once a day, gerberus also asks GitHub whether a newer release is out and says so after a command finishes; set
@@ -141,6 +146,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "si" => si(Path::new(path), rest),
         [cmd, sub, rest @ ..] if cmd == "datasheet" => datasheet(sub, rest),
+        [cmd, sub, rest @ ..] if cmd == "skill" && sub == "install" => skill_install(rest),
         [cmd, sub, mpn, rest @ ..] if cmd == "part" && sub == "show" && !mpn.starts_with("--") => part_show(mpn, rest),
         [cmd, sub, path, which, rest @ ..] if cmd == "part" && sub == "new" && !which.starts_with("--") => {
             part_new(Path::new(path), which, rest)
@@ -267,6 +273,31 @@ fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
         "next: fill in each \"{}\" from the datasheet (parts/README.md), then run `gerberus datasheet verify {}`",
         gerberus::part_new::NOT_READ,
         file.display()
+    );
+    Ok(true)
+}
+
+fn skill_install(rest: &[String]) -> Result<bool, String> {
+    let (mut dir, mut force) = (None, false);
+    for a in rest {
+        match a.as_str() {
+            "--force" => force = true,
+            d if !d.starts_with("--") && dir.is_none() => dir = Some(PathBuf::from(d)),
+            _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
+        }
+    }
+    let dir = dir.unwrap_or_else(|| PathBuf::from("."));
+    for (path, outcome) in gerberus::skill::install(&dir, force)? {
+        let what = match outcome {
+            gerberus::skill::Outcome::Written => "wrote",
+            gerberus::skill::Outcome::Replaced => "replaced",
+            gerberus::skill::Outcome::Unchanged => "up to date",
+        };
+        println!("{what}: {}", path.display());
+    }
+    println!(
+        "an agent working in {} now has the check-board and datasheet-to-part skills",
+        dir.display()
     );
     Ok(true)
 }

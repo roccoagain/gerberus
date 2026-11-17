@@ -87,6 +87,10 @@ Part limits come from a built-in library of part files, each value cited to its 
 part file comes out UNKNOWN rather than PASS. To add one, start it with `gerberus part new <schematic> <reference>`
 and fill it in from the datasheet; see [parts/README.md](parts/README.md).
 
+For an AI agent working in a board's repository, `gerberus skill install` adds two skills there: `check-board`
+(set up inputs.toml, follow `gerberus doctor`, run the checks) and `datasheet-to-part` (read a datasheet into a
+part file, verified against its pages and read twice).
+
 Run `gerberus --help` for every command and option.
 
 ## Links

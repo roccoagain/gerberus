@@ -38,7 +38,7 @@ Point Gerberus at a new board and get useful answers in minutes. Every `UNKNOWN`
 - [ ] A `[[variant]]` the datasheet doesn't list (PESD5V0S1BAF), allowed only with a source from the maker that it is the same part.
 - [x] `gerberus part new <design> <REF or MPN>`: writes a part file into the project's `parts/` folder from the schematic (pins from the symbol, class from the reference, every value `{ unknown = "not read from the datasheet yet" }`), ready to fill in and `datasheet verify`; `doctor` lists it until it is filled in. Reading a PDF given with `--pdf` waits for the `datasheets/` folder.
 - [x] A `datasheets/` folder next to the schematic for PDFs that can't be downloaded (MAX9722A, Daisy Seed): `datasheet verify` reads `datasheets/<MPN>.pdf` before downloading, and `doctor` names the file to save for each part it lists.
-- [ ] Ship the datasheet-to-part agent skill with each release (`gerberus skill install`), so an agent working in a board's own repo adds parts the same checked way.
+- [x] Ship the agent skills with each release (`gerberus skill install`): check-board (init, doctor, part files, check) and datasheet-to-part with its format guide, so an agent working in a board's own repo checks the board and adds parts the same checked way.
 - [ ] Waivers: a `waivers.toml` next to the schematic accepts a finding with a reason, who, and when. Waived findings still show, marked waived; a waiver that no longer matches anything is flagged. *(Copies: Siemens Xpedition waivers)*
 
 Behaviour Gerberus doesn't model yet:
