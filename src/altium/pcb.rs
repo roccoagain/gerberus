@@ -17,8 +17,7 @@ fn text_records(path: &Path, stream: &str) -> Result<Vec<super::records::Record>
     let data = read_stream(path, stream)?.ok_or_else(|| format!("{}: no {stream} stream", path.display()))?;
     let mut out = Vec::new();
     let mut pos = 0;
-    while pos + 4 <= data.len() {
-        let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
+    while let Some(len) = le_u32(&data, pos) {
         pos += 4;
         let body = data
             .get(pos..pos + len)
@@ -31,11 +30,12 @@ fn text_records(path: &Path, stream: &str) -> Result<Vec<super::records::Record>
 
 fn le_u32(d: &[u8], p: usize) -> Option<usize> {
     d.get(p..p + 4)
-        .map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize)
+        .and_then(|b| b.try_into().ok())
+        .map(|b| u32::from_le_bytes(b) as usize)
 }
 
 fn le_i16(d: &[u8], p: usize) -> Option<i16> {
-    d.get(p..p + 2).map(|b| i16::from_le_bytes(b.try_into().unwrap()))
+    d.get(p..p + 2).and_then(|b| b.try_into().ok()).map(i16::from_le_bytes)
 }
 
 /// The designator each component carries on the board, by component index.

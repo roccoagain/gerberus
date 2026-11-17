@@ -390,7 +390,6 @@ fn not_a_supply(input: &crate::inputs::Input) -> bool {
 }
 
 /// Builds the circuit: every part gerberus can model, and the board's supply inputs.
-#[allow(clippy::too_many_lines)]
 pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Voltages) -> Result<Circuit, String> {
     let n = design.nets.len();
     let mut c = Circuit {

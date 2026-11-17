@@ -1,3 +1,6 @@
+// No `unwrap()` outside tests; see src/lib.rs.
+#![warn(clippy::unwrap_used)]
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 

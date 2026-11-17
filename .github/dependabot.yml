@@ -1,0 +1,27 @@
+# Weekly update PRs, grouped so there is one PR per ecosystem. CI checks each like any other PR.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    # Let a new release sit a week first, so a compromised or broken one is likely pulled before it reaches us.
+    cooldown:
+      default-days: 7
+    # Within the semver ranges in Cargo.toml (a Cargo.lock refresh); a major bump is a code change, made on purpose.
+    groups:
+      cargo:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # Let a new release sit a week first, so a compromised or broken one is likely pulled before it reaches us.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

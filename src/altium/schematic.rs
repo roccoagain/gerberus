@@ -227,10 +227,10 @@ pub fn from_records(recs: &[Record], additional: &[Record]) -> SchDoc {
         match r.kind() {
             2 if r.owner().is_some() => pin(&mut doc, &comp_at, r),
             16 => {
-                let Some(&si) = r.owner().and_then(|o| sym_at.get(&o)) else {
+                let Some((owner, &si)) = r.owner().and_then(|o| Some((o, sym_at.get(&o)?))) else {
                     continue;
                 };
-                let sym = &body[r.owner().unwrap()];
+                let sym = &body[owner];
                 let (x, y) = location(sym);
                 let (w, h) = (sym.coord("XSIZE"), sym.coord("YSIZE"));
                 let along = along(r);

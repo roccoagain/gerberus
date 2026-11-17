@@ -1184,7 +1184,7 @@ pub fn resistance_range(
 /// The divider on a regulator's feedback net, and the net it sets. `Ok(None)` when no resistor is on the pin,
 /// so it is tied straight to the output and the drive sets the pin's own net. The error carries the output net
 /// when one was found, so it too is reported.
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity, reason = "a one-use error type; naming it adds nothing")]
 fn find_divider(
     design: &Design,
     lib: &Library,

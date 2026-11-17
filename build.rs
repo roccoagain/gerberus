@@ -22,7 +22,7 @@ fn main() {
             .and_then(|n| n.to_str())
             .expect("part file names are UTF-8");
         let full = path.to_str().expect("paths are UTF-8");
-        writeln!(out, "    ({name:?}, include_str!({full:?})),").unwrap();
+        writeln!(out, "    ({name:?}, include_str!({full:?})),").expect("writing to a String can't fail");
     }
     out.push(']');
     let dest = Path::new(&std::env::var("OUT_DIR").expect("cargo sets OUT_DIR")).join("builtin_parts.rs");

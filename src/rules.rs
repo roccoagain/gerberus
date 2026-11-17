@@ -853,7 +853,6 @@ fn value_of(b: &Bound) -> Option<f64> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn tvs(ctx: &Ctx<'_>, limit: &Limit, span: Span, floor: (bool, bool), head: &str, nets: &[usize], r: &mut Report) {
     // Breakdown: a rail that can sit at or above the lowest breakdown voltage drives current through the part
     // continuously, and it burns. A bidirectional part breaks down either way, so its magnitude counts.
@@ -948,7 +947,10 @@ fn tvs(ctx: &Ctx<'_>, limit: &Limit, span: Span, floor: (bool, bool), head: &str
 }
 
 /// Capacitors: the signed voltage against the signed rating, then against the derating policy.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "unrelated inputs; a one-use struct would only rename them"
+)]
 fn cap_voltage(
     ctx: &Ctx<'_>,
     policy: &Policy,

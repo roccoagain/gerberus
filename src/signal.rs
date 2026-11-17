@@ -846,7 +846,10 @@ pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
 }
 
 /// One pin against one limit: the verdict, its severity and what was compared.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "unrelated inputs; a one-use struct would only rename them"
+)]
 fn level(
     levels: &Levels,
     c: &Component,
