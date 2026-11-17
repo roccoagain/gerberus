@@ -1,0 +1,62 @@
+mpn = "USBLC6-2SC6"
+manufacturer = "STMicroelectronics"
+description = "2-line USB ESD protection with VBUS clamp, 3.5 pF, SOT23-6L"
+class = "tvs"
+tj_max = { value = 125, page = 2, note = "Tj operating junction temperature range, -40 to +125 °C" }
+
+[datasheet]
+title = "USBLC6-2 Very low capacitance ESD protection"
+document = "Doc ID 11265 Rev 5, October 2011"
+url = "https://datasheet.lcsc.com/datasheet/pdf/0d3a2ab954b34651a0695e7ccf534db0.pdf"
+
+# Figure 1, page 1: each data line passes through, in on one side and out on the other (pins 1 and 6, 3 and 4).
+[pins]
+1 = "I/O1"
+2 = "GND"
+3 = "I/O2"
+4 = "I/O2"
+5 = "VBUS"
+6 = "I/O1"
+
+# Each I/O line steers through a diode to VBUS and one to GND, and the clamp sits between VBUS and GND, so a
+# line is clamped only through the VBUS pin; no breakdown is given between a line and GND.
+[[limit]]
+pins = ["I/O1", "I/O2"]
+to = "GND"
+abs_max = { unknown = "the absolute ratings give only ESD pulse ratings; there is no DC voltage maximum" }
+recommended = { min = { unknown = "no negative operating limit is given" }, max = 5.25, page = 2, note = "VRM, the voltage the leakage current IRM (150 nA max) is specified at" }
+breakdown = { unknown = "only VBUS to GND has a breakdown voltage; a line reaches it through the diode to VBUS" }
+clamp = { volts = 17, current = 5, page = 2, note = "VCL, IPP = 5 A 8/20 µs, any I/O pin to GND (12 V at 1 A)" }
+
+[[limit]]
+pins = ["VBUS"]
+to = "GND"
+abs_max = { unknown = "the absolute ratings give only ESD pulse ratings; there is no DC voltage maximum" }
+recommended = { min = { unknown = "no negative operating limit is given" }, max = 5.25, page = 2, note = "VRM, the voltage the leakage current IRM (150 nA max) is specified at" }
+breakdown = { min = 6, max = { unknown = "only a minimum is given" }, page = 2, note = "VBR between VBUS and GND, IR = 1 mA" }
+
+[[capacitance]]
+pins = ["I/O1", "I/O2"]
+to = "GND"
+typ = 2.5
+max = 3.5
+page = 2
+note = "Ci/o-GND, VR = 1.65 V"
+
+[[esd]]
+model = "iec-contact"
+volts = 15000
+page = 2
+note = "Table 1 VPP, IEC 61000-4-2 contact discharge (page 1 claims level 4, 8 kV contact, guaranteed)"
+
+[[esd]]
+model = "iec-air"
+volts = 15000
+page = 2
+note = "Table 1 VPP, IEC 61000-4-2 air discharge"
+
+[[esd]]
+model = "hbm"
+volts = 25000
+page = 2
+note = "Table 1 VPP, MIL STD883G method 3015-7"
