@@ -64,7 +64,12 @@ pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, 
         .map(|n| probe(design, lib, n));
     // Rails: nets something holds (an input, a regulator, a diode or bead from one) that power a part or are a
     // regulator's output.
-    let regulated: BTreeSet<usize> = v.regulators.iter().filter(|r| r.sets_output).map(|r| r.output).collect();
+    let regulated: BTreeSet<usize> = v
+        .regulators
+        .iter()
+        .filter(|r| r.sets_output)
+        .map(|r| r.output)
+        .collect();
     let is_rail = |n: usize| {
         let nv = &v.nets[n];
         nv.driver == Driver::Strong
@@ -89,7 +94,9 @@ pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, 
         let (Some(pn), Some(_)) = (net_of(&i.pin.reference, &i.pin.pin), net_of(&i.to.reference, &i.to.pin)) else {
             continue;
         };
-        let crate::inputs::Max::Value(max) = i.max else { continue };
+        let crate::inputs::Max::Value(max) = i.max else {
+            continue;
+        };
         // Rails fed from this input, breadth first along what each rail's range was worked out from.
         let mut rails = vec![];
         let mut queue = VecDeque::from([pn]);
@@ -118,7 +125,12 @@ pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, 
                     net: m,
                     span: v.nets[m].span,
                     probe: probe(design, lib, m),
-                    from: from.into_iter().filter(|f| local.contains(f)).collect::<BTreeSet<_>>().into_iter().collect(),
+                    from: from
+                        .into_iter()
+                        .filter(|f| local.contains(f))
+                        .collect::<BTreeSet<_>>()
+                        .into_iter()
+                        .collect(),
                     warning,
                 });
             }
@@ -208,7 +220,11 @@ pub fn render(design: &Design, p: &Plan) -> String {
                 "the parts that give a current draw at most {} from it, but {} not counted ({}), so start with a low \
                  current limit and raise it while watching the draw",
                 amps(a),
-                if s.not_counted.len() == 1 { "one part is" } else { "some parts are" },
+                if s.not_counted.len() == 1 {
+                    "one part is"
+                } else {
+                    "some parts are"
+                },
                 s.not_counted.join("; ")
             ),
             None => "what the board draws from it isn't known, so start with a low current limit and raise it while \
@@ -231,7 +247,13 @@ pub fn render(design: &Design, p: &Plan) -> String {
             } else {
                 format!(" (from {})", from.join(", "))
             };
-            let _ = writeln!(out, "{step}. Measure {}{fed} at {}: expect {}.", name(r.net), r.probe, r.span);
+            let _ = writeln!(
+                out,
+                "{step}. Measure {}{fed} at {}: expect {}.",
+                name(r.net),
+                r.probe,
+                r.span
+            );
             if let Some(w) = &r.warning {
                 let _ = writeln!(out, "   note: {w}");
             }
@@ -239,7 +261,10 @@ pub fn render(design: &Design, p: &Plan) -> String {
         }
     }
     if p.stages.len() > 1 {
-        let _ = writeln!(out, "\nPower one input at a time, in this order, before connecting them together.");
+        let _ = writeln!(
+            out,
+            "\nPower one input at a time, in this order, before connecting them together."
+        );
     }
     let _ = writeln!(
         out,

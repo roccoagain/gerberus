@@ -12,6 +12,7 @@ Using it:
 - [Waivers](waivers.md): accepting a finding on purpose, with the reason on record.
 - [Voltage checks](voltage-checks.md): `voltages` and `check`, every rule, fault cases, reverse polarity and ESD.
 - [Junction temperature and derating](thermal.md): `loads`, junction temperature, forward current.
+- [Bring-up plan](bringup.md): `bringup`, the order to power a new board in and what to measure.
 - [Hot-plug stress](stress.md): `stress`, the SPICE simulation and what it models.
 - [Signal levels](signal.md): `signal`, op-amp clipping and the levels signals put on IC pins, in SPICE.
 - [Pinout check](pinout.md): `pinout`.

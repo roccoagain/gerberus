@@ -70,7 +70,7 @@ Behaviour Gerberus doesn't model yet:
 ## Signature features (new, not copies)
 
 - [ ] **Firmware ↔ schematic cross-check.** Read the pin assignments in the firmware (Daisy pin config, STM32CubeMX `.ioc`, ESP-IDF) and confirm they match the netlist.
-- [ ] **Bring-up plan generator.** Gerberus already knows every rail and voltage range, so it writes the bring-up checklist: which rail to power first, the current limit to set, and the voltage to expect at each test point.
+- [x] **Bring-up plan generator** (`gerberus bringup`). Gerberus already knows every rail and voltage range, so it writes the bring-up checklist: which rail to power first, the current limit to set, and the voltage to expect at each test point.
 
 ## Principles
 
