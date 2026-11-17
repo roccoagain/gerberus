@@ -24,11 +24,13 @@ jobs:
 It installs the latest release and runs `gerberus check`, which fails the job when a check fails with an error
 (warnings don't). Accept a finding on purpose with a [waiver](waivers.md) rather than turning the check off. On a
 pull request it also runs [`gerberus diff`](diff.md) against the base branch, and fails when the pull request adds an
-error the base didn't have. Both reports go in the job's summary page.
+error the base didn't have. Both reports go in the job's summary page. A board the pull request adds has nothing to
+compare with, so `diff` says so and passes.
 
 | Input | Default | What it does |
 |---|---|---|
 | `design` | (required) | The design to check, relative to the repository. |
+| `version` | `latest` | The release to install, such as `v0.2.0`. Pin it, and the action (`roccoagain/gerberus@v0.2.0`), so a new release can't change the result by itself. |
 | `args` | none | Extra arguments for `gerberus check`, such as `--unknown`. |
 | `diff` | `true` | Run `gerberus diff` against the base branch on a pull request. |
 

@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 
 use crate::design::Design;
-use crate::kicad::pcb::{Layout, StackLayer, Track};
+use crate::kicad::pcb::{Layout, PlacedPad, StackLayer, Track};
 use crate::rules::{Finding, Severity, Verdict};
 use crate::thermal::Thermal;
 
@@ -61,17 +61,41 @@ enum Node {
     Via(usize),
 }
 
-fn close(a: crate::kicad::pcb::Point, b: crate::kicad::pcb::Point, r: f64) -> bool {
-    (a.0 - b.0).hypot(a.1 - b.1) <= r + 1e-6
+type Pt = crate::kicad::pcb::Point;
+
+/// Distance from `p` to the segment `a`–`b`.
+fn to_segment(p: Pt, a: Pt, b: Pt) -> f64 {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let len2 = dx * dx + dy * dy;
+    let t = if len2 == 0.0 {
+        0.0
+    } else {
+        (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / len2).clamp(0.0, 1.0)
+    };
+    (p.0 - a.0 - t * dx).hypot(p.1 - a.1 - t * dy)
 }
 
-/// Whether removing track `cut` (an index into `tracks`) separates pad 0 from pad 1.
-fn separates(
-    tracks: &[&Track],
-    pads: &[(crate::kicad::pcb::Point, f64, Vec<String>)],
-    vias: &[(crate::kicad::pcb::Point, f64)],
-    cut: Option<usize>,
-) -> bool {
+/// Whether two segments come within `r` of each other (touching, crossing or overlapping copper).
+fn segments_touch(a: &Track, b: &Track, r: f64) -> bool {
+    let cross = |p: Pt, q: Pt, x: Pt| (q.0 - p.0) * (x.1 - p.1) - (q.1 - p.1) * (x.0 - p.0);
+    let (d1, d2) = (cross(a.start, a.end, b.start), cross(a.start, a.end, b.end));
+    let (d3, d4) = (cross(b.start, b.end, a.start), cross(b.start, b.end, a.end));
+    if d1 * d2 < 0.0 && d3 * d4 < 0.0 {
+        return true;
+    }
+    [
+        to_segment(a.start, b.start, b.end),
+        to_segment(a.end, b.start, b.end),
+        to_segment(b.start, a.start, a.end),
+        to_segment(b.end, a.start, a.end),
+    ]
+    .into_iter()
+    .any(|d| d <= r + 1e-6)
+}
+
+/// Whether removing track `cut` (an index into `tracks`) separates pad 0 from pad 1. Contacts are taken
+/// generously (any copper overlap), so a track is only ever found to separate them when it surely does.
+fn separates(tracks: &[&Track], pads: &[&PlacedPad], vias: &[(Pt, f64)], cut: Option<usize>) -> bool {
     let nodes: Vec<Node> = (0..tracks.len())
         .map(Node::Track)
         .chain((0..pads.len()).map(Node::Pad))
@@ -94,26 +118,21 @@ fn separates(
         if Some(i) == cut {
             continue;
         }
-        for end in [t.start, t.end] {
-            for (j, u) in tracks.iter().enumerate() {
-                if j != i
-                    && Some(j) != cut
-                    && u.layer == t.layer
-                    && (close(end, u.start, 0.0) || close(end, u.end, 0.0))
-                {
-                    join(Node::Track(i), Node::Track(j));
-                }
+        let half = t.width / 2.0;
+        for (j, u) in tracks.iter().enumerate() {
+            if j > i && Some(j) != cut && u.layer == t.layer && segments_touch(t, u, half + u.width / 2.0) {
+                join(Node::Track(i), Node::Track(j));
             }
-            for (j, (at, r, layers)) in pads.iter().enumerate() {
-                let on = layers.iter().any(|l| l == &t.layer || l == "*.Cu");
-                if on && close(end, *at, *r) {
-                    join(Node::Track(i), Node::Pad(j));
-                }
+        }
+        for (j, p) in pads.iter().enumerate() {
+            let on = p.layers.iter().any(|l| l == &t.layer || l == "*.Cu");
+            if on && (p.contains(t.start, half) || p.contains(t.end, half)) {
+                join(Node::Track(i), Node::Pad(j));
             }
-            for (j, (at, r)) in vias.iter().enumerate() {
-                if close(end, *at, *r) {
-                    join(Node::Track(i), Node::Via(j));
-                }
+        }
+        for (j, &(at, r)) in vias.iter().enumerate() {
+            if to_segment(at, t.start, t.end) <= r + half + 1e-6 {
+                join(Node::Track(i), Node::Via(j));
             }
         }
     }
@@ -138,20 +157,35 @@ pub fn check(design: &Design, layout: &Layout, th: &Thermal, policy: &TracePolic
             continue;
         }
         let amps = load.amps;
-        // Each track's safe current, narrowest first.
+        // Each track's safe current, narrowest first. With no stackup in the board file the copper could be
+        // anything from ½ oz to 2 oz: a pass takes the thinnest, a fail the thickest.
+        let (thin, thick_cu) = if layout.stackup_assumed {
+            (Some(0.0175), Some(0.070))
+        } else {
+            (None, None)
+        };
         let mut rated: Vec<(usize, f64)> = vec![];
+        let mut rated_thick: BTreeMap<usize, f64> = BTreeMap::new();
         let mut unknown_layer = None;
         for (i, t) in tracks.iter().enumerate() {
             match cu.get(&t.layer) {
-                Some(&(thick, outer)) => rated.push((i, ipc2221(t.width, thick, outer, policy.rise))),
+                Some(&(thick, outer)) => {
+                    rated.push((i, ipc2221(t.width, thin.unwrap_or(thick), outer, policy.rise)));
+                    rated_thick.insert(i, ipc2221(t.width, thick_cu.unwrap_or(thick), outer, policy.rise));
+                }
                 None => unknown_layer = Some(t.layer.clone()),
             }
         }
         rated.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let copper_note = if layout.stackup_assumed {
+            "; the board file has no stackup, so this takes ½ oz copper to pass and 2 oz to fail"
+        } else {
+            ""
+        };
         let what = |i: usize, cap: f64| {
             let t = tracks[i];
             format!(
-                "its narrowest track, {} mm on {} at ({:.2}, {:.2}), takes {:.2} A for a {} °C rise (IPC-2221, {})",
+                "the track {} mm wide on {} at ({:.2}, {:.2}) takes {:.2} A for a {} °C rise (IPC-2221, {}){copper_note}",
                 t.width, t.layer, t.start.0, t.start.1, cap, policy.rise, policy.reason
             )
         };
@@ -186,7 +220,6 @@ pub fn check(design: &Design, layout: &Layout, th: &Thermal, policy: &TracePolic
                 .iter()
                 .flat_map(|f| f.pads.iter())
                 .filter(|p| p.net.as_deref() == Some(net.name.as_str()))
-                .map(|p| (p.at, p.size.0.min(p.size.1) / 2.0, p.layers.clone()))
                 .collect();
             let vias: Vec<_> = layout
                 .vias
@@ -194,17 +227,23 @@ pub fn check(design: &Design, layout: &Layout, th: &Thermal, policy: &TracePolic
                 .filter(|v| v.net == net.name)
                 .map(|v| (v.at, v.diameter / 2.0))
                 .collect();
-            let pour = layout.zones.iter().any(|z| z.net == net.name);
-            let sure = pads.len() == 2
-                && !pour
-                && !separates(&tracks, &pads, &vias, None)
-                && separates(&tracks, &pads, &vias, Some(i));
-            if sure {
+            let pour = layout.zones.iter().any(|z| z.net == net.name) || layout.zone_nets.contains(&net.name);
+            // A track that can't take it even at the thickest copper, and is sure to carry all of it.
+            let sure = (pads.len() == 2 && !pour && !separates(&tracks, &pads, &vias, None))
+                .then(|| {
+                    rated
+                        .iter()
+                        .map(|&(j, _)| (j, rated_thick[&j]))
+                        .filter(|&(_, c)| c < amps)
+                        .find(|&(j, _)| separates(&tracks, &pads, &vias, Some(j)))
+                })
+                .flatten();
+            if let Some((j, c)) = sure {
                 (
                     Verdict::Fail,
                     format!(
                         "{draw}, all of it through every track between its two pads; {}",
-                        what(i, cap)
+                        what(j, c)
                     ),
                 )
             } else {

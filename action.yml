@@ -12,6 +12,12 @@ inputs:
     description: Extra arguments for `gerberus check`, such as `--unknown`.
     required: false
     default: ""
+  version:
+    description: >-
+      The Gerberus release to install, such as `v0.2.0`, or `latest`. Pin it (and the action, `@v0.2.0`) so a new
+      release can't change a passing check by itself.
+    required: false
+    default: latest
   diff:
     description: >-
       On a pull request, also run `gerberus diff` against the base branch and fail when the pull request adds an
@@ -24,8 +30,15 @@ runs:
   steps:
     - name: Install Gerberus
       shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
       run: |
-        curl --proto '=https' --tlsv1.2 -LsSf https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.sh | sh
+        if [ "$VERSION" = latest ]; then
+          url=https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.sh
+        else
+          url="https://github.com/roccoagain/gerberus/releases/download/$VERSION/gerberus-installer.sh"
+        fi
+        curl --proto '=https' --tlsv1.2 -LsSf "$url" | sh
         echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
 
     - name: Check
@@ -53,7 +66,12 @@ runs:
         DESIGN: ${{ inputs.design }}
         BASE: ${{ github.event.pull_request.base.sha }}
       run: |
-        git fetch --no-tags --depth=1 origin "$BASE"
+        # Fetch only the base commit. A shallow checkout (the default) stays shallow; a full one isn't made shallow.
+        if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+          git fetch --no-tags --depth=1 origin "$BASE"
+        else
+          git fetch --no-tags origin "$BASE"
+        fi
         status=0
         gerberus diff "$DESIGN" --rev "$BASE" > gerberus-diff.txt || status=$?
         cat gerberus-diff.txt

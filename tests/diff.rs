@@ -147,3 +147,47 @@ fn nothing_changed() {
     let d = diff(&a, &Report::default(), &a, &Report::default());
     assert_eq!(render(&d), "No changes to parts, connections or findings.\n");
 }
+
+/// A fault case's messages open with the case's name; the pin later in the message still tells two findings apart,
+/// and a second FAIL under one key is a new error.
+#[test]
+fn a_second_fail_in_a_fault_case_is_new() {
+    let d0 = design(&[]);
+    let mut f1 = finding(
+        "recommended",
+        "U1",
+        Verdict::Fail,
+        "fault \"5V reversed\": U1.VIN (+5V): -5 V",
+    );
+    f1.case = Some("5V reversed".into());
+    let mut f2 = finding(
+        "recommended",
+        "U1",
+        Verdict::Fail,
+        "fault \"5V reversed\": U1.EN (EN): -5 V",
+    );
+    f2.case = Some("5V reversed".into());
+    let old = report(vec![f1.clone()]);
+    let new = report(vec![f1, f2]);
+    let d = diff(&d0, &old, &d0, &new);
+    assert_eq!(d.new_errors(), 1, "{:?}", d.findings);
+}
+
+/// A FAIL a new waiver accepts isn't "fixed" without saying so.
+#[test]
+fn a_new_waiver_shows() {
+    let d0 = design(&[]);
+    let f = finding("esd", "J1", Verdict::Fail, "J1.1 (SWDIO): no clamp");
+    let old = report(vec![f.clone()]);
+    let mut new = Report::default();
+    new.waived.push(gerberus::waivers::Waived {
+        finding: f,
+        reason: "bench only".into(),
+        by: Some("Rocco".into()),
+    });
+    let d = diff(&d0, &old, &d0, &new);
+    let text = render(&d);
+    assert!(text.contains("FAIL → none (1 waived)"), "{text}");
+    assert!(text.contains("1 newly waived"), "{text}");
+    assert_eq!(d.new_errors(), 0);
+}

@@ -10,8 +10,8 @@ use std::process::Command;
 
 use serde_json::{Value, json};
 
-/// The protocol version answered when the client asks for one this server doesn't know.
-const PROTOCOL: &str = "2025-06-18";
+/// The protocol versions this server speaks, newest first. A client asking for another gets the newest.
+const PROTOCOLS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 
 /// A tool: its name, what it does, its extra arguments, and how they become command-line flags.
 struct Tool {
@@ -182,6 +182,9 @@ fn argv(t: &Tool, args: &Value) -> Result<Vec<String>, String> {
     let get = |k: &str| args.get(k).filter(|v| !v.is_null());
     if t.design {
         let d = get("design").and_then(Value::as_str).ok_or("`design` is required")?;
+        if d.starts_with('-') {
+            return Err("`design` can't start with '-'".into());
+        }
         out.push(d.into());
     }
     for &(name, ty, _, flag) in t.args {
@@ -208,7 +211,9 @@ fn argv(t: &Tool, args: &Value) -> Result<Vec<String>, String> {
             vec![v.as_str().ok_or(format!("`{name}` is a string"))?.to_string()]
         };
         for x in values {
-            if x.starts_with('-') {
+            // A value after its flag is read as that flag's value whatever it is (a net named -12V); only a
+            // positional could be taken for a flag.
+            if flag.is_empty() && x.starts_with('-') {
                 return Err(format!("`{name}` can't start with '-'"));
             }
             if !flag.is_empty() {
@@ -260,15 +265,19 @@ pub fn handle(exe: &Path, msg: &Value) -> Option<Value> {
     let err = |code: i64, message: String| {
         Some(json!({"jsonrpc": "2.0", "id": id.clone(), "error": {"code": code, "message": message}}))
     };
+    if !msg.is_object() {
+        return Some(json!({"jsonrpc": "2.0", "id": null,
+            "error": {"code": -32600, "message": "a request is one JSON object; batches aren't supported"}}));
+    }
     id.as_ref()?;
+    if msg.get("method").and_then(Value::as_str).is_none() {
+        return err(-32600, "a request needs a `method`".into());
+    }
     let params = msg.get("params").cloned().unwrap_or(Value::Null);
     match method {
         "initialize" => {
-            let version = params
-                .get("protocolVersion")
-                .and_then(Value::as_str)
-                .unwrap_or(PROTOCOL)
-                .to_string();
+            let asked = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("");
+            let version = PROTOCOLS.iter().find(|&&v| v == asked).copied().unwrap_or(PROTOCOLS[0]);
             ok(json!({
                 "protocolVersion": version,
                 "capabilities": {"tools": {}},

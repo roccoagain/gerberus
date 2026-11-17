@@ -66,7 +66,7 @@ fn bad_arguments_are_a_tool_error() {
     let r = handle(
         exe(),
         &json!({"jsonrpc": "2.0", "id": 6, "method": "tools/call",
-                "params": {"name": "voltages", "arguments": {"design": "x", "fault": "--inputs"}}}),
+                "params": {"name": "voltages", "arguments": {"design": "--inputs"}}}),
     )
     .unwrap();
     assert_eq!(r["result"]["isError"], true);
@@ -90,4 +90,34 @@ fn serve_answers_line_by_line() {
         .collect();
     assert_eq!(lines[0]["result"], json!({}));
     assert_eq!(lines[1]["error"]["code"], -32700);
+}
+
+#[test]
+fn edge_cases_follow_json_rpc() {
+    // A batch is refused, not ignored.
+    let r = handle(exe(), &json!([{"jsonrpc": "2.0", "id": 1, "method": "ping"}])).unwrap();
+    assert_eq!(r["error"]["code"], -32600);
+    // An id with no method is an invalid request.
+    let r = handle(exe(), &json!({"jsonrpc": "2.0", "id": 2})).unwrap();
+    assert_eq!(r["error"]["code"], -32600);
+    // An unknown protocol version gets the newest this server speaks.
+    let r = handle(
+        exe(),
+        &json!({"jsonrpc": "2.0", "id": 3, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}}),
+    )
+    .unwrap();
+    assert_eq!(r["result"]["protocolVersion"], "2025-06-18");
+}
+
+/// A flag's value may start with '-' (a net named -12V); a positional may not.
+#[test]
+fn a_negative_rail_can_be_explained() {
+    let r = handle(
+        exe(),
+        &json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+                "params": {"name": "voltages", "arguments": {"design": kitchen_sink(), "explain": ["-12V"]}}}),
+    )
+    .unwrap();
+    let text = r["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(!text.contains("can't start with"), "{text}");
 }

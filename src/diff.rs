@@ -46,16 +46,30 @@ pub struct FindingChange {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub case: Option<String>,
     pub severity: Severity,
+    /// The worst verdict on each revision, among findings no waiver accepted.
     pub old: Option<Verdict>,
     pub new: Option<Verdict>,
+    /// How many FAILs (not waived) each revision has under this key, and of those how many are errors.
+    pub old_fails: usize,
+    pub new_fails: usize,
+    pub old_errors: usize,
+    pub new_errors: usize,
+    /// How many findings a waiver accepted, on each revision.
+    pub old_waived: usize,
+    pub new_waived: usize,
     /// The new revision's message, or the old one's when the finding is gone.
     pub message: String,
 }
 
 impl FindingChange {
-    /// A FAIL the old revision didn't have.
-    pub fn is_new_fail(&self) -> bool {
-        self.new == Some(Verdict::Fail) && self.old != Some(Verdict::Fail)
+    /// FAILs the old revision didn't have.
+    pub fn added_fails(&self) -> usize {
+        self.new_fails.saturating_sub(self.old_fails)
+    }
+
+    /// Error-severity FAILs the old revision didn't have.
+    pub fn added_errors(&self) -> usize {
+        self.new_errors.saturating_sub(self.old_errors)
     }
 }
 
@@ -70,10 +84,7 @@ pub struct Diff {
 impl Diff {
     /// FAILs with error severity that the old revision didn't have.
     pub fn new_errors(&self) -> usize {
-        self.findings
-            .iter()
-            .filter(|f| f.is_new_fail() && f.severity == Severity::Error)
-            .count()
+        self.findings.iter().map(FindingChange::added_errors).sum()
     }
 }
 
@@ -188,47 +199,75 @@ pub fn nets(old: &Design, new: &Design) -> Vec<NetChange> {
     out
 }
 
-/// What a finding is about: its rule, part, case and the pin its message opens with.
-fn key(f: &Finding) -> (&'static str, String, Option<String>, String) {
-    let first = f.message.split_whitespace().next().unwrap_or("");
-    let pin = if first.starts_with(&format!("{}.", f.reference)) {
-        first.trim_end_matches([':', ',']).to_string()
-    } else {
-        String::new()
-    };
+type Key = (&'static str, String, Option<String>, String);
+
+/// What a finding is about: its rule, part, fault case and the first `REF.PIN` its message names (a fault case's
+/// message opens with the case's name, so the pin may come later).
+fn key(f: &Finding) -> Key {
+    let prefix = format!("{}.", f.reference);
+    let pin = f
+        .message
+        .split_whitespace()
+        .map(|w| w.trim_matches(|c: char| matches!(c, ':' | ',' | ';' | '(' | ')' | '"')))
+        .find(|w| w.starts_with(&prefix) && w.len() > prefix.len())
+        .unwrap_or("")
+        .to_string();
     (f.rule, f.reference.clone(), f.case.clone(), pin)
 }
 
-/// The worst finding for each key.
-fn worst(r: &Report) -> BTreeMap<(&'static str, String, Option<String>, String), &Finding> {
-    let mut out: BTreeMap<_, &Finding> = BTreeMap::new();
+/// One revision's findings under one key.
+#[derive(Default)]
+struct Side<'a> {
+    worst: Option<&'a Finding>,
+    fails: usize,
+    errors: usize,
+    waived: usize,
+    any: Option<&'a Finding>,
+}
+
+fn sides(r: &Report) -> BTreeMap<Key, Side<'_>> {
+    let mut out: BTreeMap<Key, Side<'_>> = BTreeMap::new();
     for f in &r.findings {
-        out.entry(key(f))
-            .and_modify(|g| {
-                if (f.verdict, f.severity) < (g.verdict, g.severity) {
-                    *g = f;
-                }
-            })
-            .or_insert(f);
+        let s = out.entry(key(f)).or_default();
+        if s.worst
+            .is_none_or(|g| (f.verdict, f.severity) < (g.verdict, g.severity))
+        {
+            s.worst = Some(f);
+        }
+        if f.verdict == Verdict::Fail {
+            s.fails += 1;
+            if f.severity == Severity::Error {
+                s.errors += 1;
+            }
+        }
+    }
+    for w in &r.waived {
+        let s = out.entry(key(&w.finding)).or_default();
+        s.waived += 1;
+        s.any.get_or_insert(&w.finding);
     }
     out
 }
 
 pub fn findings(old: &Report, new: &Report) -> Vec<FindingChange> {
-    let (a, b) = (worst(old), worst(new));
+    let (a, b) = (sides(old), sides(new));
     let keys: BTreeSet<_> = a.keys().chain(b.keys()).cloned().collect();
+    let empty = Side::default();
     let mut out = vec![];
     for k in keys {
-        let (x, y) = (a.get(&k), b.get(&k));
-        let (ov, nv) = (x.map(|f| f.verdict), y.map(|f| f.verdict));
-        if ov == nv {
+        let (x, y) = (a.get(&k).unwrap_or(&empty), b.get(&k).unwrap_or(&empty));
+        let worst = |s: &Side<'_>| s.worst.map(|f| (f.verdict, f.severity));
+        if worst(x) == worst(y) && x.fails == y.fails && x.errors == y.errors && x.waived == y.waived {
             continue;
         }
+        let (ov, nv) = (x.worst.map(|f| f.verdict), y.worst.map(|f| f.verdict));
         // Passes that come and go with a part aren't worth listing.
-        if ov.is_none_or(|v| v == Verdict::Pass) && nv.is_none_or(|v| v == Verdict::Pass) {
+        if ov.is_none_or(|v| v == Verdict::Pass) && nv.is_none_or(|v| v == Verdict::Pass) && x.waived == y.waived {
             continue;
         }
-        let f = y.or(x).expect("one side has it");
+        let Some(f) = y.worst.or(y.any).or(x.worst).or(x.any) else {
+            continue;
+        };
         out.push(FindingChange {
             rule: f.rule,
             reference: f.reference.clone(),
@@ -236,6 +275,12 @@ pub fn findings(old: &Report, new: &Report) -> Vec<FindingChange> {
             severity: f.severity,
             old: ov,
             new: nv,
+            old_fails: x.fails,
+            new_fails: y.fails,
+            old_errors: x.errors,
+            new_errors: y.errors,
+            old_waived: x.waived,
+            new_waived: y.waived,
             message: f.message.clone(),
         });
     }
@@ -300,11 +345,21 @@ pub fn render(d: &Diff) -> String {
                 Severity::Error => "error",
                 Severity::Warning => "warning",
             };
+            let count = |v: Option<Verdict>, fails: usize, waived: usize| {
+                let mut t = verdict(v).to_string();
+                if fails > 1 {
+                    let _ = write!(t, " ×{fails}");
+                }
+                if waived > 0 {
+                    let _ = write!(t, " ({waived} waived)");
+                }
+                t
+            };
             let _ = writeln!(
                 out,
                 "  {} → {} {sev}[{}]{case} {}: {}",
-                verdict(f.old),
-                verdict(f.new),
+                count(f.old, f.old_fails, f.old_waived),
+                count(f.new, f.new_fails, f.new_waived),
                 f.rule,
                 f.reference,
                 f.message
@@ -312,17 +367,23 @@ pub fn render(d: &Diff) -> String {
         }
         let _ = writeln!(out);
     }
-    let new_fails = d.findings.iter().filter(|f| f.is_new_fail()).count();
-    let fixed = d
+    let new_fails: usize = d.findings.iter().map(FindingChange::added_fails).sum();
+    let fixed: usize = d.findings.iter().map(|f| f.old_fails.saturating_sub(f.new_fails)).sum();
+    let waived: usize = d
         .findings
         .iter()
-        .filter(|f| f.old == Some(Verdict::Fail) && f.new != Some(Verdict::Fail))
-        .count();
+        .map(|f| f.new_waived.saturating_sub(f.old_waived))
+        .sum();
     let _ = writeln!(
         out,
-        "{} part changes, {} connection changes, {new_fails} new failures, {fixed} fixed",
+        "{} part changes, {} connection changes, {new_fails} new failures, {fixed} fixed{}",
         d.parts.len(),
-        d.nets.len()
+        d.nets.len(),
+        if waived > 0 {
+            format!(", {waived} newly waived")
+        } else {
+            String::new()
+        }
     );
     out
 }
@@ -341,7 +402,9 @@ impl Drop for OldTree {
 }
 
 /// Extracts the git repository holding `design` at `rev` into a temporary folder: the whole tree, so the old
-/// revision's sheets, `parts/`, `inputs.toml` and `waivers.toml` come with it.
+/// revision's sheets, `parts/`, `inputs.toml` and `waivers.toml` come with it. It is what `git archive` gives:
+/// submodules and `export-ignore` paths are left out, and Git LFS files are their pointers. The design file may
+/// not be there, when the revision is older than it.
 pub fn checkout(design: &std::path::Path, rev: &str) -> Result<OldTree, String> {
     use std::process::Command;
     let abs = std::fs::canonicalize(design).map_err(|e| format!("{}: {e}", design.display()))?;
@@ -368,43 +431,48 @@ pub fn checkout(design: &std::path::Path, rev: &str) -> Result<OldTree, String> 
         .strip_prefix(std::fs::canonicalize(&top).map_err(|e| e.to_string())?)
         .map_err(|_| "the design isn't inside its git repository".to_string())?
         .to_path_buf();
-    let root = std::env::temp_dir().join(format!("gerberus-diff-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).map_err(|e| format!("{}: {e}", root.display()))?;
+    // A new folder of our own: `create_dir` fails rather than reuse one that is already there.
+    let base = std::env::temp_dir();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let root = (0..100)
+        .map(|i| base.join(format!("gerberus-diff-{}-{stamp}-{i}", std::process::id())))
+        .find(|p| std::fs::create_dir(p).is_ok())
+        .ok_or_else(|| format!("can't make a temporary folder in {}", base.display()))?;
     let tree = OldTree {
         path: root.join(&rel),
         root: root.clone(),
     };
-    let archive = Command::new("git")
+    // Streamed from git into tar, so a large repository isn't held in memory.
+    let mut archive = Command::new("git")
         .arg("-C")
         .arg(&top)
         .args(["archive", "--format=tar", rev])
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("can't run git: {e}"))?;
-    if !archive.status.success() {
-        return Err(format!(
-            "git archive {rev}: {}",
-            String::from_utf8_lossy(&archive.stderr).trim()
-        ));
-    }
-    let mut tar = Command::new("tar")
+    let out = archive.stdout.take().ok_or("git archive has no output")?;
+    let tar = Command::new("tar")
         .arg("-x")
         .arg("-C")
         .arg(&root)
-        .stdin(std::process::Stdio::piped())
-        .spawn()
+        .stdin(std::process::Stdio::from(out))
+        .output()
         .map_err(|e| format!("can't run tar: {e}"))?;
-    {
-        use std::io::Write as _;
-        let mut stdin = tar.stdin.take().ok_or("tar has no input")?;
-        stdin.write_all(&archive.stdout).map_err(|e| format!("tar: {e}"))?;
+    let git_out = archive.wait_with_output().map_err(|e| format!("git archive: {e}"))?;
+    if !git_out.status.success() {
+        return Err(format!(
+            "git archive {rev}: {}",
+            String::from_utf8_lossy(&git_out.stderr).trim()
+        ));
     }
-    let status = tar.wait().map_err(|e| format!("tar: {e}"))?;
-    if !status.success() {
-        return Err("tar couldn't unpack the old revision".into());
-    }
-    if !tree.path.exists() {
-        return Err(format!("{} isn't in revision {rev}", rel.display()));
+    if !tar.status.success() {
+        return Err(format!(
+            "tar couldn't unpack the old revision: {}",
+            String::from_utf8_lossy(&tar.stderr).trim()
+        ));
     }
     Ok(tree)
 }

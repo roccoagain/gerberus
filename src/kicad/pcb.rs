@@ -130,6 +130,10 @@ pub struct Layout {
     pub footprints: Vec<PlacedFootprint>,
     /// Values the board file doesn't give, filled with defaults. Results that depend on them say so.
     pub assumptions: Vec<String>,
+    /// The board has no stackup, so `stackup` is a default (35 µm copper on every layer).
+    pub stackup_assumed: bool,
+    /// Every net with a zone, filled or not: an unfilled zone has no polygons in `zones`.
+    pub zone_nets: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -321,6 +325,7 @@ fn parse_layout(tree: &Sexp) -> Layout {
             .and_then(|t| t.arg_f64(1))
             .unwrap_or(1.6);
         out.stackup = default_stackup(&copper, thickness);
+        out.stackup_assumed = true;
         out.assumptions.push(format!(
             "the board has no stackup, so it is taken as {thickness} mm of FR4 (εr 4.5, loss tangent 0.02) split \
              evenly between {} copper layers of 35 µm, with no solder mask",
@@ -385,6 +390,9 @@ fn parse_layout(tree: &Sexp) -> Layout {
     }
     for z in tree.children("zone") {
         let Some(net) = nets.of(z) else { continue };
+        if !out.zone_nets.contains(&net) {
+            out.zone_nets.push(net.clone());
+        }
         let clearance = z
             .child("connect_pads")
             .and_then(|c| c.child("clearance"))

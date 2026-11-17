@@ -733,6 +733,13 @@ fn diff(path: &Path, rest: &[String]) -> Result<bool, String> {
         let rev = rest.get(i + 1).ok_or("--rev takes a git revision")?.clone();
         rest.drain(i..=i + 1);
         let tree = gerberus::diff::checkout(path, &rev)?;
+        if !tree.path.exists() {
+            println!(
+                "{} isn't in revision {rev}: it is a new design, so there is nothing to compare it with",
+                path.display()
+            );
+            return Ok(true);
+        }
         let old = tree.path.clone();
         _old_tree = Some(tree);
         (old, path.to_path_buf())
