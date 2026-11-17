@@ -24,6 +24,8 @@ pub enum Level {
     Pass,
     /// Something to add, from `doctor`.
     Todo,
+    /// A finding a waiver accepted.
+    Waived,
 }
 
 impl Level {
@@ -34,6 +36,7 @@ impl Level {
             Level::Unknown => "unknown",
             Level::Pass => "pass",
             Level::Todo => "todo",
+            Level::Waived => "waived",
         }
     }
 
@@ -43,7 +46,7 @@ impl Level {
             Level::Warning => YELLOW,
             Level::Unknown => CYAN,
             Level::Pass => GREEN,
-            Level::Todo => BLUE,
+            Level::Todo | Level::Waived => BLUE,
         }
     }
 }
@@ -52,8 +55,8 @@ const RED: &str = "1;31";
 const YELLOW: &str = "1;33";
 const CYAN: &str = "1;36";
 const GREEN: &str = "1;32";
-const BLUE: &str = "1;34";
-const BOLD: &str = "1";
+pub const BLUE: &str = "1;34";
+pub const BOLD: &str = "1";
 
 /// Whether to write ANSI colour codes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -143,7 +146,7 @@ impl Show {
         match level {
             Level::Error | Level::Warning | Level::Todo => true,
             Level::Unknown => self.unknown,
-            Level::Pass => self.passes,
+            Level::Pass | Level::Waived => self.passes,
         }
     }
 }

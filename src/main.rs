@@ -13,9 +13,9 @@ const USAGE: &str = "usage:
   gerberus voltages <design> [--inputs FILE] [--parts DIR]... [--fault CASE] [--explain NET]...
   gerberus loads <design> [--inputs FILE] [--parts DIR]...
   gerberus stress <design> [--inputs FILE] [--parts DIR]... [--runs N] [--seed N] [--netlist FILE] [REPORT]
-  gerberus check <design> [--inputs FILE] [--parts DIR]... [REPORT]
+  gerberus check <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [REPORT]
   gerberus init <design> [--parts DIR]... [--stdout] [--force]
-  gerberus doctor <design> [--inputs FILE] [--parts DIR]... [--json] [--color WHEN]
+  gerberus doctor <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [--json] [--color WHEN]
   gerberus bom <design> [--boards N] [--offline] [--cache DIR] [--max-age HOURS]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
   gerberus part show <MPN> [--parts DIR]... [--out FILE] [--force]
@@ -59,7 +59,9 @@ netlist. It needs ngspice installed, and exits with status 1 when an absolute ma
 breakdown and stand-off, capacitor voltage and resistor power, undriven inputs and power pins, regulator
 headroom, and parts with nothing to check against. Each fault case in the inputs is then checked against
 absolute maximum ratings, TVS breakdown and capacitor ratings. FAILs cite the numbers, their datasheet pages and how each
-net got its range (with --verbose). It exits with status 1 when any error FAILs.
+net got its range (with --verbose). It exits with status 1 when any error FAILs. A waivers.toml next to the
+schematic (or --waivers FILE) accepts findings the designers have looked at, each with a reason: those aren't
+counted, --all lists them, and a waiver that matches nothing is a warning. `doctor` reads it too.
 
 `init` writes a starter inputs.toml next to the schematic: an entry for every connector pin it can guess from
 the net's name (ground, USB VBUS, D+/D- and CC, a supply named by its voltage such as 12V or 3V3, a net the board
@@ -490,6 +492,8 @@ struct Options {
     fault: Option<String>,
     /// Don't print the note about a missing inputs.toml: `doctor` lists it as a thing to add.
     quiet: bool,
+    /// `--waivers`, for `check` and `doctor`.
+    waivers: Option<PathBuf>,
 }
 
 /// Reads `--parts` and whichever of `--pcb`, `--inputs` and `--explain` the command takes.
@@ -499,7 +503,7 @@ fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, Stri
     if local.is_dir() {
         dirs.push(local);
     }
-    let (mut pcb, mut inputs, mut explain, mut fault) = (None, None, vec![], None);
+    let (mut pcb, mut inputs, mut explain, mut fault, mut waivers) = (None, None, vec![], None, None);
     let mut it = rest.iter();
     while let Some(a) = it.next() {
         match (a.as_str(), it.next()) {
@@ -508,6 +512,7 @@ fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, Stri
             ("--inputs", Some(p)) if takes.contains(&"--inputs") => inputs = Some(PathBuf::from(p)),
             ("--explain", Some(n)) if takes.contains(&"--explain") => explain.push(n.clone()),
             ("--fault", Some(n)) if takes.contains(&"--fault") => fault = Some(n.clone()),
+            ("--waivers", Some(p)) if takes.contains(&"--waivers") => waivers = Some(PathBuf::from(p)),
             _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
         }
     }
@@ -518,6 +523,7 @@ fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, Stri
         explain,
         fault,
         quiet: false,
+        waivers,
     })
 }
 
@@ -611,16 +617,40 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
     let (show, rest) = Show::parse(rest)?;
     let json = rest.iter().any(|a| a == "--json");
     let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
-    let o = options(path, &rest, &["--inputs"])?;
+    let o = options(path, &rest, &["--inputs", "--waivers"])?;
     let (design, lib, inputs, v) = analyse(path, &o)?;
     let policy = gerberus::policy::Policy::builtin()?;
-    let report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
+    let mut report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
+    waive(path, &o, &design, &mut report)?;
     if json {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
         print!("{}", gerberus::rules::render(&design, &v, &report, &show));
     }
     Ok(report.errors() == 0)
+}
+
+/// Applies `--waivers`, or a `waivers.toml` next to the design when there is one.
+fn waive(
+    path: &Path,
+    o: &Options,
+    design: &gerberus::design::Design,
+    report: &mut gerberus::rules::Report,
+) -> Result<(), String> {
+    let file = o
+        .waivers
+        .clone()
+        .unwrap_or_else(|| path.parent().unwrap_or(Path::new(".")).join("waivers.toml"));
+    if o.waivers.is_none() && !file.exists() {
+        return Ok(());
+    }
+    let waivers = gerberus::waivers::Waivers::load(&file)?;
+    let problems = waivers.problems(design);
+    if !problems.is_empty() {
+        return Err(format!("{}: {}", file.display(), problems.join("; ")));
+    }
+    waivers.apply(report, &file.display().to_string());
+    Ok(())
 }
 
 fn init(path: &Path, rest: &[String]) -> Result<bool, String> {
@@ -671,11 +701,12 @@ fn doctor(path: &Path, rest: &[String]) -> Result<bool, String> {
     let (show, rest) = Show::parse(rest)?;
     let json = rest.iter().any(|a| a == "--json");
     let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
-    let mut o = options(path, &rest, &["--inputs"])?;
+    let mut o = options(path, &rest, &["--inputs", "--waivers"])?;
     o.quiet = true;
     let (design, lib, inputs, v) = analyse(path, &o)?;
     let policy = gerberus::policy::Policy::builtin()?;
-    let report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
+    let mut report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
+    waive(path, &o, &design, &mut report)?;
     let setup = gerberus::doctor::setup(path, o.inputs.as_deref());
     let d = gerberus::doctor::diagnose(&design, &lib, &setup, &inputs, &report, &v);
     if json {
@@ -730,6 +761,7 @@ fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
     let sweep = gerberus::spice::sweep(&design, &lib, &inputs, &v, &sp, seed)?;
     let report = gerberus::rules::Report {
         findings: gerberus::spice::check(&design, &lib, &sweep, &sp),
+        waived: vec![],
         cases: vec![],
     };
     if json {

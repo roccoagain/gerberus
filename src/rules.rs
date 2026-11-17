@@ -6,6 +6,7 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
+use std::fmt::Write as _;
 
 use serde::Serialize;
 
@@ -120,6 +121,9 @@ pub struct Finding {
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Report {
     pub findings: Vec<Finding>,
+    /// Findings a waiver in `waivers.toml` accepted, taken out of `findings` so nothing counts them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub waived: Vec<crate::waivers::Waived>,
     /// Each fault case's net voltages, which its findings' `nets` index into.
     #[serde(skip)]
     pub cases: Vec<(String, Voltages)>,
@@ -1374,12 +1378,35 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -
         details |= !d.details.is_empty();
         d.render(&mut out, show.style, show.verbose, width);
     }
+    if show.passes {
+        for w in &report.waived {
+            let d = Diagnostic::line(
+                Level::Waived,
+                w.finding.rule,
+                &format!("{} (waived: {})", w.finding.message, w.reason),
+            );
+            d.render(&mut out, show.style, show.verbose, width);
+        }
+    }
     crate::diag::summary(
         &mut out,
         show,
         [report.errors(), report.warnings(), report.unknowns(), report.passes()],
         details,
     );
+    if !report.waived.is_empty() {
+        let _ = writeln!(
+            out,
+            "{} {} {}",
+            show.style.paint(crate::diag::BLUE, "="),
+            show.style.paint(crate::diag::BOLD, "note:"),
+            format_args!(
+                "{} waived in waivers.toml, not counted{}",
+                report.waived.len(),
+                if show.passes { "" } else { " (--all lists them)" }
+            )
+        );
+    }
     out
 }
 
