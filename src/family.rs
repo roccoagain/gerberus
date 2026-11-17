@@ -393,6 +393,13 @@ impl Family {
             }
         };
         let missing = |what: &str| format!("{} family: no row gives {mpn} ({codes_text}) its {what}", self.family);
+        // A jumper isn't in a resistance range table, but it isn't missing from the datasheet either.
+        if self.class == Class::Resistor && d.value.is_some_and(|v| v <= 0.0) {
+            return Err(format!(
+                "{} family: {mpn} is a 0 Ω jumper, which has a current rating, not a power one",
+                self.family
+            ));
+        }
         if !self.range.is_empty() && !self.range.iter().any(|r| Self::row_applies(&r.when, Some(&r.ohms), d)) {
             return Err(format!(
                 "{} family: the datasheet doesn't list {mpn} ({codes_text}): its value is outside the range made in \

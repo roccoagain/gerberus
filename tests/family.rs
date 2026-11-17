@@ -80,6 +80,18 @@ fn uniroyal_part_numbers_decode() {
     let tcr = |mpn: &str| f.part(mpn).unwrap().unwrap().tcr.unwrap().ppm;
     assert_eq!(tcr("0402WGF100JTCE"), 200.0);
     assert_eq!(tcr("0402WGF102JTCE"), 100.0);
+    // A jumper is named as one, not as a value outside the range table.
+    let e = f.part("0402WGF0000TCE").unwrap().unwrap_err();
+    assert!(e.contains("jumper"), "{e}");
+    // 01005: size code 0105, 1/32 W, 15 V, -55 to 125 °C, its own TCR bands.
+    let p = f.part("0105WHF1001TCE").unwrap().unwrap();
+    let w = p.limits.iter().find(|l| l.quantity == Quantity::Power).unwrap();
+    assert_eq!(w.recommended.values(), Some((0.0, 0.03125)));
+    assert_eq!(p.temperature.as_ref().map(|t| (t.min, t.max)), Some((-55.0, 125.0)));
+    assert_eq!(p.tcr.as_ref().unwrap().ppm, 200.0);
+    assert_eq!(f.part("0105WHJ0100TCE").unwrap().unwrap().tcr.unwrap().ppm, 300.0);
+    assert!(f.part("0105WHF0100TCE").unwrap().is_ok());
+    assert!(f.part("0105WHF910JTCE").unwrap().is_err());
     // Not rated: the wrong power code for the size, a jumper, 0805 1/4 W at 10 ohm, ±0.5 % below 1 ohm, 0201
     // at ±0.5 %, 0805 1/8 W at 10 Mohm (the range stops below it).
     for mpn in [
@@ -278,6 +290,19 @@ fn families_agree_with_hand_written_part_files() {
             }
             let temp = |p: &gerberus::limits::Part| p.temperature.as_ref().map(|t| (t.min, t.max));
             assert_eq!(temp(&made), temp(by_hand), "{mpn}: temperature");
+            let power = |p: &gerberus::limits::Part| {
+                p.limits
+                    .iter()
+                    .find(|l| l.quantity == Quantity::Power)
+                    .and_then(|l| l.recommended.values())
+            };
+            if power(&made).is_some() {
+                assert_eq!(power(&made), power(by_hand), "{mpn}: power");
+            }
+            let tcr = |p: &gerberus::limits::Part| p.tcr.as_ref().map(|t| t.ppm);
+            if tcr(&made).is_some() {
+                assert_eq!(tcr(&made), tcr(by_hand), "{mpn}: tcr");
+            }
             assert!(matches!(made.limits[0].recommended, Range::Known { page: Some(_), .. }));
         }
     }

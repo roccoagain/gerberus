@@ -1,7 +1,7 @@
 # Every UNI-ROYAL (UniOhm) thick-film chip resistor, from its 14-code part number: 0402WGF1001TCE is size 0402,
 # power WG (1/16 W), tolerance F (±1 %), value 1001 (100 x 10^1 = 1 kohm), packing T (tape), quantity C (10000),
-# then E (lead-free). The JLCPCB basic resistors are almost all from this series. 01005 parts aren't covered:
-# the datasheet gives both 01005 and 0105 as the size code.
+# then E (lead-free). The JLCPCB basic resistors are almost all from this series. A 01005 is size code 0105, as
+# the ordering example on page 2 gives it.
 family = "UNI-ROYAL thick film"
 manufacturer = "UNI-ROYAL (Uniroyal Electronics)"
 description = "thick-film chip resistor"
@@ -16,12 +16,12 @@ url = "https://datasheet.lcsc.com/datasheet/pdf/0a975aaa49b7c97f38a963127be4a823
 
 [field.size]
 page = 2
-codes = ["0201", "0402", "0603", "0805", "1206", "1210", "1812", "2010", "2512"]
+codes = ["0105", "0201", "0402", "0603", "0805", "1206", "1210", "1812", "2010", "2512"]
 
 # 2.2: W then the wattage code. Which size takes which code is the power rating column on page 4.
 [field.power]
 page = 2
-codes = ["WM", "WG", "WA", "W8", "W4", "W3", "W2", "07", "1W"]
+codes = ["WH", "WM", "WG", "WA", "W8", "W4", "W3", "W2", "07", "1W"]
 
 [field.tolerance]
 page = 2
@@ -42,6 +42,12 @@ page = 2
 codes = ["1", "2", "3", "4", "5", "C", "D", "E"]
 
 # Section 6, page 4: power rating at 70 °C, by size (and for 0805 and 1206, by resistance).
+
+[[rating]]
+when = { size = ["0105"], power = ["WH"] }
+power = 0.03125
+page = 4
+note = "01005, 1/32 W at 70 °C, derated above"
 
 [[rating]]
 when = { size = ["0201"], power = ["WM"] }
@@ -112,6 +118,12 @@ note = "2512, 1 W at 70 °C, derated above"
 # Section 7, page 5: maximum working voltage and operating temperature, by size.
 
 [[rating]]
+when = { size = ["0105"] }
+max_working_voltage = 15
+temperature = { min = -55, max = 125 }
+page = 5
+
+[[rating]]
 when = { size = ["0201"] }
 max_working_voltage = 25
 temperature = { min = -55, max = 155 }
@@ -166,6 +178,27 @@ temperature = { min = -55, max = 155 }
 page = 5
 
 # Section 11, page 6: temperature coefficient by size and resistance.
+
+[[tcr]]
+when = { size = ["0105"] }
+ohms = { min = 1, below = 10 }
+ppm = 600
+page = 6
+note = "01005, 1 to below 10 ohm: -200 to +600 ppm/°C"
+
+[[tcr]]
+when = { size = ["0105"] }
+ohms = { min = 10, below = 100 }
+ppm = 300
+page = 6
+note = "01005, 10 to below 100 ohm"
+
+[[tcr]]
+when = { size = ["0105"] }
+ohms = { min = 100, max = 10e6 }
+ppm = 200
+page = 6
+note = "01005, 100 ohm to 10 Mohm"
 
 [[tcr]]
 when = { size = ["0201"] }
@@ -266,6 +299,16 @@ page = 6
 note = "0805 to 2512, above 10 ohm"
 
 # Section 6, page 4: the values made, by size, power code and tolerance.
+
+[[range]]
+when = { size = ["0105"], tolerance = ["F", "G"] }
+ohms = { min = 10, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["0105"], tolerance = ["J"] }
+ohms = { min = 1, max = 10e6 }
+page = 4
 
 [[range]]
 when = { size = ["0201"], tolerance = ["F", "G", "J"] }
