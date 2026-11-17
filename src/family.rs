@@ -101,6 +101,10 @@ impl Codes {
 pub enum ValueKind {
     /// Digits with `R`, `K` or `M` as the decimal point: `97R6` = 97.6 Ω, `4K7` = 4.7 kΩ, `1M` = 1 MΩ.
     Resistance,
+    /// Four characters: three significant digits, then the power of ten as a digit 0 to 6 or a letter for a
+    /// negative one (J = 10^-1, K = 10^-2, L = 10^-3, M = 10^-4, N = 10^-5, P = 10^-6): `1001` = 1 kΩ, `0103` =
+    /// 10 kΩ, `100J` = 10 Ω, `0000` = a 0 Ω jumper.
+    ResistanceDigits,
     /// Two digits and a power of ten in picofarads, with `R` as a decimal point below 10 pF: `104` = 100 nF,
     /// `1R5` = 1.5 pF.
     CapacitancePf,
@@ -245,9 +249,12 @@ impl Family {
         match self.class {
             Class::Resistor => {
                 if !self.field.contains_key("tolerance")
-                    || !self.field.values().any(|f| f.kind == Some(ValueKind::Resistance))
+                    || !self
+                        .field
+                        .values()
+                        .any(|f| matches!(f.kind, Some(ValueKind::Resistance | ValueKind::ResistanceDigits)))
                 {
-                    out.push("a resistor family needs a `tolerance` field and a field of kind \"resistance\"".into());
+                    out.push("a resistor family needs a `tolerance` field and a field of kind \"resistance\" or \"resistance-digits\"".into());
                 }
             }
             Class::Capacitor => {
@@ -600,7 +607,7 @@ fn fmt_farads(f: f64) -> String {
     format!("{} {unit}", round(v))
 }
 
-/// Reads a coded value: ohms for [`ValueKind::Resistance`], farads for [`ValueKind::CapacitancePf`].
+/// Reads a coded value: ohms for [`ValueKind::Resistance`] and [`ValueKind::ResistanceDigits`], farads for [`ValueKind::CapacitancePf`].
 pub fn parse_value(kind: ValueKind, s: &str) -> Option<f64> {
     match kind {
         ValueKind::Resistance => {
@@ -623,6 +630,25 @@ pub fn parse_value(kind: ValueKind, s: &str) -> Option<f64> {
             .parse()
             .ok()?;
             Some(v * mult)
+        }
+        ValueKind::ResistanceDigits => {
+            let b = s.as_bytes();
+            if b.len() != 4 || !b[..3].iter().all(u8::is_ascii_digit) {
+                return None;
+            }
+            let exp = match b[3] {
+                d @ b'0'..=b'6' => i32::from(d - b'0'),
+                b'J' => -1,
+                b'K' => -2,
+                b'L' => -3,
+                b'M' => -4,
+                b'N' => -5,
+                b'P' => -6,
+                _ => return None,
+            };
+            let sig: f64 = s[..3].parse().ok()?;
+            // Rounded to a picohm, so 10^-1 steps don't leave 4.7000000001.
+            Some((sig * 10f64.powi(exp) * 1e12).round() / 1e12)
         }
         ValueKind::CapacitancePf => {
             // Three characters: three digits, or two digits and an `R` (not last) as the decimal point.
