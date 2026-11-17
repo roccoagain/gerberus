@@ -51,7 +51,7 @@ Behaviour Gerberus doesn't model yet:
 
 ## v0.5 — Layout
 
-- [ ] Layout electrical rules: trace width vs current (IPC-2152), decoupling cap distance, high-speed traces crossing plane splits, loop area. *(Copies: HyperLynx DRC)*
+- [ ] Layout electrical rules: trace width vs current (done, IPC-2221: `gerberus traces`), decoupling cap distance, high-speed traces crossing plane splits, loop area. *(Copies: HyperLynx DRC)*
 - [x] Trace impedance and length matching for USB 2.0 high speed, with an eye-diagram simulation (`gerberus si`). I²S and SPI still to do. *(Copies: Polar Si9000, HyperLynx SI)*
 - [ ] Voltage drop and current density across copper. *(Copies: HyperLynx PI, Altium Power Analyzer)*
 
@@ -63,9 +63,9 @@ Behaviour Gerberus doesn't model yet:
 
 ## v1.0 — Workflow
 
-- [ ] Electrical diff between board revisions. *(Copies: Altium / Cadence design compare)*
-- [ ] MCP server so AI agents can query nets, run checks and explain findings. *(New: no paid tool is built for agents)*
-- [ ] CI integration and a pass/fail badge for the README.
+- [x] Electrical diff between board revisions (`gerberus diff`). *(Copies: Altium / Cadence design compare)*
+- [x] MCP server so AI agents can query nets, run checks and explain findings. *(New: no paid tool is built for agents)*
+- [x] CI integration and a pass/fail badge for the README (`action.yml`, [docs/ci.md](docs/ci.md)).
 
 ## Signature features (new, not copies)
 

@@ -17,15 +17,19 @@ const USAGE: &str = "usage:
   gerberus signal <design> [--inputs FILE] [--parts DIR]... [--json] [REPORT]
   gerberus check <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [REPORT]
   gerberus init <design> [--parts DIR]... [--stdout] [--force]
+  gerberus diff <old design> <new design> [--parts DIR]... [--json]
+  gerberus diff <design> --rev REV [--parts DIR]... [--json]
   gerberus doctor <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [--json] [--color WHEN]
   gerberus bom <design> [--boards N] [--jlcpcb] [--from lcsc|mouser|digikey] [--offline] [--cache DIR] [--max-age HOURS] [REPORT]
   gerberus bom <design> --csv FILE [--boards N]
+  gerberus traces <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--inputs FILE] [--parts DIR]... [REPORT]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
   gerberus part show <MPN> [--parts DIR]... [--out FILE] [--force]
   gerberus part new <design> <REF or MPN> [--parts DIR]... [--stdout] [--force]
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
+  gerberus mcp
   gerberus skill install [DIR] [--force]
   gerberus update
   gerberus --version
@@ -49,6 +53,15 @@ next to the schematic (same name, .kicad_pcb) unless --pcb names another, and th
 `voltages` works out the worst-case voltage range of every net, starting from the board inputs (`inputs.toml`
 next to the schematic unless --inputs is given). --explain prints the reasoning behind one net. --fault works
 them out for one of the fault cases in the inputs instead of normal operation.
+
+`mcp` serves the commands to an AI agent over the Model Context Protocol, on stdin and stdout (see docs/mcp.md).
+
+`traces` checks that every track on the KiCad board (same name as the schematic, .kicad_pcb, unless --pcb names
+another) is wide enough for the worst-case current its net supplies, by IPC-2221 at policy.toml's temperature rise.
+
+`diff` compares two revisions of a design, or one against a git revision with --rev: the parts added, removed or
+changed, the connections made or broken (nets matched by their pins, not their names), and the `check` findings
+whose verdict changed. It exits with status 1 when the new revision adds an error.
 
 `loads` lists the worst-case current each net supplies and what draws it, from the parts' `[[supply]]`
 currents, LED chains and resistors to ground. These are the currents the junction-temperature rule uses.
@@ -155,6 +168,9 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "stress" => stress(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "signal" => signal(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
+        [cmd] if cmd == "mcp" => mcp(),
+        [cmd, path, rest @ ..] if cmd == "traces" => traces(Path::new(path), rest),
+        [cmd, path, rest @ ..] if cmd == "diff" => diff(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "doctor" => doctor(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "init" => init(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "bom" => bom(Path::new(path), rest),
@@ -662,6 +678,87 @@ fn waive(
     }
     waivers.apply(report, &file.display().to_string());
     Ok(())
+}
+
+fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let (show, rest) = Show::parse(rest)?;
+    let json = rest.iter().any(|a| a == "--json");
+    let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
+    let o = options(path, &rest, &["--pcb", "--inputs"])?;
+    let pcb = o.pcb.clone().unwrap_or_else(|| path.with_extension("kicad_pcb"));
+    let layout = gerberus::kicad::pcb::load_layout(&pcb)?;
+    let (design, lib, inputs, v) = analyse(path, &o)?;
+    let policy = gerberus::policy::Policy::builtin()?;
+    let tp = policy.traces.ok_or("policy.toml has no [traces]")?;
+    let th = gerberus::thermal::compute(&design, &lib, &inputs, &v);
+    let report = gerberus::rules::Report {
+        findings: gerberus::traces::check(&design, &layout, &th, &tp),
+        ..Default::default()
+    };
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
+    } else {
+        for a in &layout.assumptions {
+            eprintln!("note: {a}");
+        }
+        print!("{}", gerberus::rules::render(&design, &v, &report, &show));
+    }
+    Ok(report.errors() == 0)
+}
+
+fn mcp() -> Result<bool, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("can't find this program: {e}"))?;
+    let stdin = std::io::stdin();
+    gerberus::mcp::serve(&exe, stdin.lock(), std::io::stdout())?;
+    Ok(true)
+}
+
+/// The design's check report, with its own inputs.toml, waivers.toml and parts/ folder.
+fn report(path: &Path, rest: &[String]) -> Result<(gerberus::design::Design, gerberus::rules::Report), String> {
+    let mut o = options(path, rest, &[])?;
+    o.quiet = true;
+    let (design, lib, inputs, v) = analyse(path, &o)?;
+    let policy = gerberus::policy::Policy::builtin()?;
+    let mut report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
+    waive(path, &o, &design, &mut report)?;
+    Ok((design, report))
+}
+
+fn diff(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let json = rest.iter().any(|a| a == "--json");
+    let mut rest: Vec<String> = rest.iter().filter(|a| *a != "--json").cloned().collect();
+    // A temporary copy of the old revision, removed when this returns.
+    let mut _old_tree = None;
+    let (old, new) = if let Some(i) = rest.iter().position(|a| a == "--rev") {
+        let rev = rest.get(i + 1).ok_or("--rev takes a git revision")?.clone();
+        rest.drain(i..=i + 1);
+        let tree = gerberus::diff::checkout(path, &rev)?;
+        if !tree.path.exists() {
+            println!(
+                "{} isn't in revision {rev}: it is a new design, so there is nothing to compare it with",
+                path.display()
+            );
+            return Ok(true);
+        }
+        let old = tree.path.clone();
+        _old_tree = Some(tree);
+        (old, path.to_path_buf())
+    } else {
+        let Some(new) = rest.first().filter(|a| !a.starts_with("--")).cloned() else {
+            return Err(format!("diff takes two designs, or one and --rev REV\n{USAGE}"));
+        };
+        rest.remove(0);
+        (path.to_path_buf(), PathBuf::from(new))
+    };
+    let (od, or) = report(&old, &rest)?;
+    let (nd, nr) = report(&new, &rest)?;
+    let d = gerberus::diff::diff(&od, &or, &nd, &nr);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&d).map_err(|e| e.to_string())?);
+    } else {
+        print!("{}", gerberus::diff::render(&d));
+    }
+    Ok(d.new_errors() == 0)
 }
 
 fn init(path: &Path, rest: &[String]) -> Result<bool, String> {
