@@ -418,9 +418,11 @@ source = "hardware/can-encoder/DESIGN.md: input range 7–26 V"
 #### Signals
 
 A `[[signal]]` is an AC signal brought in at a connector, for `gerberus signal`: up to `peak` volts either side
-of the pin's DC bias, across `frequency` (20 Hz to 20 kHz when it isn't given). By default the source holds the pin
-at the DC of `to`, as a pickup or a DC-coupled line driver does. With `ac_coupled = true` it reaches the pin
-through a capacitor, so the board sets the pin's bias:
+of the pin's DC bias, across `frequency` (20 Hz to 20 kHz when it isn't given). By default the source is
+DC-coupled, as a pickup or a line driver into a DC path is: it holds the pin at the DC of `to`, or, when the pin has
+an `[[input]]`, anywhere in that input's range less the peak at each end (the input's range is the pin's whole
+voltage, the swing included). With `ac_coupled = true` it reaches the pin through a capacitor, so the board sets the
+pin's bias. Two DC-coupled signals can't hold one pin:
 
 ```toml
 [[signal]]

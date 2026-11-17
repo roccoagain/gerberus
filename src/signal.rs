@@ -27,7 +27,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use crate::design::{Component, Design};
+use crate::design::{Component, Design, PinKind};
 use crate::inputs::{BoardInputs, Signal};
 use crate::limits::{Bound, Class, Library, Part, Quantity, Range};
 use crate::rules::{Finding, Severity, Verdict};
@@ -40,12 +40,16 @@ const NO_SIGNAL: f64 = 1e-4;
 /// How far a net's bias may move when the leak's return moves 1 V before it counts as set by the leak alone.
 const LEAK_SET: f64 = 1e-3;
 
-/// A rail held at a DC voltage anywhere in `lo..=hi`.
+/// A DC voltage anywhere in `lo..=hi`: a rail on `net`, or the DC a DC-coupled signal's source holds its pin at.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rail {
     pub net: usize,
     pub lo: f64,
     pub hi: f64,
+    /// The low end is only a floor (a regulator that may not hold): a check may pass on it but not fail on it.
+    pub floor: bool,
+    /// For a signal's source: the signal's index.
+    pub source: Option<usize>,
 }
 
 /// A net's bias as the rails move: `b0` with every rail at its lowest, plus `delta[i]` as rail `i` alone goes to
@@ -62,6 +66,8 @@ pub struct Skipped {
     pub reference: String,
     pub why: String,
     pub nets: Vec<usize>,
+    /// The nets its pins could drive or load: every pin but a plain input.
+    pub drives: Vec<usize>,
 }
 
 /// Everything `gerberus signal` worked out.
@@ -79,6 +85,10 @@ pub struct Levels {
     /// Per signal, the largest gain to each net it reaches.
     pub gains: Vec<(String, BTreeMap<usize, f64>)>,
     pub skipped: Vec<Skipped>,
+    /// Nets whose bias only the leak sets, but that the voltage engine gives a range for: a bias from inside a part.
+    pub engine: BTreeMap<usize, Span>,
+    /// Pairs of rails (by index) where one is worked out from the other, so they move together.
+    pub linked: BTreeSet<(usize, usize)>,
 }
 
 impl Levels {
@@ -127,6 +137,33 @@ impl Levels {
     fn carries(&self, net: usize) -> bool {
         self.peak.get(&net).is_some_and(|&p| p > 0.0)
     }
+
+    /// Why a FAIL of `a` from `b` may not be real: it moves with a rail whose low end is only a floor, or with two
+    /// rails one is worked out from, which this sweeps apart.
+    fn shaky(&self, design: &Design, a: usize, b: usize) -> Option<String> {
+        let (x, y) = (self.bias_of(a)?, self.bias_of(b)?);
+        let moves: Vec<usize> = (0..self.rails.len())
+            .filter(|&i| (x.delta[i] - y.delta[i]).abs() > 1e-6)
+            .collect();
+        if let Some(&i) = moves.iter().find(|&&i| self.rails[i].floor) {
+            return Some(format!(
+                "it rests on {}'s low end, which is only a floor",
+                design.nets[self.rails[i].net].name
+            ));
+        }
+        for &i in &moves {
+            for &j in &moves {
+                if self.linked.contains(&(i, j)) {
+                    return Some(
+                        "it takes two rails apart that move together (one is worked out from the other), which this \
+                         doesn't model"
+                            .into(),
+                    );
+                }
+            }
+        }
+        None
+    }
 }
 
 /// One element of the small-signal circuit.
@@ -135,6 +172,7 @@ enum Element {
     C(String, usize, usize, f64),
     L(String, usize, usize, f64),
     OpAmp {
+        reference: String,
         name: String,
         plus: usize,
         minus: usize,
@@ -157,9 +195,24 @@ pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages
         };
         sources.push((s, a, b));
     }
+    let (elements, mut skipped, shorts) = elements(design, lib);
+    // Nets joined by a short (a bead, fuse or net tie) are one rail: only the first gets a source.
+    let mut join: Vec<usize> = (0..design.nets.len()).collect();
+    fn root(join: &mut [usize], mut n: usize) -> usize {
+        while join[n] != n {
+            join[n] = join[join[n]];
+            n = join[n];
+        }
+        n
+    }
+    for &(a, b) in &shorts {
+        let (ra, rb) = (root(&mut join, a), root(&mut join, b));
+        join[ra.max(rb)] = ra.min(rb);
+    }
     let signal_nets: BTreeSet<usize> = sources.iter().map(|&(_, a, _)| a).collect();
     let mut rails = vec![];
     let mut ground = BTreeSet::new();
+    let mut held = BTreeSet::new();
     for n in 0..design.nets.len() {
         let nv = &v.nets[n];
         let (Some(lo), Some(hi)) = (nv.span.min, nv.span.max) else {
@@ -170,15 +223,118 @@ pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages
         }
         if nv.span == Span::exact(0.0) {
             ground.insert(n);
-        } else {
-            rails.push(Rail { net: n, lo, hi });
+        } else if held.insert(root(&mut join, n)) {
+            rails.push(Rail {
+                net: n,
+                lo,
+                hi,
+                floor: nv.floor,
+                source: None,
+            });
         }
     }
-    let (elements, skipped) = elements(design, lib);
+    // A DC-coupled signal holds its pin at the DC the pin's [[input]] gives, from `to`; with none, at `to`.
+    let mut on_pin = BTreeSet::new();
+    for (k, &(s, a, b)) in sources.iter().enumerate() {
+        if s.ac_coupled {
+            continue;
+        }
+        if !on_pin.insert(root(&mut join, a)) {
+            return Err(format!(
+                "signal {}: another DC-coupled signal already holds {}; two sources can't both hold one net, so \
+                 mark all but one `ac_coupled = true`",
+                s.name, s.pin
+            ));
+        }
+        let (pa, pb) = (&v.nets[a].span, &v.nets[b].span);
+        let has_input = inputs
+            .inputs
+            .iter()
+            .any(|i| i.fault.is_none() && net_of(&i.pin.reference, &i.pin.pin) == Some(a));
+        let range = if has_input {
+            match (pa.min, pa.max, pb.min, pb.max) {
+                // The input's range is the pin's whole voltage, the signal's swing included.
+                (Some(al), Some(ah), Some(bl), Some(bh)) => Some((al - bh + s.peak, ah - bl - s.peak)),
+                _ => None,
+            }
+        } else {
+            Some((0.0, 0.0))
+        };
+        let Some((lo, hi)) = range else {
+            return Err(format!(
+                "signal {}: the DC on {} from {} isn't known, so its bias can't be set; give the pin's range as an \
+                 [[input]], or mark the signal `ac_coupled = true` if a capacitor separates the source from it",
+                s.name, s.pin, s.to
+            ));
+        };
+        if lo > hi + 1e-9 {
+            return Err(format!(
+                "signal {}: the [[input]] on {} is the pin's whole range, the swing included, but it is narrower \
+                 than the signal's {} V peak either side; widen it, or lower the peak",
+                s.name, s.pin, s.peak
+            ));
+        }
+        rails.push(Rail {
+            net: a,
+            lo,
+            hi,
+            floor: false,
+            source: Some(k),
+        });
+    }
+    // An op-amp whose output is on ground or a rail (an unused half) drives nothing: leave it out.
+    let fixed: BTreeSet<usize> = ground
+        .iter()
+        .copied()
+        .chain(
+            rails
+                .iter()
+                .filter(|r| r.source.is_none())
+                .map(|r| root(&mut join, r.net)),
+        )
+        .collect();
+    let mut kept = vec![];
+    for e in elements {
+        if let Element::OpAmp { reference, out, .. } = &e
+            && (ground.contains(out) || fixed.contains(&root(&mut join, *out)))
+        {
+            skipped.push(Skipped {
+                reference: reference.clone(),
+                why: "its output is on a rail, so it drives nothing".into(),
+                nets: vec![],
+                drives: vec![],
+            });
+            continue;
+        }
+        kept.push(e);
+    }
+    let elements = kept;
+    // Rails one is worked out from the other, which move together.
+    let mut linked = BTreeSet::new();
+    for (i, r) in rails.iter().enumerate() {
+        let mut seen = BTreeSet::from([r.net]);
+        let mut stack = vec![r.net];
+        while let Some(n) = stack.pop() {
+            for w in &v.nets[n].why {
+                for &f in &w.from {
+                    if seen.insert(f) {
+                        stack.push(f);
+                    }
+                }
+            }
+        }
+        for (j, q) in rails.iter().enumerate() {
+            if i != j && seen.contains(&q.net) {
+                linked.insert((i, j));
+                linked.insert((j, i));
+            }
+        }
+    }
     let pairs = pairs(design, lib);
     let nets: Vec<usize> = (0..design.nets.len()).filter(|n| !ground.contains(n)).collect();
 
     let mut bias = BTreeMap::new();
+    let mut engine = BTreeMap::new();
     let mut peak: BTreeMap<usize, f64> = BTreeMap::new();
     let mut pair_peak: BTreeMap<(usize, usize), f64> = BTreeMap::new();
     let mut gains: Vec<(String, BTreeMap<usize, f64>)> = vec![];
@@ -190,6 +346,9 @@ pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages
                 let Some(b0) = m.get(&format!("v(n{n})")) else { continue };
                 let leaked = m.get(&format!("lk_n{n}")).is_none_or(|x| (x - b0).abs() > LEAK_SET);
                 if leaked {
+                    if v.nets[n].span.min.is_some() || v.nets[n].span.max.is_some() {
+                        engine.insert(n, v.nets[n].span);
+                    }
                     continue;
                 }
                 let delta = (0..rails.len())
@@ -222,13 +381,16 @@ pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages
         pair_peak,
         gains,
         skipped,
+        engine,
+        linked,
     })
 }
 
-/// The parts the simulation models, and what it leaves open.
-fn elements(design: &Design, lib: &Library) -> (Vec<Element>, Vec<Skipped>) {
+/// The parts the simulation models, what it leaves open, and the shorts (beads, fuses, net ties) among them.
+fn elements(design: &Design, lib: &Library) -> (Vec<Element>, Vec<Skipped>, Vec<(usize, usize)>) {
     let mut out = vec![];
     let mut skipped = vec![];
+    let mut shorts = vec![];
     for (r, c) in &design.components {
         if c.dnp || is_connector(lib, c) {
             continue;
@@ -242,6 +404,16 @@ fn elements(design: &Design, lib: &Library) -> (Vec<Element>, Vec<Skipped>) {
                 reference: r.clone(),
                 why,
                 nets: nets.iter().copied().collect::<BTreeSet<_>>().into_iter().collect(),
+                drives: c
+                    .pins
+                    .values()
+                    .filter(|p| {
+                        !matches!(p.kind, PinKind::Input | PinKind::PowerIn | PinKind::NoConnect) && !p.no_connect
+                    })
+                    .map(|p| p.net)
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
             });
         };
         if let Some(p) = part
@@ -251,6 +423,7 @@ fn elements(design: &Design, lib: &Library) -> (Vec<Element>, Vec<Skipped>) {
                 let pin = |n: &str| pin_net(c, p, n);
                 match (pin(&a.plus), pin(&a.minus), pin(&a.out)) {
                     (Some(plus), Some(minus), Some(o)) => out.push(Element::OpAmp {
+                        reference: r.clone(),
                         name: format!("{name}_{i}"),
                         plus,
                         minus,
@@ -275,6 +448,7 @@ fn elements(design: &Design, lib: &Library) -> (Vec<Element>, Vec<Skipped>) {
             || letters == "FB";
         let symbol_is = |base: &str| lib_id == base || lib_id.starts_with(&format!("{base}_"));
         if short {
+            shorts.push((a, b));
             out.push(Element::R(name, a, b, 1e-3));
         } else if class == Some(Class::Resistor) || (class.is_none() && symbol_is("Device:R")) {
             match parse_ohms(&c.value) {
@@ -297,7 +471,7 @@ fn elements(design: &Design, lib: &Library) -> (Vec<Element>, Vec<Skipped>) {
             skip("no model for a two-pin part like it".into());
         }
     }
-    (out, skipped)
+    (out, skipped, shorts)
 }
 
 /// The pairs of nets whose difference a limit compares: every voltage limit's pin and reference, a pin and the
@@ -370,8 +544,12 @@ fn netlist(
         }
     };
     let mut t = format!("* gerberus signal: {}\n", sources[k].0.name);
+    // A rail's source, or a DC-coupled signal's, by the name `alter` uses.
+    let source = |i: usize| rails[i].source.map_or_else(|| format!("vr{i}"), |k| format!("vs{k}"));
     for (i, r) in rails.iter().enumerate() {
-        let _ = writeln!(t, "VR{i} {} 0 DC {}", nd(r.net), r.lo);
+        if r.source.is_none() {
+            let _ = writeln!(t, "VR{i} {} 0 DC {}", nd(r.net), r.lo);
+        }
     }
     for (i, &(s, a, b)) in sources.iter().enumerate() {
         let ac = if i == k { " AC 1" } else { "" };
@@ -380,7 +558,8 @@ fn netlist(
             let _ = writeln!(t, "VS{i} s{i} {} DC 0{ac}", nd(b));
             let _ = writeln!(t, "CS{i} s{i} {} 1", nd(a));
         } else {
-            let _ = writeln!(t, "VS{i} {} {} DC 0{ac}", nd(a), nd(b));
+            let dc = rails.iter().find(|r| r.source == Some(i)).map_or(0.0, |r| r.lo);
+            let _ = writeln!(t, "VS{i} {} {} DC {dc}{ac}", nd(a), nd(b));
         }
     }
     for e in elements {
@@ -394,7 +573,9 @@ fn netlist(
             Element::L(n, a, b, x) => {
                 let _ = writeln!(t, "L{n} {} {} {x}", nd(*a), nd(*b));
             }
-            Element::OpAmp { name, plus, minus, out } => {
+            Element::OpAmp {
+                name, plus, minus, out, ..
+            } => {
                 let _ = writeln!(t, "E{name} {} 0 {} {} 1e6", nd(*out), nd(*plus), nd(*minus));
             }
         }
@@ -415,11 +596,11 @@ fn netlist(
             if r.hi == r.lo {
                 continue;
             }
-            let _ = writeln!(t, "alter vr{i} dc = {}\nop", r.hi);
+            let _ = writeln!(t, "alter {} dc = {}\nop", source(i), r.hi);
             for &n in nets {
                 let _ = writeln!(t, "let r{i}_n{n} = v(n{n})\nprint r{i}_n{n}");
             }
-            let _ = writeln!(t, "alter vr{i} dc = {}", r.lo);
+            let _ = writeln!(t, "alter {} dc = {}", source(i), r.lo);
         }
         t.push_str("alter vleak dc = 1\nop\n");
         for &n in nets {
@@ -428,7 +609,7 @@ fn netlist(
         t.push_str("alter vleak dc = 0\n");
     }
     let [lo, hi] = sources[k].0.frequency;
-    let _ = writeln!(t, "ac dec 20 {lo} {hi}");
+    let _ = writeln!(t, "ac dec 1000 {lo} {hi}");
     for &n in nets {
         let _ = writeln!(t, "meas ac g{n} max vm(n{n})");
     }
@@ -455,10 +636,24 @@ fn netlist(
 pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
     let mut out = vec![];
     let name = |n: usize| design.nets[n].name.as_str();
-    let open: BTreeMap<&str, &Skipped> = levels.skipped.iter().map(|s| (s.reference.as_str(), s)).collect();
+    // Nets a part left open could drive or load, besides those a source holds.
+    let held = |n: usize| levels.ground.contains(&n) || levels.rails.iter().any(|r| r.net == n);
+    let mut open: BTreeMap<usize, &str> = BTreeMap::new();
+    for s in &levels.skipped {
+        for &n in &s.drives {
+            if !held(n) {
+                open.entry(n).or_insert(s.reference.as_str());
+            }
+        }
+    }
+    // The nets each finding reads, for the checks below.
+    let mut reads: Vec<Vec<usize>> = vec![];
+    // Op-amps whose output goes past a rail, and their inputs, which are ahead of the clipping.
+    let mut clips: Vec<String> = vec![];
+    let mut ahead: BTreeSet<usize> = BTreeSet::new();
     for s in &levels.skipped {
         let reached: Vec<&str> = s
-            .nets
+            .drives
             .iter()
             .filter(|&&n| levels.carries(n))
             .map(|&n| name(n))
@@ -466,6 +661,7 @@ pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
         if reached.is_empty() {
             continue;
         }
+        reads.push(vec![]);
         out.push(Finding {
             rule: "signal-path",
             verdict: Verdict::Unknown,
@@ -520,6 +716,12 @@ pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
                         a.vneg
                     );
                     if top > 0.0 || bot < 0.0 {
+                        clips.push(r.clone());
+                        ahead.extend(
+                            [pin_net(c, part, &a.plus), pin_net(c, part, &a.minus)]
+                                .into_iter()
+                                .flatten(),
+                        );
                         (Verdict::Fail, format!("{what}: past a rail, so it clips"))
                     } else if let Some(s) = &a.swing {
                         let room = (-top).min(bot);
@@ -556,12 +758,12 @@ pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
                 _ => (
                     Verdict::Unknown,
                     format!(
-                        "the bias of {} or its supply pins isn't set by anything but the simulation's leak, so how \
-                         close it gets to a rail isn't known",
-                        a.out
+                        "{}; how close it gets to a rail isn't known",
+                        unbiased(levels, &a.out, o, &a.vpos, vp).trim_end_matches(", so the level isn't known")
                     ),
                 ),
             };
+            reads.push(vec![o, vp, vn]);
             out.push(Finding {
                 rule: "clipping",
                 verdict,
@@ -593,13 +795,7 @@ pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
                     continue;
                 }
                 let (verdict, severity, message) = level(levels, c, part, pin, pn, to, tn, limit, &cite);
-                let (verdict, message) = match open.get(r.as_str()) {
-                    Some(_) if verdict == Verdict::Fail => (
-                        Verdict::Unknown,
-                        format!("{message}; but the simulation leaves {r} open, so this level leaves out its load"),
-                    ),
-                    _ => (verdict, message),
-                };
+                reads.push(vec![pn, tn]);
                 out.push(Finding {
                     rule: "signal-level",
                     verdict,
@@ -610,6 +806,39 @@ pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
                     case: None,
                     headline: None,
                 });
+            }
+        }
+    }
+    for (f, nets) in out.iter_mut().zip(&reads) {
+        if f.rule == "signal-path" {
+            continue;
+        }
+        let mut why = None;
+        if let Some((&n, who)) = nets.iter().find_map(|n| open.get_key_value(n)) {
+            why = Some(format!(
+                "{who} is left open on {}, and could drive or load it, so the level there isn't known",
+                name(n)
+            ));
+        } else if f.verdict == Verdict::Fail {
+            why = nets[1..]
+                .iter()
+                .find_map(|&b| levels.shaky(design, nets[0], b))
+                .map(|w| format!("this FAIL may not be real: {w}"));
+            if why.is_none() && f.rule == "signal-level" && !clips.is_empty() && !ahead.contains(&nets[0]) {
+                why = Some(format!(
+                    "this FAIL may not be real: {} clips, which the simulation doesn't model, so the levels after it \
+                     are overstated",
+                    clips.join(", ")
+                ));
+            }
+        }
+        if let Some(w) = why
+            && f.verdict != Verdict::Unknown
+        {
+            f.verdict = Verdict::Unknown;
+            f.message = format!("{}; but {w}", f.message);
+            if f.rule == "clipping" {
+                f.headline = Some(format!("{}'s output may clip on the loudest signal", f.reference));
             }
         }
     }
@@ -630,19 +859,13 @@ fn level(
     cite: &dyn Fn(Option<u32>) -> String,
 ) -> (Verdict, Severity, String) {
     let Some((lo, hi)) = levels.reach(pn, tn) else {
-        return (
-            Verdict::Unknown,
-            Severity::Warning,
-            format!(
-                "the bias of {pin} or {to} isn't set by anything but the simulation's leak, so the level isn't known"
-            ),
-        );
+        return (Verdict::Unknown, Severity::Warning, unbiased(levels, pin, pn, to, tn));
     };
     let head = format!("{pin} reaches {} to {} V from {to}", round(lo), round(hi));
     let mut fails: Vec<(Severity, String)> = vec![];
     let mut unknown: Vec<String> = vec![];
     for (range, sev, kind) in [
-        (&limit.abs_max, Severity::Error, "absolute maximum"),
+        (&limit.abs_max, Severity::Error, "absolute maximum rating"),
         (&limit.recommended, Severity::Warning, "recommended range"),
     ] {
         let Range::Known { min, max, page, .. } = range else {
@@ -657,8 +880,8 @@ fn level(
                         fails.push((
                             sev,
                             format!(
-                                "past its {kind} {} of {x} V ({at})",
-                                if upper { "maximum" } else { "minimum" }
+                                "past the {} end of its {kind}, {x} V ({at})",
+                                if upper { "upper" } else { "lower" }
                             ),
                         ));
                     }
@@ -700,7 +923,12 @@ fn level(
             Severity::Warning
         };
         let what: Vec<String> = fails.into_iter().map(|f| f.1).collect();
-        return (Verdict::Fail, severity, format!("{head}: {}", what.join("; ")));
+        let rest = if unknown.is_empty() {
+            String::new()
+        } else {
+            format!("; also, {}", unknown.join("; "))
+        };
+        return (Verdict::Fail, severity, format!("{head}: {}{rest}", what.join("; ")));
     }
     if !unknown.is_empty() {
         return (
@@ -712,6 +940,24 @@ fn level(
     (Verdict::Pass, Severity::Error, format!("{head}, inside its limits"))
 }
 
+/// Why a level from `to` isn't known when only the simulation's leak sets a bias.
+fn unbiased(levels: &Levels, pin: &str, pn: usize, to: &str, tn: usize) -> String {
+    let inside = [pn, tn]
+        .into_iter()
+        .find_map(|n| levels.engine.get(&n).map(|s| (n, *s)));
+    match inside {
+        Some((n, span)) => format!(
+            "{}'s bias ({span}) comes from something the simulation doesn't model, such as a bias inside a part, so \
+             the level isn't known",
+            if n == pn { pin } else { to }
+        ),
+        None => format!(
+            "nothing in the simulation sets the bias of {pin} or {to} (a capacitor-coupled node with no bias \
+             resistor), so the level isn't known"
+        ),
+    }
+}
+
 fn round(v: f64) -> f64 {
     (v * 1000.0).round() / 1000.0
 }
@@ -720,20 +966,32 @@ fn round(v: f64) -> f64 {
 pub fn describe(design: &Design, levels: &Levels) -> String {
     let mut out = String::new();
     let ground = levels.ground.iter().next().copied();
+    if ground.is_none() {
+        let _ = writeln!(
+            out,
+            "no net is held at 0 V, so the levels below have no ground to be measured from"
+        );
+    }
     for (name, gains) in &levels.gains {
         let _ = writeln!(out, "signal {name}:");
         let mut rows: Vec<(usize, f64)> = gains.iter().map(|(&n, &g)| (n, g)).collect();
         rows.sort_by(|a, b| b.1.total_cmp(&a.1));
         for &(n, g) in rows.iter().take(40) {
-            let range = ground.and_then(|gnd| levels.reach(n, gnd)).map_or(
-                "bias not set (only the simulation's leak reaches it)".into(),
-                |(lo, hi)| format!("{} to {} V", round(lo), round(hi)),
-            );
+            let range = match ground {
+                None => "no ground".into(),
+                Some(gnd) => levels.reach(n, gnd).map_or("bias not known".into(), |(lo, hi)| {
+                    format!("{} to {} V", round(lo), round(hi))
+                }),
+            };
+            let shown = if g >= 0.01 {
+                format!("{}", round(g))
+            } else {
+                format!("{g:.1e}")
+            };
             let _ = writeln!(
                 out,
-                "  {}: gain {} ({:+.1} dB), {range}",
+                "  {}: gain {shown} ({:+.1} dB), {range}",
                 design.nets[n].name,
-                round(g),
                 20.0 * g.log10()
             );
         }

@@ -23,6 +23,12 @@ How it works:
   say) has no bias, and its findings are UNKNOWN.
 - ngspice then finds each net's gain from each signal across the signal's band, and the gain of the difference
   between the two pins of every limit directly, so their phases count.
+- Rails joined by a ferrite bead, fuse or net tie are one rail. Two rails where one is worked out from the other
+  (a regulator's output and its input, say) are still swept apart, which overstates how far apart they get: a
+  FAIL that rests on that, or on a regulator's low end that is only a floor, is UNKNOWN.
+- The AC sweep takes 1000 points a decade, enough to find a resonance up to a Q of about 100 within a few
+  percent. Inductors and capacitors are ideal, so an LC with no resistance at all reads lower than the infinite
+  peak it would have.
 - A pin reaches its bias plus and minus the sum of each signal's peak times its largest gain. That treats all
   signals as in phase, which is the worst case.
 
@@ -50,7 +56,11 @@ The output lists each signal's gain to every net it reaches, and that net's rang
 - Diodes and TVS parts are left open. A signal on a sound design stays below their forward drop and breakdown, but
   a fault-sized signal would be clamped in reality and isn't here.
 - IC pins with no `[[opamp]]` are left open and taken to draw no current. That covers codec inputs, modules, and
-  amplifiers whose inputs are virtual grounds. Each one a signal reaches is a `signal-path` finding, and a FAIL on
-  its own pins is only UNKNOWN, as its load isn't in the levels.
+  amplifiers whose inputs are virtual grounds. A pin marked as an input loads its net with nothing, which is
+  right; any other pin (an output, a bidirectional GPIO, a passive pin) could drive or load the net, so every
+  level read on that net is UNKNOWN, and the part is a `signal-path` finding. An op-amp whose output is tied to
+  ground or a rail (an unused half) drives nothing and is left out.
+- Op-amps never clip in the model. When one's output goes past a rail, the FAILs after it are UNKNOWN, as the real
+  levels there are lower.
 - Tolerances aren't swept, and an op-amp's gain-bandwidth, slew rate, offset and bias current aren't modelled.
 - Swing figures are given at one supply and load, usually 25 °C. The note on each part file says which.
