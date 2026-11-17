@@ -476,7 +476,11 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
             c.skipped.push(format!("{reference}: {why}"));
         };
         let ferrite = lib_id.starts_with("Device:Ferrite") || lib_id.starts_with("Device:FerriteBead");
-        let short = lib_id.starts_with("Jumper:") || lib_id.starts_with("Device:Fuse") || ferrite;
+        let short = lib_id.starts_with("Jumper:")
+            || lib_id.starts_with("Device:Fuse")
+            || lib_id.starts_with("Device:Polyfuse")
+            || lib_id.starts_with("Device:NetTie")
+            || ferrite;
         if two && short {
             // Closed: the worst case for stress, as nothing is cut off.
             c.elements.push(Element::R {

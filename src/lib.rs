@@ -2,6 +2,7 @@
 
 pub mod altium;
 pub mod bom;
+pub mod bringup;
 pub mod datasheet;
 pub mod design;
 pub mod diag;

@@ -12,6 +12,7 @@ const USAGE: &str = "usage:
   gerberus pinout <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--parts DIR]... [--verbose] [--color WHEN]
   gerberus voltages <design> [--inputs FILE] [--parts DIR]... [--fault CASE] [--explain NET]...
   gerberus loads <design> [--inputs FILE] [--parts DIR]...
+  gerberus bringup <design> [--inputs FILE] [--parts DIR]...
   gerberus stress <design> [--inputs FILE] [--parts DIR]... [--runs N] [--seed N] [--netlist FILE] [REPORT]
   gerberus signal <design> [--inputs FILE] [--parts DIR]... [--json] [REPORT]
   gerberus check <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [REPORT]
@@ -150,6 +151,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "pinout" => pinout(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "voltages" => voltages(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "loads" => loads(Path::new(path), rest),
+        [cmd, path, rest @ ..] if cmd == "bringup" => bringup(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "stress" => stress(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "signal" => signal(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
@@ -828,6 +830,15 @@ fn voltages(path: &Path, rest: &[String]) -> Result<bool, String> {
             .ok_or_else(|| format!("no net named {name:?}"))?;
         print!("{}", v.explain(&design, i));
     }
+    Ok(true)
+}
+
+fn bringup(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let o = options(path, rest, &["--inputs"])?;
+    let (design, lib, inputs, v) = analyse(path, &o)?;
+    let th = gerberus::thermal::compute(&design, &lib, &inputs, &v);
+    let plan = gerberus::bringup::plan(&design, &lib, &inputs, &v, &th);
+    print!("{}", gerberus::bringup::render(&design, &plan));
     Ok(true)
 }
 

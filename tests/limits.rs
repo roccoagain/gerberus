@@ -353,7 +353,8 @@ fn test_points_have_nothing_to_check() {
     );
     // A `TP` reference on a part with more pins isn't taken on trust.
     assert_eq!(non_electrical("TP2", &part("Custom:Thing", 3)), None);
-    assert_eq!(non_electrical("NT1", &part("Device:NetTie_2", 2)), None);
+    // A net tie is copper the voltage engine follows: nothing to check.
+    assert_eq!(non_electrical("NT1", &part("Device:NetTie_2", 2)), Some("net tie"));
     assert_eq!(non_electrical("JP1", &part("Jumper:SolderJumper_2_Open", 2)), None);
 }
 

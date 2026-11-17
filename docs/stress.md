@@ -22,7 +22,7 @@ drew. `--netlist FILE` writes the nominal run's netlist, so it can be opened in 
 
 What is modelled:
 - resistors, capacitors and inductors from their values;
-- ferrite beads, fuses and jumpers as closed;
+- ferrite beads, fuses, net ties and jumpers as closed; switches are left open (a pushbutton is usually open);
 - diodes and LEDs from their forward drop at their test current;
 - TVS diodes breaking down at the top of their breakdown range, with the resistance their `clamp` figure gives
   (clamping voltage at the pulse current), or 1 Ω when the part file has none;

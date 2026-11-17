@@ -1210,8 +1210,8 @@ pub enum Coverage {
 }
 
 /// A test point with no part file: a bare pad, so there is nothing to check it against. Found by its symbol
-/// (`Connector:TestPoint`), or by a `TP` reference on a one-pin part. (A net tie is not one: it joins two
-/// nets, which the voltage engine doesn't follow yet, so it stays unchecked.)
+/// (`Connector:TestPoint`), or by a `TP` reference on a one-pin part. A net tie (`Device:NetTie*`, `NT1`) is
+/// copper joining two nets, which the voltage engine follows, so it has nothing to check either.
 pub fn non_electrical(reference: &str, c: &Component) -> Option<&'static str> {
     let letters: String = reference
         .chars()
@@ -1219,7 +1219,13 @@ pub fn non_electrical(reference: &str, c: &Component) -> Option<&'static str> {
         .map(|c| c.to_ascii_uppercase())
         .collect();
     let symbol = c.lib_id.rsplit(':').next().unwrap_or("");
-    (symbol.starts_with("TestPoint") || (letters == "TP" && c.pins.len() <= 1)).then_some("test point")
+    if symbol.starts_with("TestPoint") || (letters == "TP" && c.pins.len() <= 1) {
+        Some("test point")
+    } else if symbol.starts_with("NetTie") || (letters == "NT" && c.pins.len() == 2) {
+        Some("net tie")
+    } else {
+        None
+    }
 }
 
 /// How every component of a design is covered, keyed by reference.

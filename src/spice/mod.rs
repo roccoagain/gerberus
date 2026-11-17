@@ -8,7 +8,8 @@
 //! worst run shows how far the design can be pushed. The peak voltage across every pin limit is then checked:
 //! past an absolute maximum is an error, past a passive's rating a warning.
 //!
-//! What is modelled: resistors, capacitors, inductors and ferrite beads, jumpers and fuses (closed), diodes,
+//! What is modelled: resistors, capacitors, inductors and ferrite beads, jumpers, fuses and net ties (closed),
+//! diodes,
 //! LEDs and TVS diodes from their forward drop, breakdown and clamp figure, transistor switches (a forward
 //! drive) as their channel switched on, step-down regulators as ideal sources that follow their supply when it
 //! is too low to hold them, and every IC's supply current. A limit relative to another pin is checked against

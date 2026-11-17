@@ -61,3 +61,21 @@ finding about the board unless the file it rests on is wrong against its datashe
 
 Run `gerberus doctor` again after each round: what it says is left, and the UNKNOWNs it can't trace (a circuit
 gerberus doesn't model, a limit no datasheet gives), are what to tell the person is still unchecked.
+
+## 4. Waivers
+
+When a finding looks acceptable (a header only ever used on the bench, say), don't decide that yourself. Propose a
+waiver in `waivers.toml` next to the schematic, with a `proposed` line naming you and the date:
+
+```toml
+[[waiver]]
+rule = "esd"
+reference = "J5"
+contains = "J5.2"
+reason = "the SWD header is only connected on the bench, by the designer"
+proposed = "Claude, 2026-11-17"
+```
+
+A proposed waiver doesn't apply. The finding still counts, and its message says that a waiver is waiting. Tell the
+person what you proposed and why. Only a person approves it, by deleting the `proposed` line and adding
+`by = "<name>, <date>"`. Never delete or edit a `proposed` line yourself, and never write a waiver without one.

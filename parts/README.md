@@ -452,8 +452,10 @@ down to the inputs it comes from. It starts from `inputs.toml` (the `to` pins ar
 - **Biased inputs** (`biases`): an input reached only through capacitors sits at its bias range.
 - **MOSFET channels** (`channel`): off, fully on or maybe on, from the gate against both ends. A channel that
   isn't off pulls each end toward the other, no further than the gate; one that is off pulls nothing.
-- **Everything else**: the union of what can pull the net: nets reached through resistors, inductors, LEDs and
-  jumpers (capacitors count as open, TVS diodes as off), and IC output pins, which reach at most their part's
+- **Net ties (any number of pins), fuses and ferrite beads** are DC shorts: the net on the far side takes the
+  driven net's range. Switches are not followed, as an open switch is as likely as a closed one.
+- **Everything else**: the union of what can pull the net: nets reached through resistors, inductors, LEDs,
+  jumpers and two-pin switches (capacitors count as open, TVS diodes as off), and IC output pins, which reach at most their part's
   highest supply. A pin of any other part that isn't an input makes the net UNKNOWN.
 
 A net with a connector pin that `inputs.toml` doesn't describe is UNKNOWN, as is anything that needs a number
