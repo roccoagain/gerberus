@@ -602,16 +602,14 @@ fn find_channels(design: &Design, lib: &Library) -> Vec<Channel> {
                 cite: format!(
                     "{}{}: {}",
                     part.mpn,
-                    part.datasheet.as_ref().map(|x| format!(" {}", x.document)).unwrap_or_default(),
+                    part.datasheet
+                        .as_ref()
+                        .map(|x| format!(" {}", x.document))
+                        .unwrap_or_default(),
                     d.on.as_ref().map_or_else(
                         || "no RDS(on) condition given".into(),
                         |o| format!("RDS(on) given at VGS = {} V (p{})", o.vgs, o.page)
                     )
-                ),
-                    part.datasheet
-                        .as_ref()
-                        .map(|x| format!(", {}", x.document))
-                        .unwrap_or_default()
                 ),
             });
         }
