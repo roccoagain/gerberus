@@ -149,12 +149,17 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<S
         for (r, p) in &design.nets[n].pins {
             let Some(part) = part_of(design, lib, r) else {
                 if let Some(u) = unmodelled(design, lib, r, n, named) {
-                    unknown.entry(through.clone()).or_default().push(u);
+                    unknown
+                        .entry(through.clone())
+                        .or_default()
+                        .push(format!("{u} has no part file"));
                 }
                 continue;
             };
             match part.class {
                 Class::Tvs => {
+                    // The breakdown maximum is what it is compared with; a part that gives only a minimum breakdown
+                    // or a clamping voltage (USB ESD arrays) still clamps, but can't be compared.
                     let breakdown = part
                         .limits
                         .iter()
@@ -165,12 +170,27 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<S
                             _ => None,
                         })
                         .reduce(f64::max);
+                    let rated = part.limits.iter().any(|l| {
+                        l.clamp.is_some()
+                            || matches!(
+                                &l.breakdown,
+                                Some(
+                                    Range::Known {
+                                        min: Bound::Value(_),
+                                        ..
+                                    } | Range::Known {
+                                        max: Bound::Value(_),
+                                        ..
+                                    }
+                                )
+                            )
+                    });
                     // A TVS whose breakdown isn't known can't be said to clamp anything.
-                    if breakdown.is_none() {
-                        unknown
-                            .entry(through.clone())
-                            .or_default()
-                            .push(format!("{r} ({})", part.mpn));
+                    if !rated {
+                        unknown.entry(through.clone()).or_default().push(format!(
+                            "{r} ({}) gives no breakdown voltage or clamping voltage",
+                            part.mpn
+                        ));
                         continue;
                     }
                     raw.entry(through.clone())
@@ -270,15 +290,7 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             .filter(|(t, _)| t.is_none() || !clamps.contains_key(t))
             .flat_map(|(_, u)| u)
             .collect();
-        let no_file = if unknown.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "{} {} no part file",
-                unknown.join(", "),
-                if unknown.len() == 1 { "has" } else { "have" }
-            )
-        };
+        let no_file = unknown.join("; ");
         let at = if too_high.is_empty() {
             at
         } else {

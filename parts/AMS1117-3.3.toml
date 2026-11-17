@@ -21,7 +21,7 @@ url = "https://datasheet.lcsc.com/datasheet/pdf/e6935943fc6b1bbf350a1a0f3e90dc4a
 pins = ["VIN"]
 to = "GND"
 abs_max = { min = { unknown = "the absolute maximum ratings give only a maximum input voltage" }, max = 15, page = 2, note = "input voltage" }
-recommended = { min = 4.8, max = 15, page = 2, derived = "3.3 + 1.5 .. 15; the electrical characteristics hold for 1.5 V <= VIN - VOUT <= 12 V (note 5: it regulates there), and the top end is capped at the 15 V absolute maximum input", note = "no recommended operating conditions are given: the range the line regulation is specified over" }
+recommended = { min = 4.75, max = 15, page = 3, derived = "4.75 .. 15; the lowest specified input (page 3) up to the absolute maximum input (page 2)", note = "no recommended operating conditions are given: the lowest input the AMS1117-3.3 is specified at (load regulation and ripple rejection, VIN = 4.75 V), up to the 15 V absolute maximum (page 2)" }
 
 [[limit]]
 pins = ["VOUT"]
@@ -35,7 +35,7 @@ pin = "VOUT"
 to = "GND"
 supply = "VIN"
 headroom = { volts = 1.3, page = 3, note = "dropout voltage max, IOUT = 0.8 A (note 4: higher above 0.8 A)" }
-range = { min = 3.201, max = 3.399, page = 2, note = "AMS1117-3.3 output voltage over the full operating temperature range (bold row), VIN = 4.8 V, IOUT = 0 mA; load regulation adds up to 25 mV more at 0 to 0.8 A (page 3)" }
+range = { min = 3.166, max = 3.434, page = 2, derived = "3.201 - 0.010 - 0.025 .. 3.399 + 0.010 + 0.025; output voltage over temperature (bold row, VIN = 4.8 V, IOUT = 0), widened by the 10 mV line regulation (page 2) and the 25 mV load regulation at 0 to 0.8 A (page 3)", note = "at the dropout headroom the output is a further 1 % low (dropout is defined at a 1 % drop, page 3)" }
 
 [[supply]]
 pins = ["VIN"]

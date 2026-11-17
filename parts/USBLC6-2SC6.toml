@@ -10,6 +10,8 @@ document = "Doc ID 11265 Rev 5, October 2011"
 url = "https://datasheet.lcsc.com/datasheet/pdf/0d3a2ab954b34651a0695e7ccf534db0.pdf"
 
 # Figure 1, page 1: each data line passes through, in on one side and out on the other (pins 1 and 6, 3 and 4).
+# Wire both pads of a line to the same net: gerberus doesn't know they are joined inside the part, so a line split
+# across them reads as two nets, and the IC side looks undriven.
 [pins]
 1 = "I/O1"
 2 = "GND"

@@ -495,7 +495,7 @@ Found by the blind second reading of every file (November 2026):
   A fixed 3.3 V probe on an unpowered board would drive its pins far above VDD + 0.3 V.
 - **MOSFETs** have no model of their channel. AO3401A's body diode is a `forward` drive from D to S, which fits
   its use as a reverse-polarity switch (supply into D) and would be wrong in a high-side switch fed at S;
-  2N7002NXAKR has no drive, so its drain net comes from what else pulls it.
+  2N7002NXAKR and AO3400A have no drive and no channel, so a drain net they alone switch comes out UNKNOWN.
 - **PESD5V0S1BA**: the audio board rev 2 orders PESD5V0S1BAF, which the PESD5V0S1BA datasheet doesn't list, so
   it isn't a variant here. Its jacks' ESD checks stay UNKNOWN until a datasheet names the BAF.
 - Resistor power can't FAIL in fault cases: a fault drives the two ends of a resistor from independent ranges,
