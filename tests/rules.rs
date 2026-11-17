@@ -1132,5 +1132,9 @@ fn esd_weak_pin_beside_an_undescribed_part_is_unknown() {
     let (_, r) = run_on(&d, &inputs);
     let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J2.2")).collect();
     assert_eq!(f[0].verdict, Verdict::Unknown, "{}", f[0].message);
-    assert!(f[0].message.contains("D99 (ESD)") && f[0].message.contains("U2.PA13"), "{}", f[0].message);
+    assert!(
+        f[0].message.contains("D99 (ESD)") && f[0].message.contains("U2.PA13"),
+        "{}",
+        f[0].message
+    );
 }
