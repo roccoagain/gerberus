@@ -1,0 +1,142 @@
+mpn = "TPA6130A2RTJR"
+manufacturer = "Texas Instruments"
+description = "138 mW DirectPath ground-referenced stereo headphone amplifier with I2C volume control, WQFN-20 (RTJ)"
+class = "ic"
+
+temperature = { min = -40, max = 85, page = 5, note = "TA operating free-air temperature range; printed in the absolute maximum ratings table, the recommended operating conditions give none" }
+theta_ja = { value = 34.8, page = 5, note = "RθJA, RTJ (WQFN) 20 pins" }
+tj_max = { value = 150, page = 5, note = "TJ operating junction temperature range max, absolute maximum ratings (no recommended TJ is given); thermal shutdown is 180 °C typical (page 6)" }
+
+[datasheet]
+title = "TPA6130A2 138-mW DIRECTPATH™ Stereo Headphone Amplifier with I2C Volume Control"
+document = "SLOS488F, revised March 2015"
+url = "https://www.ti.com/lit/ds/symlink/tpa6130a2.pdf"
+
+# Pin Functions table, WQFN NO. column (page 4). TPA6130A2RTJR is the RTJ (QFN) 20-pin part in the orderable
+# addendum (page 31). Pin 20 is the charge pump VDD and pin 12 the analog VDD; pin 19 is the charge pump GND and
+# 3, 9, 10, 13 the analog GND. The datasheet names both supplies VDD and both grounds GND.
+# SD is active low (the symbol prints it ~{SD}). The table prints pin 21 as "Thermal pad" (Die Pad); it is "EP"
+# here, as the symbol and footprint name it. Page 27: the pad may be grounded or left floating, and if grounded it
+# must be on the same ground as the GND pins.
+[pins]
+1 = "LEFTINM"
+2 = "LEFTINP"
+3 = "GND"
+4 = "RIGHTINP"
+5 = "RIGHTINM"
+6 = "SD"
+7 = "SDA"
+8 = "SCL"
+9 = "GND"
+10 = "GND"
+11 = "HPRIGHT"
+12 = "VDD"
+13 = "GND"
+14 = "HPLEFT"
+15 = "CPVSS"
+16 = "CPVSS"
+17 = "CPN"
+18 = "CPP"
+19 = "GND"
+20 = "VDD"
+21 = "EP"
+
+[[limit]]
+pins = ["VDD"]
+to = "GND"
+abs_max = { min = -0.3, max = 6.0, page = 5, note = "supply voltage, VDD" }
+recommended = { min = 2.5, max = 5.5, page = 5, note = "VDD supply voltage" }
+
+[[limit]]
+pins = ["LEFTINP", "LEFTINM", "RIGHTINP", "RIGHTINM"]
+to = "GND"
+abs_max = { min = -2.5, max = 3.6, page = 5, note = "VI input voltage, RIGHTINx, LEFTINx (revision C changed the minimum from -2.7 V, page 2)" }
+recommended = { unknown = "the recommended operating conditions give no audio input range; page 25 says only that without input capacitors the inputs must stay within the input common-mode range (not given) and the signal within ±3 V" }
+
+[[limit]]
+pins = ["SD", "SCL", "SDA"]
+to = "GND"
+abs_max = { min = -0.3, max = 7, page = 5, note = "VI input voltage, SD, SCL, SDA; page 4 calls them 5 V tolerant" }
+recommended = { unknown = "the recommended operating conditions give only VIH min 1.3 V and VIL max 0.6 V (SCL, SDA) / 0.35 V (SD) (page 5), no input range" }
+
+[[limit]]
+pins = ["HPLEFT", "HPRIGHT"]
+to = "GND"
+abs_max = { unknown = "the absolute maximum ratings give no output voltage, only a 12.8 Ω minimum load impedance (page 5)" }
+recommended = { unknown = "the datasheet gives no output voltage range; page 15 says only that the outputs are centred on 0 V and swing toward VDD and the charge pump's negative rail" }
+
+[[limit]]
+pins = ["CPVSS", "CPN", "CPP"]
+to = "GND"
+abs_max = { unknown = "the absolute maximum ratings give no charge pump pin voltages" }
+recommended = { unknown = "the datasheet gives no voltage for the charge pump's negative rail or flying capacitor pins" }
+
+[[limit]]
+pins = ["EP"]
+to = "GND"
+abs_max = { unknown = "the absolute maximum ratings give no thermal pad voltage; page 27 says it may float or be grounded, and if grounded it must be the GND pins' ground" }
+recommended = { unknown = "page 27 says the pad may float or be grounded to the GND pins' ground, but gives no voltage range" }
+
+# Page 25: the DC input-blocking capacitors "allow the inputs to properly bias", so the part biases its AC-coupled
+# inputs itself, but the datasheet gives no bias voltage (not even a typical one).
+[[drive]]
+kind = "biases"
+pin = "LEFTINP"
+to = "GND"
+supply = "VDD"
+range = { unknown = "the inputs bias themselves behind their DC-blocking capacitors (page 25), but the datasheet gives no bias voltage" }
+
+[[drive]]
+kind = "biases"
+pin = "LEFTINM"
+to = "GND"
+supply = "VDD"
+range = { unknown = "the inputs bias themselves behind their DC-blocking capacitors (page 25), but the datasheet gives no bias voltage" }
+
+[[drive]]
+kind = "biases"
+pin = "RIGHTINP"
+to = "GND"
+supply = "VDD"
+range = { unknown = "the inputs bias themselves behind their DC-blocking capacitors (page 25), but the datasheet gives no bias voltage" }
+
+[[drive]]
+kind = "biases"
+pin = "RIGHTINM"
+to = "GND"
+supply = "VDD"
+range = { unknown = "the inputs bias themselves behind their DC-blocking capacitors (page 25), but the datasheet gives no bias voltage" }
+
+# No drive for CPVSS: the charge pump makes a negative rail (pages 4, 14, 15) but the datasheet never gives its
+# voltage. No drive for HPLEFT/HPRIGHT either: they are ground-referenced outputs that swing below GND (page 15),
+# with no output voltage range given.
+#
+# No [[supply]]: IDD max 6 mA (page 6) is the quiescent current with no signal, not the most the part draws while
+# driving headphones, and no loaded maximum is given.
+
+[[esd]]
+model = "hbm"
+volts = 8000
+pins = ["HPLEFT", "HPRIGHT"]
+page = 5
+note = "HBM per ANSI/ESDA/JEDEC JS-001, output pins (HPLEFT and HPRIGHT are the only O pins in the pin table, page 4). The front page's 'ESD Protection of 8 kV HBM and IEC Contact' names no IEC level or pins in any table, so no iec-contact entry"
+
+[[esd]]
+model = "hbm"
+volts = 3500
+pins = ["LEFTINM", "LEFTINP", "GND", "RIGHTINP", "RIGHTINM", "SD", "SDA", "SCL", "VDD", "CPVSS", "CPN", "CPP", "EP"]
+page = 5
+note = "HBM per ANSI/ESDA/JEDEC JS-001, all other pins"
+
+[[esd]]
+model = "cdm"
+volts = 1500
+page = 5
+note = "CDM per JEDEC JESD22-C101, all pins"
+
+[[capacitance]]
+pins = ["HPLEFT", "HPRIGHT"]
+to = "GND"
+typ = 80
+page = 6
+note = "CO output capacitance, typical only; operating characteristics at VDD = 3.6 V, TA = 25 °C"

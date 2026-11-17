@@ -129,6 +129,20 @@ fn unmodelled(design: &Design, lib: &Library, reference: &str, net: usize, named
     }
 }
 
+/// A part with no part file that could be a clamp: not a two-pin resistor, capacitor, inductor, ferrite bead or
+/// fuse (by reference or symbol), and not a plug-in module (`A1`).
+fn could_clamp(design: &Design, reference: &str) -> bool {
+    let letters: String = reference.chars().take_while(char::is_ascii_alphabetic).collect();
+    let Some(c) = design.components.get(reference) else {
+        return false;
+    };
+    let passive_symbol = ["Device:R", "Device:C", "Device:L", "Device:Ferrite", "Device:Fuse"]
+        .iter()
+        .any(|p| c.lib_id.starts_with(p));
+    let passive = c.pins.len() == 2 && (matches!(letters.as_str(), "R" | "C" | "L" | "FB" | "F") || passive_symbol);
+    !passive && letters != "A"
+}
+
 /// Parts with no part file, keyed like [`Clamps`] by the series part they sit behind.
 type Unknown = BTreeMap<Option<String>, Vec<String>>;
 
@@ -265,11 +279,19 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
         let (clamps, ics, too_high, unknown) = reached(design, lib, net, &named);
         // A part with no part file behind a series part clamped on its far side is sheltered by that clamp, like
         // an IC there.
-        let unknown: Vec<String> = unknown
+        let unknown: Vec<(Option<String>, String)> = unknown
             .into_iter()
             .filter(|(t, _)| t.is_none() || !clamps.contains_key(t))
-            .flat_map(|(_, u)| u)
+            .flat_map(|(t, u)| u.into_iter().map(move |u| (t.clone(), u)))
             .collect();
+        // Those that could be a clamp: not a two-pin resistor, capacitor, inductor, bead or fuse, and not a
+        // module (`A1`).
+        let maybe_clamp: Vec<(Option<String>, String)> = unknown
+            .iter()
+            .filter(|(_, u)| could_clamp(design, u.split(' ').next().unwrap_or_default()))
+            .cloned()
+            .collect();
+        let unknown: Vec<String> = unknown.into_iter().map(|(_, u)| u).collect();
         let no_file = if unknown.is_empty() {
             String::new()
         } else {
@@ -357,6 +379,7 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             continue;
         }
         let (mut weak, mut unrated) = (vec![], vec![]);
+        let mut weak_through: Vec<Option<String>> = vec![];
         let mut fine: Vec<String> = behind
             .iter()
             .map(|ic| {
@@ -386,6 +409,7 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             if let Some(e) = system {
                 fine.push(format!("{who} is rated {}", cite(e.model, e.volts, e.page)));
             } else if let Some(best) = ratings.iter().max_by(|a, b| a.volts.total_cmp(&b.volts)) {
+                weak_through.push(ic.through.clone());
                 weak.push(format!(
                     "{who} is rated only {}",
                     cite(best.model, best.volts, best.page)
@@ -395,7 +419,27 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             }
         }
         let need = format!("{} V contact or {} V air ({})", level.contact, level.air, level.reason);
-        let (verdict, text) = if !weak.is_empty() {
+        // An undescribed part that could be a clamp, beside every weak pin: on the connector's own net (it then
+        // clamps before any series part) or behind the same series part.
+        let shielding: Vec<&str> = maybe_clamp
+            .iter()
+            .filter(|(t, _)| t.is_none() || weak_through.iter().all(|w| w == t))
+            .map(|(_, u)| u.as_str())
+            .collect();
+        let (verdict, text) = if !weak.is_empty() && !shielding.is_empty() {
+            // A part with no part file may be the clamp (an ESD diode whose part number no file covers), so a
+            // weak pin can't fail the net.
+            (
+                Verdict::Unknown,
+                format!(
+                    "{at} has no clamp that a part file describes, and {}; {} {} no part file: if one of \
+                     them is a clamp, its part file settles this",
+                    weak.join("; "),
+                    shielding.join(", "),
+                    if shielding.len() == 1 { "has" } else { "have" }
+                ),
+            )
+        } else if !weak.is_empty() {
             (
                 Verdict::Fail,
                 format!(

@@ -455,12 +455,16 @@ fn uncovered_pins_are_the_known_gaps() {
             gaps.push(format!("{mpn}.{pin}"));
         }
     }
-    // Inductors have only a current limit; ground and reference pins appear as `to`.
+    // Inductors and ferrite beads have only a current limit; ground and reference pins appear as `to`.
     assert_eq!(
         gaps,
         [
             "FNR4030S6R8MT.1",
             "FNR4030S6R8MT.2",
+            "MPZ1608S221ATA00.1",
+            "MPZ1608S221ATA00.2",
+            "SRP1038A-100M.1",
+            "SRP1038A-100M.2",
             "SWPA252012S100MT.1",
             "SWPA252012S100MT.2"
         ]

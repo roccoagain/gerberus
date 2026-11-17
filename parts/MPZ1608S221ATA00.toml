@@ -1,0 +1,23 @@
+mpn = "MPZ1608S221ATA00"
+manufacturer = "TDK"
+description = "220 ohm at 100 MHz, 2.2 A chip ferrite bead for power lines, 0603 (1608 metric)"
+class = "inductor"
+tolerance = { value = 0.25, page = 2, note = "impedance 220 ohm ±25 % at 100 MHz (an impedance tolerance, not an inductance one)" }
+temperature = { min = -55, max = 125, page = 1, note = "operating temperature range" }
+
+[datasheet]
+title = "Chip beads for power line, MPZ series, MPZ1608 type"
+document = "beads_commercial_power_mpz1608_en, 20190424"
+url = "https://www.lcsc.com/datasheet/C76815.pdf"
+
+[pins]
+1 = "1"
+2 = "2"
+
+# DC resistance 0.050 ohm max (p2); no field for it here.
+[[limit]]
+quantity = "current"
+pins = ["1"]
+to = "2"
+abs_max = { unknown = "the datasheet gives a rated current, not an absolute maximum" }
+recommended = { min = -2.2, max = 2.2, page = 2, note = "rated current 2.2 A max (either direction); derated above 85 °C per the rated current vs. temperature graph (p2)" }
