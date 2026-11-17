@@ -1,0 +1,43 @@
+mpn = "SJ3-35063AG"
+manufacturer = "Same Sky (Formerly CUI Devices)"
+description = "3.5 mm stereo audio jack, through hole, with isolated normally-open switch"
+class = "connector"
+
+temperature = { min = -25, max = 85, page = 1, note = "Specifications: operating temperature" }
+
+[datasheet]
+title = "SERIES: SJ3-3506X | DESCRIPTION: AUDIO JACK"
+document = "SJ3-3506X series datasheet rev 1.01, dated 09/12/2024"
+url = "https://www.sameskydevices.com/product/resource/sj3-3506x.pdf"
+
+# The series sheet covers this part: the part number key on p1 decodes SJ3-3506 + 3 + X, with X = AG for the
+# isolated switch, and the drawing on p2 has an SJ3-35063AG column.
+# Pin table on p2, SJ3-35063AG column: 1 sleeve, 2 ring, 3 tip, 4 NP (not present on the AG variant), 5 isolated
+# ring, 6 isolated ring switch (N-O). The board symbol calls these S, R, T, DET_COM, DET_NO and the footprint has
+# pads 1, 2, 3, 5, 6 plus two unnumbered locating holes, which agrees.
+[pins]
+1 = "sleeve"
+2 = "ring"
+3 = "tip"
+5 = "isolated ring"
+6 = "isolated ring switch (N-O)"
+
+# No 'to': the rating applies between any two contacts.
+# The rated input voltage is printed in the table's typ column. It is the jack's rating, not a typical
+# measurement, so it is read as the rating (as for any connector's rated voltage).
+[[limit]]
+pins = ["sleeve", "ring", "tip", "isolated ring", "isolated ring switch (N-O)"]
+abs_max = { unknown = "the sheet gives a rated voltage and a 500 Vac one-minute withstand test, not an absolute maximum" }
+recommended = { min = -12, max = 12, page = 1, note = "Specifications: rated input voltage 12 Vdc (printed in the typ column)" }
+
+[[limit]]
+quantity = "current"
+pins = ["sleeve", "ring", "tip"]
+abs_max = { unknown = "the sheet gives only a rated current" }
+recommended = { min = -1, max = 1, page = 1, note = "Specifications: rated input current 1 A max" }
+
+[[limit]]
+quantity = "current"
+pins = ["isolated ring", "isolated ring switch (N-O)"]
+abs_max = { unknown = "the sheet gives only a rated current" }
+recommended = { unknown = "the rated input current (1 A) is the jack's rating; the sheet doesn't say it covers the isolated switch contacts" }
