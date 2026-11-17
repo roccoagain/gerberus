@@ -13,6 +13,7 @@ command line would:
 | `check` | `gerberus check`, with `show` set to `unknown` or `all` to list more than errors and warnings |
 | `doctor` | `gerberus doctor` |
 | `voltages` | `gerberus voltages`, with `explain` (net names) and `fault` |
+| `signal` | `gerberus signal`, with `show` |
 | `loads` | `gerberus loads` |
 | `parts` | `gerberus parts` |
 | `netlist` | `gerberus netlist` |

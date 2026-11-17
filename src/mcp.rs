@@ -80,6 +80,14 @@ const TOOLS: &[Tool] = &[
         design: true,
     },
     Tool {
+        name: "signal",
+        description: "Send the board's [[signal]]s from inputs.toml through it in ngspice: where an op-amp clips, \
+                      and how far each IC pin a signal reaches swings against its limits.",
+        args: &[REPORT],
+        command: &["signal"],
+        design: true,
+    },
+    Tool {
         name: "parts",
         description: "Where each part's limits come from: a datasheet part file, a class default, or nothing.",
         args: &[],
