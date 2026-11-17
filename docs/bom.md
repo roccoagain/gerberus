@@ -20,6 +20,42 @@ manufacturer lifecycle is reported as unknown. Answers are cached in `~/.cache/g
 `--offline` uses only the cache; when a fresh lookup fails, an older cached answer is used with a warning. The
 command exits with status 1 when any line has an error and 2 when it can't run.
 
+Resistors and capacitors (KiCad `Device:R` and `Device:C` symbols) are compared by what they are rather than
+by part number, using LCSC's parameter table: value against the schematic's value, size against the footprint
+(`R_0603_1608Metric` is 0603), and tolerance, rated voltage, rated power and dielectric against the part file of
+the `MPN` field when gerberus has one (a built-in family such as Yageo RC_L or Samsung CL, or a file in
+`parts/`).
+
+- **ERROR** when the LCSC number is a different value or size, or is rated below the schematic's part (a 25 V
+  capacitor where the MPN is 50 V, ±5 % where it is ±1 %, X5R where it is X7R).
+- **WARNING** when it is another maker's part with the same value, size and ratings: JLCPCB will fit that part,
+  but gerberus's other checks read the MPN field's part file, so the help line names the MPN to put there.
+  Without a part file for the MPN only value and size are compared, and the note says so.
+
+When such a line is short of stock or rated too low, LCSC's similar parts are looked up in full and the ones
+with the same value and size, ratings at least as good and enough stock are offered in a `help:` line, JLCPCB
+basic parts first. These are checked against the numbers above, so unlike other parts' candidates they can be
+used as they are.
+
+## Built by JLCPCB
+
+```sh
+gerberus bom path/to/board.kicad_sch --jlcpcb --boards 10
+```
+
+For a board JLCPCB will assemble from LCSC's stock:
+
+- A part with no LCSC number, an LCSC field that isn't one, or a number LCSC doesn't list is an **ERROR**
+  instead of unknown, with a link to LCSC's search for its MPN. gerberus can't search LCSC itself, so picking
+  the replacement is up to you; rerun to check it.
+- The closing notes count JLCPCB extended parts (JLCPCB charges a loading fee for each one), and a resistor or
+  capacitor on an extended part gets a basic equivalent when LCSC's similar parts include one.
+- Stock is LCSC's. JLCPCB keeps its own assembly stock of the same C numbers, which can differ, so check a part
+  LCSC is short of in JLCPCB's parts library before replacing it.
+
+The report is rustc-style like `check`'s: `--all` lists the lines with nothing wrong, `--color` sets colour, and
+`--parts DIR` adds a part folder (a `parts/` folder next to the schematic is read anyway).
+
 ## Mouser and DigiKey
 
 ```sh

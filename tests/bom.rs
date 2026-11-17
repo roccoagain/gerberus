@@ -200,6 +200,7 @@ fn listing(code: &str, mpn: &str, maker: &str, stock: u64, status: &str, similar
         package: "SOT-23".into(),
         similar,
         lifecycle: None,
+        params: BTreeMap::new(),
     }
 }
 
@@ -221,7 +222,14 @@ fn run(parts: Vec<Component>, listings: Vec<(&str, Option<Listing>)>, boards: u6
         ..Default::default()
     };
     let mut src = Fixed(listings.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-    check(&design, &mut src, Options { boards })
+    check(
+        &design,
+        &mut src,
+        Options {
+            boards,
+            ..Options::default()
+        },
+    )
 }
 
 #[test]
@@ -446,7 +454,7 @@ fn by_mpn(parts: Vec<Component>, listings: Vec<(&str, Option<Listing>)>) -> Vec<
         ..Default::default()
     };
     let mut src = FixedByMpn(listings.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-    check(&design, &mut src, Options { boards: 10 })
+    check(&design, &mut src, Options::default())
 }
 
 fn mouser(mpn: &str, stock: u64, lifecycle: Option<&str>) -> Listing {
@@ -531,4 +539,218 @@ fn a_mouser_lookup_without_a_key_says_where_to_put_it() {
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("MOUSER_API_KEY"));
+}
+
+#[test]
+fn reads_lcsc_parameters() {
+    let l = Listing::from_lcsc_json(&json("tests/fixtures/lcsc-raw/C21120.json"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(l.params.get("Capacitance").map(String::as_str), Some("220nF"));
+    assert_eq!(l.params.get("Voltage Rating").map(String::as_str), Some("25V"));
+    let s = gerberus::spec::Spec::from_lcsc(&l.params, &l.package);
+    assert_eq!(s.describe(), "220nF ±10% 25V X7R 0603 capacitor");
+}
+
+/// A plain resistor or capacitor with a value and footprint, as `Device:R` or `Device:C`.
+fn passive(reference: &str, value: &str, footprint: &str, mpn: &str, lcsc: &str) -> Component {
+    let lib_id = if reference.starts_with('R') {
+        "Device:R"
+    } else {
+        "Device:C"
+    };
+    Component {
+        value: value.into(),
+        footprint: footprint.into(),
+        ..part(reference, lib_id, mpn, lcsc)
+    }
+}
+
+fn resistor(code: &str, mpn: &str, ohms: &str, size: &str, stock: u64, basic: bool, similar: Vec<Similar>) -> Listing {
+    Listing {
+        package: size.into(),
+        assembly: Some(if basic { "basic" } else { "extended" }.into()),
+        params: [("Resistance", ohms), ("Tolerance", "±1%"), ("Power(Watts)", "100mW")]
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        ..listing(code, mpn, "UNI-ROYAL", stock, "normal", similar)
+    }
+}
+
+fn jlcpcb(parts: Vec<Component>, listings: Vec<(&str, Option<Listing>)>) -> Vec<Health> {
+    let design = Design {
+        components: parts.into_iter().map(|c| (c.reference.clone(), c)).collect(),
+        ..Default::default()
+    };
+    let mut src = Fixed(listings.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
+    check(
+        &design,
+        &mut src,
+        Options {
+            boards: 10,
+            jlcpcb: true,
+        },
+    )
+}
+
+const R0603: &str = "Resistor_SMD:R_0603_1608Metric";
+
+#[test]
+fn an_equivalent_resistor_from_another_maker_is_a_warning_with_the_mpn_to_use() {
+    let r = jlcpcb(
+        vec![passive("R1", "10k", R0603, "RMCF0603FT10K0", "C25804")],
+        vec![(
+            "C25804",
+            Some(resistor("C25804", "0603WAF1002T5E", "10kΩ", "0603", 5000, true, vec![])),
+        )],
+    );
+    let f = &r[0].findings[0];
+    assert_eq!((f.severity, f.topic), (Severity::Warning, Topic::Identity), "{f:?}");
+    assert!(f.message.contains("same value and size"), "{}", f.message);
+    assert!(f.notes[0].contains("no part file for RMCF0603FT10K0"), "{:?}", f.notes);
+    assert_eq!(
+        f.help.as_deref(),
+        Some("set the MPN field to 0603WAF1002T5E so the checks use the part JLCPCB will fit")
+    );
+}
+
+#[test]
+fn an_lcsc_number_for_another_value_or_size_is_an_error() {
+    let r = jlcpcb(
+        vec![
+            passive("R1", "2.2", R0603, "", "C22939"),
+            passive("R2", "10k", "Resistor_SMD:R_0805_2012Metric", "", "C25804"),
+        ],
+        vec![
+            (
+                "C22939",
+                Some(resistor("C22939", "0603WAF220JT5E", "22Ω", "0603", 5000, true, vec![])),
+            ),
+            (
+                "C25804",
+                Some(resistor("C25804", "0603WAF1002T5E", "10kΩ", "0603", 5000, true, vec![])),
+            ),
+        ],
+    );
+    assert_eq!(
+        errors(&r),
+        [
+            "R1: LCSC C22939 is a different part: 22Ω, not the 2.2Ω the schematic gives",
+            "R2: LCSC C25804 is a different part: size 0603, not the 0805 of the footprint",
+        ]
+    );
+}
+
+#[test]
+fn a_capacitor_rated_below_the_mpn_is_an_error() {
+    // CL10B224KB8NNNC is 50 V (Samsung CL family); C21120 is the 25 V CL10B224KA8NNNC.
+    let mut lib = gerberus::limits::Library::builtin().unwrap();
+    let design = Design {
+        components: [passive(
+            "C1",
+            "220nF",
+            "Capacitor_SMD:C_0603_1608Metric",
+            "CL10B224KB8NNNC",
+            "C21120",
+        )]
+        .into_iter()
+        .map(|c| (c.reference.clone(), c))
+        .collect(),
+        ..Default::default()
+    };
+    lib.expand_families(&design);
+    let l = Listing::from_lcsc_json(&json("tests/fixtures/lcsc-raw/C21120.json"))
+        .unwrap()
+        .unwrap();
+    let mut src = Fixed([("C21120".to_string(), Some(l))].into_iter().collect());
+    let r = gerberus::bom::check_with_parts(&design, &mut src, Options::default(), Some(&lib));
+    let f = &r[0].findings[0];
+    assert_eq!(f.severity, Severity::Error);
+    assert_eq!(
+        f.message,
+        "LCSC C21120 is rated below the schematic's part: rated voltage 25V, where the schematic's part has 50V"
+    );
+    // Without the part file only value and size can be compared, which match.
+    let r = check(&design, &mut src, Options::default());
+    assert_eq!(r[0].findings[0].severity, Severity::Warning);
+}
+
+#[test]
+fn out_of_stock_resistors_get_checked_equivalents_basic_first() {
+    let sims = vec![
+        similar("C2", "Other", 9000, "0603"),
+        similar("C3", "Other", 9000, "0603"),
+        similar("C4", "Other", 9000, "0603"),
+    ];
+    let r = jlcpcb(
+        vec![passive("R1", "10k", R0603, "", "C1")],
+        vec![
+            ("C1", Some(resistor("C1", "A", "10kΩ", "0603", 0, true, sims))),
+            // Extended, fits.
+            ("C2", Some(resistor("C2", "B", "10kΩ", "0603", 9000, false, vec![]))),
+            // Basic, fits.
+            ("C3", Some(resistor("C3", "C", "10kΩ", "0603", 9000, true, vec![]))),
+            // Wrong value.
+            ("C4", Some(resistor("C4", "D", "1kΩ", "0603", 9000, true, vec![]))),
+        ],
+    );
+    let stock = r[0].findings.iter().find(|f| f.topic == Topic::Stock).unwrap();
+    let help = stock.help.as_deref().unwrap();
+    assert!(
+        help.contains("C3 UNI-ROYAL C") && help.contains("C2 UNI-ROYAL B"),
+        "{help}"
+    );
+    assert!(
+        help.find("C3 ").unwrap() < help.find("C2 ").unwrap(),
+        "basic first: {help}"
+    );
+    assert!(!help.contains("C4 "), "{help}");
+}
+
+#[test]
+fn for_jlcpcb_a_missing_lcsc_number_is_an_error_with_a_search_link() {
+    let r = jlcpcb(
+        vec![part("J1", "Connector:X", "S2B-XH-A", ""), part("U1", "X:Y", "A", "C9")],
+        vec![(
+            "C9",
+            Some(Listing {
+                assembly: Some("extended".into()),
+                ..listing("C9", "A", "Acme", 900, "normal", vec![])
+            }),
+        )],
+    );
+    let f = &r[0].findings[0];
+    assert_eq!((f.severity, f.topic), (Severity::Error, Topic::Assembly));
+    assert!(
+        f.help
+            .as_deref()
+            .unwrap()
+            .contains("https://www.lcsc.com/search?q=S2B-XH-A")
+    );
+    // The board-wide count of extended parts.
+    let last = r.last().unwrap().findings.last().unwrap();
+    assert!(
+        last.message
+            .starts_with("1 of 2 lines are JLCPCB extended parts (0 basic)"),
+        "{}",
+        last.message
+    );
+    let text = gerberus::bom::render(
+        &r,
+        Options {
+            boards: 10,
+            jlcpcb: true,
+        },
+        "LCSC",
+        &gerberus::diag::Show::everything(),
+    );
+    assert!(
+        text.contains("error[bom-assembly]: J1: no LCSC part number, so JLCPCB can't fit S2B-XH-A"),
+        "{text}"
+    );
+    assert!(
+        text.contains("error: 1 error, 1 warning, 0 unknown, 0 passed"),
+        "{text}"
+    );
 }

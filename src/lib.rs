@@ -19,6 +19,7 @@ pub mod rules;
 pub mod sexpr;
 pub mod si;
 pub mod skill;
+pub mod spec;
 pub mod spice;
 pub mod thermal;
 pub mod update;

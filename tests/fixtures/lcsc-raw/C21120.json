@@ -1,0 +1,80 @@
+{
+ "code": 200,
+ "msg": null,
+ "result": {
+  "productCode": "C21120",
+  "productModel": "CL10B224KA8NNNC",
+  "brandNameEn": "Samsung Electro-Mechanics",
+  "stockNumber": 287750,
+  "productCycle": "normal",
+  "smtLabel": "BASE",
+  "encapStandard": "0603",
+  "productNameEn": "CAP CER 220nF 25V X7R 0603",
+  "paramVOList": [
+   {
+    "paramNameEn": "Capacitance",
+    "paramValueEn": "220nF"
+   },
+   {
+    "paramNameEn": "Temperature Coefficient",
+    "paramValueEn": "X7R"
+   },
+   {
+    "paramNameEn": "Tolerance",
+    "paramValueEn": "±10%"
+   },
+   {
+    "paramNameEn": "Voltage Rating",
+    "paramValueEn": "25V"
+   }
+  ],
+  "alternatePartList": [
+   {
+    "productCode": "C2167342",
+    "productCycle": "normal",
+    "encapStandard": "0603",
+    "productModel": "C0603C224K3RACTU",
+    "brandNameEn": "KEMET",
+    "productIntroEn": "220nF ±10% 25V Ceramic Capacitor X7R 0603",
+    "stockNumber": 20
+   },
+   {
+    "productCode": "C106857",
+    "productCycle": "normal",
+    "encapStandard": "0603",
+    "productModel": "CC0603KRX7R8BB224",
+    "brandNameEn": "YAGEO",
+    "productIntroEn": "220nF ±10% 25V Ceramic Capacitor X7R 0603",
+    "stockNumber": 46600
+   },
+   {
+    "productCode": "C1606",
+    "productCycle": "normal",
+    "encapStandard": "0603",
+    "productModel": "0603B224K250NT",
+    "brandNameEn": "FH",
+    "productIntroEn": "220nF ±10% 25V Ceramic Capacitor X7R 0603",
+    "stockNumber": 41450
+   },
+   {
+    "productCode": "C161217",
+    "productCycle": "normal",
+    "encapStandard": "0603",
+    "productModel": "GCM188R71E224KA55D",
+    "brandNameEn": "muRata",
+    "productIntroEn": "220nF ±10% 25V Ceramic Capacitor X7R 0603",
+    "stockNumber": 3540
+   },
+   {
+    "productCode": "C16194121",
+    "productCycle": "normal",
+    "encapStandard": "0603",
+    "productModel": "CL10B224KA8NFNC",
+    "brandNameEn": "Samsung Electro-Mechanics",
+    "productIntroEn": "220nF X7R ±10% 25V 0603 Ceramic Capacitors RoHS",
+    "stockNumber": 11800
+   }
+  ]
+ },
+ "ok": true
+}
