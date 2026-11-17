@@ -46,7 +46,7 @@ Behaviour Gerberus doesn't model yet:
 - [x] Inputs that bias themselves: a `biases` drive in the part file with the cited bias range, for pins such as the AC-coupled inputs of the TPA3118 and TPA6130A2. The net then gets a voltage the other rules can check, and `floating-input` passes.
 - [ ] MOSFET channels in the voltage engine (`stress` already models them at 0.05 Ω; `check` sees only the body diode). On past the VGS that RDS(on) is given at, off below VGS(th) minimum, and both cases checked in between.
 - [ ] Analog signal paths in SPICE (gain stages, filters), not only power. Moved here from v0.3.
-- [ ] BOM health by manufacturer part number for DigiKey- or Mouser-sourced boards, not only LCSC codes (needs a distributor API key, as v0.2's lifecycle check does).
+- [x] BOM health by manufacturer part number for DigiKey- or Mouser-sourced boards (`bom --from mouser|digikey`, with the user's API key), which also gives the manufacturer's lifecycle; and `bom --csv` writes an order list for their BOM upload tools. Not yet run against the live APIs.
 
 ## v0.5 — Layout
 
