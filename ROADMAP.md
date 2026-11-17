@@ -45,7 +45,7 @@ Behaviour Gerberus doesn't model yet:
 
 - [x] Inputs that bias themselves: a `biases` drive in the part file with the cited bias range, for pins such as the AC-coupled inputs of the TPA3118 and TPA6130A2. The net then gets a voltage the other rules can check, and `floating-input` passes.
 - [x] MOSFET channels in the voltage engine: a part file's `channel` drive makes the part off (gate never past either end), fully on (always past the VGS RDS(on) is given at) or maybe on, and a channel that isn't off pulls each end toward the other, no further than its gate.
-- [ ] Analog signal paths in SPICE (gain stages, filters), not only power. Moved here from v0.3.
+- [x] Analog signal paths in SPICE (gain stages, filters), not only power: `gerberus signal` runs each `[[signal]]` from `inputs.toml` through the board with every rail at its lowest and its highest, and checks op-amp outputs against their rails less the datasheet's output swing (`clipping`) and every pin limit a signal reaches (`signal-level`).
 - [x] BOM health by manufacturer part number for DigiKey- or Mouser-sourced boards (`bom --from mouser|digikey`, with the user's API key), which also gives the manufacturer's lifecycle; and `bom --csv` writes an order list for their BOM upload tools. Not yet run against the live APIs.
 - [x] JLCPCB assembly check (`bom --jlcpcb`): every part needs an LCSC number; resistors and capacitors are checked against LCSC's parameters (value, size, tolerance, voltage, power, dielectric) rather than by part number, with checked LCSC equivalents offered for short or under-rated ones; extended parts counted. LCSC's keyword search is blocked from the cloud, so parts without a number get a search link, not a pick.
 

@@ -59,3 +59,13 @@ to = "V–"
 typ = 4
 page = 10
 note = "CIC common-mode input capacitance (typical only); CID differential is 2 pF"
+
+# The output gets within 20 mV of either rail at most with a 10 kΩ load to mid-supply, at VS = 5.5 V and
+# TA = 25 °C (no figure is given at other supplies). A 2 kΩ load gives 60 mV.
+[[opamp]]
+plus = "+IN"
+minus = "–IN"
+out = "OUT"
+vpos = "V+"
+vneg = "V–"
+swing = { value = 0.02, page = 10, note = "VO voltage output swing from supply rails, VS = 5.5 V, RL = 10 kΩ, MAX" }

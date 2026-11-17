@@ -13,6 +13,7 @@ Using it:
 - [Voltage checks](voltage-checks.md): `voltages` and `check`, every rule, fault cases, reverse polarity and ESD.
 - [Junction temperature and derating](thermal.md): `loads`, junction temperature, forward current.
 - [Hot-plug stress](stress.md): `stress`, the SPICE simulation and what it models.
+- [Signal levels](signal.md): `signal`, op-amp clipping and the levels signals put on IC pins, in SPICE.
 - [Pinout check](pinout.md): `pinout`.
 - [BOM health](bom.md): `bom`, stock, lifecycle and second sources at LCSC, Mouser or DigiKey, and an order CSV.
 - [USB signal integrity](usb-si.md): `si`, impedance, skew, stubs and the eye diagram.

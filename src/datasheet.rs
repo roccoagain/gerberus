@@ -329,6 +329,21 @@ pub fn claims(part: &Part) -> Vec<Claim> {
             &mut out,
         );
     }
+    for (i, a) in part.opamps.iter().enumerate() {
+        if let Some(s) = &a.swing {
+            out.push(Claim {
+                label: format!("opamp {} ({}) output swing from rail", i + 1, a.out),
+                value: Claimed::Number(s.value),
+                role: Role::Max,
+                unit: Unit::Volt,
+                page: s.page,
+                context: named(&[a.out.as_str()]),
+                derived: None,
+                other_end: None,
+                avoid: vec![],
+            });
+        }
+    }
     for (i, d) in part.drives.iter().enumerate() {
         let kind = match d.kind {
             DriveKind::Regulates => "regulates",
@@ -1537,8 +1552,9 @@ pub fn render(mpn: &str, outcomes: &[Outcome], all: bool) -> String {
 }
 
 /// The keys of a part file whose values a second reader fills in.
-const VALUE_KEYS: [&str; 20] = [
+const VALUE_KEYS: [&str; 21] = [
     "on",
+    "swing",
     "efficiency",
     "theta_ja",
     "tj_max",
@@ -1812,6 +1828,25 @@ pub fn compare(first: &Part, second: &Part) -> Vec<Difference> {
             at: "drives".into(),
             first: format!("{} drives", first.drives.len()),
             second: format!("{} drives", second.drives.len()),
+        });
+    }
+    let swings = |p: &Part| -> Vec<String> {
+        p.opamps
+            .iter()
+            .map(|a| {
+                let s = a
+                    .swing
+                    .as_ref()
+                    .map_or("none".into(), |s| format!("{} V (page {})", s.value, s.page));
+                format!("{} {} {} {} {}: swing {s}", a.plus, a.minus, a.out, a.vpos, a.vneg)
+            })
+            .collect()
+    };
+    if swings(first) != swings(second) {
+        out.push(Difference {
+            at: "opamps".into(),
+            first: swings(first).join("; "),
+            second: swings(second).join("; "),
         });
     }
     let esd = |p: &Part| -> Vec<String> {
