@@ -215,3 +215,55 @@ fn waiving_a_fault_cases_failures_waives_its_summary() {
     assert!(!waived.findings.contains(&summary), "{toml_text}");
     assert!(waived.waived.iter().any(|w| w.finding == summary));
 }
+
+/// A waiver an agent proposed doesn't apply until a person deletes its `proposed` line: the finding still
+/// counts, with a note that names who proposed it and why.
+#[test]
+fn a_proposed_waiver_waits_for_a_person() {
+    let dir = root("tests/fixtures/kitchen-sink");
+    let design = kicad::load(&dir.join("kitchen-sink.kicad_sch")).unwrap();
+    let inputs = BoardInputs::load(&dir.join("inputs.toml")).unwrap();
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&design, &lib, &inputs);
+    let report = check(&design, &lib, &Policy::builtin().unwrap(), &inputs, &v);
+    let target = report
+        .findings
+        .iter()
+        .find(|f| f.verdict != Verdict::Pass && f.case.is_none())
+        .unwrap()
+        .clone();
+    let text = |proposed: &str| {
+        format!(
+            "[[waiver]]\nrule = {:?}\nreference = {:?}\nreason = \"only on the bench\"\n{proposed}",
+            target.rule, target.reference
+        )
+    };
+    let pending: Waivers = toml::from_str(&text("proposed = \"Claude, 2026-11-17\"\n")).unwrap();
+    assert!(pending.problems(&design).is_empty());
+    let mut r = report.clone();
+    pending.apply(&mut r, "waivers.toml");
+    assert!(r.waived.is_empty());
+    assert_eq!(
+        (r.errors(), r.warnings(), r.unknowns()),
+        (report.errors(), report.warnings(), report.unknowns())
+    );
+    let still = r
+        .findings
+        .iter()
+        .find(|f| f.rule == target.rule && f.reference == target.reference && f.verdict == target.verdict)
+        .unwrap();
+    assert!(
+        still
+            .message
+            .contains("a waiver proposed by Claude, 2026-11-17 in waivers.toml is waiting for a person"),
+        "{}",
+        still.message
+    );
+    // Approved: the line is gone, and the finding leaves the counts.
+    let approved: Waivers = toml::from_str(&text("by = \"Rocco\"\n")).unwrap();
+    let mut r = report.clone();
+    approved.apply(&mut r, "waivers.toml");
+    assert!(!r.waived.is_empty());
+    let empty: Waivers = toml::from_str(&text("proposed = \" \"\n")).unwrap();
+    assert!(!empty.problems(&design).is_empty());
+}

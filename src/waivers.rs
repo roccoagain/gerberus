@@ -3,8 +3,10 @@
 //! A waiver names a rule and a part, and optionally text the finding's message contains and a fault case. Every
 //! FAIL or UNKNOWN finding it matches moves out of the report's findings into its `waived` list, so it isn't
 //! counted and doesn't fail `check`; `--all` and `--json` still show it with the reason. A waiver that matches
-//! nothing is a warning, so a waiver can't outlive the finding it was written for unnoticed.
+//! nothing is a warning, so a waiver can't outlive the finding it was written for unnoticed. A waiver with
+//! `proposed` (written by an agent) waits for a person to approve it: the findings it matches still count.
 
+use std::fmt::Write as _;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -35,6 +37,10 @@ pub struct Waiver {
     pub reason: String,
     /// Who accepted it, and when, for the record.
     pub by: Option<String>,
+    /// Who proposed it, when it isn't accepted yet: an agent writes its waivers with this, and they don't apply
+    /// until a person reads the reason and deletes the line. Until then each finding it matches still counts,
+    /// with a note that the waiver is waiting.
+    pub proposed: Option<String>,
 }
 
 /// A finding a waiver accepted, and why.
@@ -63,6 +69,11 @@ impl Waivers {
             if w.reason.trim().is_empty() {
                 out.push(format!("{at}: give the reason it is acceptable"));
             }
+            if w.proposed.as_deref().is_some_and(|c| c.trim().is_empty()) {
+                out.push(format!(
+                    "{at}: `proposed` is empty; say who proposed it, or delete the line to approve it"
+                ));
+            }
             if w.contains.as_deref().is_some_and(|c| c.trim().is_empty()) {
                 out.push(format!(
                     "{at}: `contains` is empty; leave it out to match every finding"
@@ -78,8 +89,9 @@ impl Waivers {
         let mut used = vec![false; self.waiver.len()];
         report.waivers_file = file.to_string();
         let findings = std::mem::take(&mut report.findings);
-        for f in findings {
-            // Every waiver that matches counts as used; the first one's reason is kept.
+        for mut f in findings {
+            // Every waiver that matches counts as used; the first approved one's reason is kept. A proposed one
+            // only adds a note.
             let hits: Vec<usize> = if f.verdict == Verdict::Pass {
                 vec![]
             } else {
@@ -88,7 +100,17 @@ impl Waivers {
             for &i in &hits {
                 used[i] = true;
             }
-            match hits.first() {
+            for &i in hits.iter().filter(|&&i| self.waiver[i].proposed.is_some()) {
+                let w = &self.waiver[i];
+                let _ = write!(
+                    f.message,
+                    "; a waiver proposed by {} in {file} is waiting for a person to approve it (delete its \
+                     `proposed` line): {}",
+                    w.proposed.as_deref().unwrap_or_default(),
+                    w.reason
+                );
+            }
+            match hits.iter().find(|&&i| self.waiver[i].proposed.is_none()) {
                 Some(&i) => {
                     let w = &self.waiver[i];
                     report.waived.push(Waived {

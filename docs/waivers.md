@@ -31,4 +31,21 @@ A waiver can't hide something by accident:
   for has gone or changed, so remove the waiver or fix it to match what the report says now.
 - A PASS is never waived, so a waiver can't turn a check off.
 
+## Waivers an agent proposes
+
+An agent doesn't get to accept a finding. It writes the waiver with a `proposed` line instead:
+
+```toml
+[[waiver]]
+rule = "esd"
+reference = "J5"
+reason = "the SWD header is only connected on the bench, by the designer"
+proposed = "Claude, 2026-11-17"
+```
+
+A proposed waiver doesn't apply. The findings it matches still count, and each one's message ends with the
+waiver's reason and who proposed it, so the person reading the report sees what is waiting for them. To approve
+it, a person deletes the `proposed` line and adds `by`. The check-board skill (`gerberus skill install`) tells
+agents to work this way.
+
 `--waivers FILE` reads another file instead, for `check` and `doctor`.
