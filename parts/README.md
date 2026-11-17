@@ -220,6 +220,11 @@ that may reach an IC) treat it as missing. `gerberus doctor` lists it as a file 
 datasheet verify` fails on it until no value says "not read from the datasheet yet". The pin names come from the
 symbol, so check them against the datasheet's pin table yourself.
 
+Keep the PDFs in a `datasheets/` folder beside `parts/`, each named `<MPN>.pdf` (the part file's name, with
+`.pdf`). `gerberus datasheet verify` reads a PDF saved there before it downloads the `url`, so a part whose
+maker's site blocks downloads, or whose datasheet came by email, still verifies; `doctor` names the file to save
+for each part it lists.
+
 Name the part by reference or part number. `--stdout` prints the file instead, and `--parts DIR` adds folders to
 look in. It won't replace a file, or write one for a part a built-in file, a part family or the symbol's own
 rating (a capacitor's `Voltage` field) already covers, unless `--force`. It never writes a second file for a part

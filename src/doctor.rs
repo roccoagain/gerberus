@@ -254,7 +254,10 @@ pub fn diagnose(
                     pins: vec![],
                     datasheet: datasheet.clone().filter(|u| !u.is_empty()),
                     file: file.clone(),
-                    notes: vec![format!("it still has values marked \"{}\"", crate::part_new::NOT_READ)],
+                    notes: vec![
+                        format!("it still has values marked \"{}\"", crate::part_new::NOT_READ),
+                        saved_note(setup, m),
+                    ],
                     help: format!(
                         "read them from the datasheet{}, then run `gerberus datasheet verify {file}`",
                         datasheet
@@ -423,6 +426,18 @@ pub fn diagnose(
     }
 }
 
+/// Where the part's datasheet is saved in the board's `datasheets/` folder, or the name to save it under.
+fn saved_note(setup: &Setup, mpn: &str) -> String {
+    let dir = crate::datasheet::folder_beside(&setup.parts);
+    match crate::datasheet::saved_in(&dir, mpn) {
+        Some(p) => format!("datasheet saved: {}", p.display()),
+        None => format!(
+            "save the PDF as {}: `datasheet verify` reads it from there, and an agent reads it to fill the file in",
+            dir.join(crate::datasheet::saved_name(mpn)).display()
+        ),
+    }
+}
+
 fn part_item(design: &Design, lib: &Library, setup: &Setup, m: &str, refs: Vec<String>, found: usize) -> Item {
     let c = &design.components[&refs[0]];
     let datasheet = refs
@@ -436,6 +451,7 @@ fn part_item(design: &Design, lib: &Library, setup: &Setup, m: &str, refs: Vec<S
         Some(url) => notes.push(format!("datasheet: {url}")),
         None => notes.push("the symbol has no datasheet link: find the PDF by the part number".into()),
     }
+    notes.push(saved_note(setup, m));
     if let Some(e) = lib.family_errors.get(m) {
         notes.push(format!("a built-in part family matches {m:?} but can't rate it: {e}"));
     }

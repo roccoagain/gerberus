@@ -12,8 +12,11 @@ first. On the capstone audio board rev 2 it starts:
 todo[part-file]: write a part file for PESD5V0S1BAF: 20 unknown results wait on it
   --> D1, D2, D3, D4, D5
    = note: datasheet: https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf
-   = help: write audio-board-rev2/parts/PESD5V0S1BAF.toml from the datasheet: parts/README.md says how, and an
-           agent can do it with the datasheet-to-part skill
+   = note: save the PDF as audio-board-rev2/datasheets/PESD5V0S1BAF.pdf: `datasheet verify` reads it from there,
+           and an agent reads it to fill the file in
+   = help: start audio-board-rev2/parts/PESD5V0S1BAF.toml with `gerberus part new audio-board-rev2/board.kicad_sch
+           D1`, then fill it in from the datasheet: parts/README.md says how, and an agent can do it with the
+           datasheet-to-part skill
 
 todo[part-file]: write a part file for MAX9722AEUE+: 17 unknown results wait on it
   --> U2
@@ -41,7 +44,7 @@ What it lists:
 | --- | --- | --- |
 | `guess` | Entries `gerberus init` guessed, listed first whatever they settle: every result that rests on one is only as good as the guess. | `inputs.toml` |
 | `inputs` | What plugs into each connector pin: an `[[input]]` with its voltage range, or `[[undriven]]` if nothing outside drives it. With no `inputs.toml` at all, one item for the whole file, always listed. | `inputs.toml` next to the schematic ([inputs](../parts/README.md#board-inputs), [undriven](../parts/README.md#net-voltages)) |
-| `part-file` | A part file for a part number that has none, started with `gerberus part new`. The symbol's `Datasheet` link is shown when it has one. Part numbers that share a datasheet are pointed at [part families](../parts/README.md#part-families). | `parts/<MPN>.toml` next to the schematic ([format](../parts/README.md)) |
+| `part-file` | A part file for a part number that has none, started with `gerberus part new`. The symbol's `Datasheet` link is shown when it has one, and the name to save the PDF under in `datasheets/` beside `parts/` (or where it is saved, once it is). Part numbers that share a datasheet are pointed at [part families](../parts/README.md#part-families). | `parts/<MPN>.toml` next to the schematic ([format](../parts/README.md)) |
 | `fill-in` | Values a part file started with `gerberus part new` still marks "not read from the datasheet yet". | that part file |
 | `pin-limits` | A voltage limit for pins a part file doesn't cover. | the part file, or a copy of a built-in one made with `gerberus part show` |
 | `drive` | A `[[drive]]` saying what a power output gives. For a module that isn't fitted (plugged in by hand), an `[[input]]` for the net it supplies. | the part file, or a copy of a built-in one ([What a part drives](../parts/README.md#what-a-part-drives)) |

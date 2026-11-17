@@ -1915,6 +1915,49 @@ pub fn lcsc_pdf_link(html: &str) -> Option<String> {
     None
 }
 
+/// The folder a board keeps its datasheet PDFs in, beside its `parts/` folder. `datasheet verify` reads a part's
+/// PDF from there before it downloads anything, and `doctor` says what name to save each one under.
+pub const FOLDER: &str = "datasheets";
+
+/// The name a part's datasheet is saved under: the part number, as its part file is named, with `.pdf`.
+pub fn saved_name(mpn: &str) -> String {
+    let toml = crate::doctor::file_name(mpn);
+    format!("{}.pdf", toml.strip_suffix(".toml").unwrap_or(&toml))
+}
+
+/// The datasheet saved for `mpn` in `dir`, matched by [`saved_name`] in any letter case.
+pub fn saved_in(dir: &Path, mpn: &str) -> Option<PathBuf> {
+    let want = saved_name(mpn);
+    std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| {
+            p.is_file()
+                && p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.eq_ignore_ascii_case(&want))
+        })
+}
+
+/// The folder datasheets go in for a board whose part files are in `parts`: `datasheets/` beside it.
+pub fn folder_beside(parts: &Path) -> PathBuf {
+    match parts.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.join(FOLDER),
+        _ => PathBuf::from(FOLDER),
+    }
+}
+
+/// The datasheet saved for the part file at `part_file`: in `datasheets/` beside the folder it is in, or in a
+/// `datasheets/` inside that folder.
+pub fn saved_for(part_file: &Path, mpn: &str) -> Option<PathBuf> {
+    let dir = match part_file.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+        _ => PathBuf::from("."),
+    };
+    saved_in(&folder_beside(&dir), mpn).or_else(|| saved_in(&dir.join(FOLDER), mpn))
+}
+
 /// Downloads a datasheet into `cache` (or returns the copy already there) and gives its path.
 pub fn fetch(url: &str, cache: &Path) -> Result<PathBuf, String> {
     let path = cache.join(cache_name(url));
