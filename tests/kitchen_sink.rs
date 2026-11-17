@@ -306,8 +306,13 @@ fn bom_finds_the_wrong_lcsc_number_and_empty_stock() {
     assert_eq!(
         errors,
         [
+            // C4 and R4-R6 are JLCPCB basic parts LCSC's retail stock had run out of on 2026-11-17.
+            ("C4".to_string(), Topic::Stock),
             ("C7".to_string(), Topic::Identity),
             ("D11".to_string(), Topic::Stock),
+            ("R4".to_string(), Topic::Stock),
+            ("R5".to_string(), Topic::Stock),
+            ("R6".to_string(), Topic::Stock),
             ("U4".to_string(), Topic::Stock),
         ]
     );
