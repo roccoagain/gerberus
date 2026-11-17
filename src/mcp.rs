@@ -88,6 +88,14 @@ const TOOLS: &[Tool] = &[
         design: true,
     },
     Tool {
+        name: "bringup",
+        description: "A first-power checklist: which supply to connect first, the current limit to set, and the \
+                      voltage to expect on each rail and where to probe it.",
+        args: &[],
+        command: &["bringup"],
+        design: true,
+    },
+    Tool {
         name: "parts",
         description: "Where each part's limits come from: a datasheet part file, a class default, or nothing.",
         args: &[],

@@ -15,6 +15,7 @@ command line would:
 | `voltages` | `gerberus voltages`, with `explain` (net names) and `fault` |
 | `signal` | `gerberus signal`, with `show` |
 | `loads` | `gerberus loads` |
+| `bringup` | `gerberus bringup` |
 | `parts` | `gerberus parts` |
 | `netlist` | `gerberus netlist` |
 | `traces` | `gerberus traces`, with `show` |
