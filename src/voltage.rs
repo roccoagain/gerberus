@@ -598,7 +598,8 @@ fn is_undriven(inputs: &BoardInputs, r: &str, p: &str) -> bool {
     inputs.undriven.iter().any(|u| u.pin.reference == r && u.pin.pin == p)
 }
 
-fn is_connector(lib: &Library, c: &Component) -> bool {
+/// A connector, by its symbol (`Connector…`) or its part file's class.
+pub fn is_connector(lib: &Library, c: &Component) -> bool {
     c.lib_id.starts_with("Connector") || class_of(lib, c) == Some(Class::Connector)
 }
 

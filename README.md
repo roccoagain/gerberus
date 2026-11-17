@@ -64,9 +64,9 @@ are its supply connected backwards, which damages the regulator; its warnings ar
 
 On your own board, point it at the root schematic (`.kicad_sch`) or the Altium project (`.PrjPcb`). `check` runs
 straight away, but without knowing what plugs into the board it can only take the net named GND as 0 V, so most
-nets come out unknown. Add an `inputs.toml` next to the schematic that says what voltages arrive on each connector
-pin (for example, 3.6 to 5.5 V on J1 pin 1); copy the one in `tests/fixtures/sniffer` as a start, and see [the
-format](parts/README.md#board-inputs).
+nets come out unknown. Run `gerberus init` on the schematic to start an `inputs.toml` that says what voltages
+arrive on each connector pin (for example, 3.6 to 5.5 V on J1 pin 1). It guesses what it can from net names and
+marks each guess for you to check; see [the format](parts/README.md#board-inputs).
 
 To see what to add first, run `gerberus doctor` on the schematic. It lists every part with no part file, every
 connector pin nothing describes, and every gap in a part file, ranked by how many unknown results each one

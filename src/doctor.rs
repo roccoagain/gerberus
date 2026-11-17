@@ -60,6 +60,8 @@ pub struct Doctor {
     pub unknown: usize,
     /// UNKNOWN findings some item waits on.
     pub settled: usize,
+    /// Pins whose inputs.toml entry is still a guess from `gerberus init`.
+    pub guesses: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -76,7 +78,14 @@ enum Key {
     Fill(String),
 }
 
-pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, volts: &Voltages) -> Doctor {
+pub fn diagnose(
+    design: &Design,
+    lib: &Library,
+    setup: &Setup,
+    inputs: &crate::inputs::BoardInputs,
+    report: &Report,
+    volts: &Voltages,
+) -> Doctor {
     let cov = coverage(design, lib);
     let unchecked = |r: &str| matches!(cov.get(r), Some(Coverage::Unchecked { .. }));
     let mpn = |r: &str| component_mpn(&design.components[r]).to_string();
@@ -377,10 +386,40 @@ pub fn diagnose(design: &Design, lib: &Library, setup: &Setup, report: &Report, 
         }
     }
     items.sort_by(|a, b| b.unknown.cmp(&a.unknown).then_with(|| a.title.cmp(&b.title)));
+    // Guesses come first whatever they settle: every result that rests on one is only as good as the guess.
+    let guesses = crate::init::guesses(inputs);
+    if !guesses.is_empty() {
+        items.insert(
+            0,
+            Item {
+                rule: "guess",
+                title: format!(
+                    "confirm the {} {} `gerberus init` made in {}: results that rest on them are only as good as \
+                     the guesses",
+                    guesses.len(),
+                    if guesses.len() == 1 { "guess" } else { "guesses" },
+                    setup.inputs.display()
+                ),
+                unknown: 0,
+                references: vec![],
+                mpn: None,
+                pins: guesses.clone(),
+                datasheet: None,
+                file: setup.inputs.display().to_string(),
+                notes: vec![format!("guessed: {}", list(&guesses, "and"))],
+                help: format!(
+                    "check each against what really plugs in, and replace its source (which starts \"{}\") with \
+                     where the range comes from",
+                    crate::init::GUESS
+                ),
+            },
+        );
+    }
     Doctor {
         items,
         unknown,
         settled,
+        guesses,
     }
 }
 
