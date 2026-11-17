@@ -1,0 +1,401 @@
+# Every UNI-ROYAL (UniOhm) thick-film chip resistor, from its 14-code part number: 0402WGF1001TCE is size 0402,
+# power WG (1/16 W), tolerance F (±1 %), value 1001 (100 x 10^1 = 1 kohm), packing T (tape), quantity C (10000),
+# then E (lead-free). The JLCPCB basic resistors are almost all from this series. A 01005 is size code 0105, as
+# the ordering example on page 2 gives it.
+family = "UNI-ROYAL thick film"
+manufacturer = "UNI-ROYAL (Uniroyal Electronics)"
+description = "thick-film chip resistor"
+class = "resistor"
+mpn = "{size}{power}{tolerance}{value}{packing}{quantity}E"
+rcwv_page = 5
+
+[datasheet]
+title = "Thick Film Chip Resistors, 01005/0201/0402/0603/0805/1206/1210/1812/2010/2512 Series"
+document = "V.3, February 12, 2019"
+url = "https://datasheet.lcsc.com/datasheet/pdf/0a975aaa49b7c97f38a963127be4a823.pdf"
+
+[field.size]
+page = 2
+codes = ["0105", "0201", "0402", "0603", "0805", "1206", "1210", "1812", "2010", "2512"]
+
+# 2.2: W then the wattage code. Which size takes which code is the power rating column on page 4.
+[field.power]
+page = 2
+codes = ["WH", "WM", "WG", "WA", "W8", "W4", "W3", "W2", "07", "1W"]
+
+[field.tolerance]
+page = 2
+codes = { D = 0.005, F = 0.01, G = 0.02, J = 0.05 }
+
+# 2.4: three significant figures and a power of ten (J, K, L for 10^-1 to 10^-3); a ±5 % value starts with 0.
+[field.value]
+page = 2
+kind = "resistance-digits"
+
+[field.packing]
+page = 2
+codes = ["C", "T"]
+
+# 2.5.2 lists 4, 5, C, D and E; the ordering example on the same page adds 1, 2 and 3.
+[field.quantity]
+page = 2
+codes = ["1", "2", "3", "4", "5", "C", "D", "E"]
+
+# Section 6, page 4: power rating at 70 °C, by size (and for 0805 and 1206, by resistance).
+
+[[rating]]
+when = { size = ["0105"], power = ["WH"] }
+power = 0.03125
+page = 4
+note = "01005, 1/32 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0201"], power = ["WM"] }
+power = 0.05
+page = 4
+note = "0201, 1/20 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0402"], power = ["WG"] }
+power = 0.0625
+page = 4
+note = "0402, 1/16 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0603"], power = ["WA"] }
+power = 0.1
+page = 4
+note = "0603, 1/10 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0805"], power = ["W8"] }
+power = 0.125
+page = 4
+note = "0805, 1/8 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["0805"], power = ["W4"] }
+power = 0.25
+page = 4
+note = "0805, 1/4 W, below 0.1 ohm at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["1206"], power = ["W4"] }
+power = 0.25
+page = 4
+note = "1206, 1/4 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["1206"], power = ["W3"] }
+power = 0.333333
+page = 4
+note = "1206, 1/3 W, below 0.1 ohm at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["1210"], power = ["W2"] }
+power = 0.5
+page = 4
+note = "1210, 1/2 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["1812"], power = ["07"] }
+power = 0.75
+page = 4
+note = "1812, 3/4 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["2010"], power = ["07"] }
+power = 0.75
+page = 4
+note = "2010, 3/4 W at 70 °C, derated above"
+
+[[rating]]
+when = { size = ["2512"], power = ["1W"] }
+power = 1.0
+page = 4
+note = "2512, 1 W at 70 °C, derated above"
+
+# Section 7, page 5: maximum working voltage and operating temperature, by size.
+
+[[rating]]
+when = { size = ["0105"] }
+max_working_voltage = 15
+temperature = { min = -55, max = 125 }
+page = 5
+
+[[rating]]
+when = { size = ["0201"] }
+max_working_voltage = 25
+temperature = { min = -55, max = 155 }
+page = 5
+
+[[rating]]
+when = { size = ["0402"] }
+max_working_voltage = 50
+temperature = { min = -55, max = 155 }
+page = 5
+
+[[rating]]
+when = { size = ["0603"] }
+max_working_voltage = 75
+temperature = { min = -55, max = 155 }
+page = 5
+
+[[rating]]
+when = { size = ["0805"] }
+max_working_voltage = 150
+temperature = { min = -55, max = 155 }
+page = 5
+
+[[rating]]
+when = { size = ["1206"] }
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 5
+
+[[rating]]
+when = { size = ["1210"] }
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 5
+
+[[rating]]
+when = { size = ["1812"] }
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 5
+
+[[rating]]
+when = { size = ["2010"] }
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 5
+
+[[rating]]
+when = { size = ["2512"] }
+max_working_voltage = 200
+temperature = { min = -55, max = 155 }
+page = 5
+
+# Section 11, page 6: temperature coefficient by size and resistance.
+
+[[tcr]]
+when = { size = ["0105"] }
+ohms = { min = 1, below = 10 }
+ppm = 600
+page = 6
+note = "01005, 1 to below 10 ohm: -200 to +600 ppm/°C"
+
+[[tcr]]
+when = { size = ["0105"] }
+ohms = { min = 10, below = 100 }
+ppm = 300
+page = 6
+note = "01005, 10 to below 100 ohm"
+
+[[tcr]]
+when = { size = ["0105"] }
+ohms = { min = 100, max = 10e6 }
+ppm = 200
+page = 6
+note = "01005, 100 ohm to 10 Mohm"
+
+[[tcr]]
+when = { size = ["0201"] }
+ohms = { min = 1, max = 10 }
+ppm = 350
+page = 6
+note = "0201, 1 to 10 ohm: -100 to +350 ppm/°C"
+
+[[tcr]]
+when = { size = ["0201"] }
+ohms = { above = 10 }
+ppm = 200
+page = 6
+note = "0201, above 10 ohm"
+
+[[tcr]]
+when = { size = ["0402"] }
+ohms = { min = 1, max = 10 }
+ppm = 200
+page = 6
+note = "0402, 1 to 10 ohm"
+
+[[tcr]]
+when = { size = ["0402"] }
+ohms = { above = 10 }
+ppm = 100
+page = 6
+note = "0402, above 10 ohm"
+
+[[tcr]]
+when = { size = ["0603"] }
+ohms = { min = 0.01, max = 0.03 }
+ppm = 1500
+page = 6
+note = "0603, 0.01 to 0.03 ohm"
+
+[[tcr]]
+when = { size = ["0603"] }
+ohms = { above = 0.03, max = 0.05 }
+ppm = 1000
+page = 6
+note = "0603, above 0.03 to 0.05 ohm"
+
+[[tcr]]
+when = { size = ["0603"] }
+ohms = { above = 0.05, below = 1 }
+ppm = 800
+page = 6
+note = "0603, above 0.05 to below 1 ohm"
+
+[[tcr]]
+when = { size = ["0603"] }
+ohms = { min = 1, max = 10 }
+ppm = 200
+page = 6
+note = "0603, 1 to 10 ohm"
+
+[[tcr]]
+when = { size = ["0603"] }
+ohms = { above = 10 }
+ppm = 100
+page = 6
+note = "0603, above 10 ohm"
+
+[[tcr]]
+when = { size = ["0805", "1206", "1210", "1812", "2010", "2512"] }
+ohms = { min = 0.01, max = 0.015 }
+ppm = 1500
+page = 6
+note = "0805 to 2512, 0.01 to 0.015 ohm"
+
+[[tcr]]
+when = { size = ["0805", "1206", "1210", "1812", "2010", "2512"] }
+ohms = { above = 0.015, max = 0.03 }
+ppm = 1000
+page = 6
+note = "0805 to 2512, above 0.015 to 0.03 ohm"
+
+[[tcr]]
+when = { size = ["0805", "1206", "1210", "1812", "2010", "2512"] }
+ohms = { above = 0.03, below = 1 }
+ppm = 800
+page = 6
+note = "0805 to 2512, above 0.03 to below 1 ohm"
+
+[[tcr]]
+when = { size = ["0805", "1206", "1210", "1812", "2010", "2512"] }
+ohms = { min = 1, max = 10 }
+ppm = 200
+page = 6
+note = "0805 to 2512, 1 to 10 ohm"
+
+[[tcr]]
+when = { size = ["0805", "1206", "1210", "1812", "2010", "2512"] }
+ohms = { above = 10 }
+ppm = 100
+page = 6
+note = "0805 to 2512, above 10 ohm"
+
+# Section 6, page 4: the values made, by size, power code and tolerance.
+
+[[range]]
+when = { size = ["0105"], tolerance = ["F", "G"] }
+ohms = { min = 10, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["0105"], tolerance = ["J"] }
+ohms = { min = 1, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["0201"], tolerance = ["F", "G", "J"] }
+ohms = { min = 1, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["0402"], tolerance = ["D", "F", "G", "J"] }
+ohms = { min = 1, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["0603"], tolerance = ["D"] }
+ohms = { min = 1, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["0603"], tolerance = ["F", "G", "J"] }
+ohms = { min = 0.01, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["0805"], power = ["W8"], tolerance = ["D"] }
+ohms = { min = 1, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["0805"], power = ["W8"], tolerance = ["F", "G", "J"] }
+ohms = { min = 0.1, below = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["0805"], power = ["W4"], tolerance = ["F", "G", "J"] }
+ohms = { min = 0.01, below = 0.1 }
+page = 4
+
+[[range]]
+when = { size = ["1206"], power = ["W4"], tolerance = ["D"] }
+ohms = { min = 1, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["1206"], power = ["W4"], tolerance = ["F", "G", "J"] }
+ohms = { min = 0.1, below = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["1206"], power = ["W3"], tolerance = ["F", "G", "J"] }
+ohms = { min = 0.01, below = 0.1 }
+page = 4
+
+[[range]]
+when = { size = ["1210"], tolerance = ["D"] }
+ohms = { min = 1, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["1210"], tolerance = ["F", "G", "J"] }
+ohms = { min = 0.01, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["1812"], tolerance = ["D"] }
+ohms = { min = 1, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["1812"], tolerance = ["F", "G", "J"] }
+ohms = { min = 0.01, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["2010"], tolerance = ["D"] }
+ohms = { min = 1, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["2010"], tolerance = ["F", "G", "J"] }
+ohms = { min = 0.01, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["2512"], tolerance = ["D"] }
+ohms = { min = 1, max = 10e6 }
+page = 4
+
+[[range]]
+when = { size = ["2512"], tolerance = ["F", "G", "J"] }
+ohms = { min = 0.01, max = 10e6 }
+page = 4
