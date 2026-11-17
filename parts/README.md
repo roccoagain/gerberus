@@ -321,7 +321,9 @@ board's own family); of two families, the one in the later folder wins. `gerberu
 as `check` on what it prints. `cargo test` checks that every hand-written
 file a family also decodes agrees with it. The built-in families are Yageo RC_L resistors (`yageo-rc.toml`),
 UNI-ROYAL thick-film resistors (`uniroyal-thick-film.toml`, such as 0402WGF1001TCE, most of the JLCPCB basic
-resistors) and Samsung CL capacitors (`samsung-cl.toml`).
+resistors), Samsung CL capacitors (`samsung-cl.toml`), Yageo CC X7R capacitors (`yageo-cc-x7r.toml`) and
+Fenghua general MLCCs up to 50 V (`fenghua-general.toml`, such as 0603B104K500NT). The capacitor families rate a
+part by its voltage code; they don't check that the datasheet's capacitance tables list that value.
 
 ### Derating policy
 

@@ -1,0 +1,118 @@
+# Every Fenghua (FH) general-type chip capacitor up to 50 V, from its part number: 0402CG101J500NT is size 0402,
+# dielectric CG (C0G), 101 (100 pF), tolerance J (±5 %), voltage 500 (50 V), N (nickel-barrier termination),
+# T (7 inch reel). Many of the JLCPCB basic capacitors are from this series. The datasheet's capacitance tables
+# (which value comes in which size and voltage) aren't checked: a part number it decodes is rated by its voltage
+# code.
+family = "Fenghua general MLCC"
+manufacturer = "Fenghua (FH)"
+description = "general-type MLCC"
+class = "capacitor"
+mpn = "{size}{dielectric}{value}{tolerance}{voltage}N{packing}"
+
+[datasheet]
+title = "General Series Multi-layer Ceramic Capacitors, 1005 to 1812 type"
+document = "revision A0005 (revision history, page 30)"
+url = "https://datasheet.lcsc.com/datasheet/pdf/09fe2daf22580a99fa7fea93ccb20fb7.pdf"
+
+# How To Order, page 4. 1005 is the 01005 size.
+[field.size]
+page = 4
+codes = ["1005", "0201", "0402", "0603", "0805", "1206", "1210", "1808", "1812"]
+
+[field.dielectric]
+page = 4
+codes = ["CG", "X", "B", "BS", "BT", "DS", "DT"]
+
+[field.value]
+page = 4
+kind = "capacitance-pf"
+
+# A, B, C and D are picofarads, for 10 pF and below, so they give no fraction.
+[field.tolerance]
+page = 4
+codes = ["A", "B", "C", "D", "F", "G", "J", "K", "M"]
+values = { F = 0.01, G = 0.02, J = 0.05, K = 0.1, M = 0.2 }
+
+# Two significant digits and a number of zeros, R for the decimal point: 500 = 50 V. Only the voltages the
+# capacitance tables (pages 6 to 15, up to 50 V) give are listed.
+[field.voltage]
+page = 4
+codes = ["6R3", "100", "160", "250", "500"]
+
+[field.packing]
+page = 4
+codes = ["T", "D"]
+
+[[rating]]
+when = { voltage = ["6R3"] }
+voltage = 6.3
+page = 4
+note = "rated voltage code 6R3 = 6.3 V"
+
+[[rating]]
+when = { voltage = ["100"] }
+voltage = 10
+page = 4
+note = "rated voltage code 100 = 10 V"
+
+[[rating]]
+when = { voltage = ["160"] }
+voltage = 16
+page = 4
+note = "rated voltage code 160 = 16 V"
+
+[[rating]]
+when = { voltage = ["250"] }
+voltage = 25
+page = 4
+note = "rated voltage code 250 = 25 V"
+
+[[rating]]
+when = { voltage = ["500"] }
+voltage = 50
+page = 4
+note = "rated voltage code 500 = 50 V"
+
+# Temperature Coefficient / Characteristics, page 5: operation temperature range by dielectric.
+
+[[rating]]
+when = { dielectric = ["CG"] }
+temperature = { min = -55, max = 125 }
+page = 5
+note = "C0G operation temperature range"
+
+[[rating]]
+when = { dielectric = ["B"] }
+temperature = { min = -55, max = 125 }
+page = 5
+note = "X7R operation temperature range"
+
+[[rating]]
+when = { dielectric = ["BS"] }
+temperature = { min = -55, max = 125 }
+page = 5
+note = "X7S operation temperature range"
+
+[[rating]]
+when = { dielectric = ["BT"] }
+temperature = { min = -55, max = 125 }
+page = 5
+note = "X7T operation temperature range"
+
+[[rating]]
+when = { dielectric = ["DS"] }
+temperature = { min = -55, max = 105 }
+page = 5
+note = "X6S operation temperature range"
+
+[[rating]]
+when = { dielectric = ["DT"] }
+temperature = { min = -55, max = 105 }
+page = 5
+note = "X6T operation temperature range"
+
+[[rating]]
+when = { dielectric = ["X"] }
+temperature = { min = -55, max = 85 }
+page = 5
+note = "X5R operation temperature range"
