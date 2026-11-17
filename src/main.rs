@@ -22,6 +22,7 @@ const USAGE: &str = "usage:
   gerberus doctor <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [--json] [--color WHEN]
   gerberus bom <design> [--boards N] [--jlcpcb] [--from lcsc|mouser|digikey] [--offline] [--cache DIR] [--max-age HOURS] [REPORT]
   gerberus bom <design> --csv FILE [--boards N]
+  gerberus traces <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--inputs FILE] [--parts DIR]... [REPORT]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
   gerberus part show <MPN> [--parts DIR]... [--out FILE] [--force]
   gerberus part new <design> <REF or MPN> [--parts DIR]... [--stdout] [--force]
@@ -54,6 +55,9 @@ next to the schematic unless --inputs is given). --explain prints the reasoning 
 them out for one of the fault cases in the inputs instead of normal operation.
 
 `mcp` serves the commands to an AI agent over the Model Context Protocol, on stdin and stdout (see docs/mcp.md).
+
+`traces` checks that every track on the KiCad board (same name as the schematic, .kicad_pcb, unless --pcb names
+another) is wide enough for the worst-case current its net supplies, by IPC-2221 at policy.toml's temperature rise.
 
 `diff` compares two revisions of a design, or one against a git revision with --rev: the parts added, removed or
 changed, the connections made or broken (nets matched by their pins, not their names), and the `check` findings
@@ -165,6 +169,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "signal" => signal(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
         [cmd] if cmd == "mcp" => mcp(),
+        [cmd, path, rest @ ..] if cmd == "traces" => traces(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "diff" => diff(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "doctor" => doctor(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "init" => init(Path::new(path), rest),
@@ -673,6 +678,32 @@ fn waive(
     }
     waivers.apply(report, &file.display().to_string());
     Ok(())
+}
+
+fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
+    let (show, rest) = Show::parse(rest)?;
+    let json = rest.iter().any(|a| a == "--json");
+    let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
+    let o = options(path, &rest, &["--pcb", "--inputs"])?;
+    let pcb = o.pcb.clone().unwrap_or_else(|| path.with_extension("kicad_pcb"));
+    let layout = gerberus::kicad::pcb::load_layout(&pcb)?;
+    let (design, lib, inputs, v) = analyse(path, &o)?;
+    let policy = gerberus::policy::Policy::builtin()?;
+    let tp = policy.traces.ok_or("policy.toml has no [traces]")?;
+    let th = gerberus::thermal::compute(&design, &lib, &inputs, &v);
+    let report = gerberus::rules::Report {
+        findings: gerberus::traces::check(&design, &layout, &th, &tp),
+        ..Default::default()
+    };
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
+    } else {
+        for a in &layout.assumptions {
+            eprintln!("note: {a}");
+        }
+        print!("{}", gerberus::rules::render(&design, &v, &report, &show));
+    }
+    Ok(report.errors() == 0)
 }
 
 fn mcp() -> Result<bool, String> {

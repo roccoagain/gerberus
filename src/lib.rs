@@ -26,6 +26,7 @@ pub mod skill;
 pub mod spec;
 pub mod spice;
 pub mod thermal;
+pub mod traces;
 pub mod update;
 pub mod voltage;
 pub mod waivers;

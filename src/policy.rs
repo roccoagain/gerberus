@@ -18,6 +18,8 @@ pub struct Policy {
     pub junction: Option<JunctionMargin>,
     /// The cable and sweep for `gerberus stress`.
     pub spice: Option<crate::spice::SpicePolicy>,
+    /// The temperature rise a track may have, for `gerberus traces`.
+    pub traces: Option<crate::traces::TracePolicy>,
 }
 
 /// Keep every junction `margin` °C below its maximum temperature: reliability derating.

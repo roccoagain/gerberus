@@ -20,6 +20,7 @@ Using it:
 - [Signal levels](signal.md): `signal`, op-amp clipping and the levels signals put on IC pins, in SPICE.
 - [Pinout check](pinout.md): `pinout`.
 - [BOM health](bom.md): `bom`, stock, lifecycle and second sources at LCSC, Mouser or DigiKey, and an order CSV.
+- [Trace current](traces.md): `traces`, track width against the net's current (IPC-2221).
 - [USB signal integrity](usb-si.md): `si`, impedance, skew, stubs and the eye diagram.
 - [Datasheet checks](datasheets.md): `datasheet verify`, `blank` and `compare`, for adding part files.
 

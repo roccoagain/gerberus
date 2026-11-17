@@ -17,6 +17,7 @@ command line would:
 | `loads` | `gerberus loads` |
 | `parts` | `gerberus parts` |
 | `netlist` | `gerberus netlist` |
+| `traces` | `gerberus traces`, with `show` |
 | `pinout` | `gerberus pinout` |
 | `diff` | `gerberus diff`, with `new` (a second design) or `rev` (a git revision) |
 | `part_show` | `gerberus part show`, with `mpn` |

@@ -51,3 +51,9 @@ rise_time = 1e-6
 duration = 2e-3
 runs = 16
 reason = "hot plug through up to 1 µH of cable (about a metre), 0.1 Ω, switched on in 1 µs"
+
+# `gerberus traces`: how much a track may warm above the board at its net's worst-case current, for IPC-2221's
+# safe-current fit. Project judgement, not datasheet figures.
+[traces]
+rise = 10
+reason = "a 10 °C rise, the usual design figure"

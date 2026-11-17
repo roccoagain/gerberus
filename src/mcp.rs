@@ -102,6 +102,14 @@ const TOOLS: &[Tool] = &[
         design: true,
     },
     Tool {
+        name: "traces",
+        description: "Check that every track on the KiCad board is wide enough for its net's worst-case current \
+                      (IPC-2221).",
+        args: &[REPORT],
+        command: &["traces"],
+        design: true,
+    },
+    Tool {
         name: "pinout",
         description: "Check that each part's symbol pins, footprint pads and datasheet pin table agree (KiCad).",
         args: &[],
