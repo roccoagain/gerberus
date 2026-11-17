@@ -424,6 +424,8 @@ pub struct Online {
     agent: Option<ureq::Agent>,
     /// DigiKey's access token, fetched once per run.
     token: Option<String>,
+    /// When the last request went out, to pace Mouser's 30 lookups a minute.
+    last_request: Option<std::time::Instant>,
     caveats: BTreeMap<String, String>,
 }
 
@@ -433,6 +435,7 @@ pub type Lcsc = Online;
 const LCSC_DETAIL: &str = "https://wmsc.lcsc.com/ftps/wm/product/detail?productCode=";
 const MOUSER_SEARCH: &str = "https://api.mouser.com/api/v1/search/partnumber";
 const DIGIKEY_PRODUCTS: &str = "https://api.digikey.com/products/v4/search";
+const MOUSER_SPACING: Duration = Duration::from_millis(2100);
 const DIGIKEY_TOKEN: &str = "https://api.digikey.com/v1/oauth2/token";
 
 /// Percent-encodes everything but letters, digits and `-._~`, for a URL path segment or a form value.
@@ -464,6 +467,7 @@ impl Online {
             offline,
             agent: None,
             token: None,
+            last_request: None,
             caveats: BTreeMap::new(),
         }
     }
@@ -560,6 +564,11 @@ impl Online {
                 read(agent.get(&url).call(), name, code)?
             }
             Api::Mouser { key } => {
+                // Mouser allows 30 lookups a minute: one every 2 s keeps a long BOM under it.
+                if let Some(t) = self.last_request {
+                    std::thread::sleep(MOUSER_SPACING.saturating_sub(t.elapsed()));
+                }
+                self.last_request = Some(std::time::Instant::now());
                 let url = format!("{}?apiKey={}", self.endpoint, encode(&key));
                 let body = serde_json::json!({
                     "SearchByPartRequest": { "mouserPartNumber": code, "partSearchOptions": "Exact" }
@@ -946,19 +955,23 @@ struct Judge<'a> {
 fn lifecycle_severity(status: &str) -> Option<(Severity, &'static str)> {
     let s = status.to_ascii_lowercase();
     let has = |w: &str| s.contains(w);
+    // Whole words only for the short ones: "eol" isn't a match inside another word.
+    let word = |w: &str| s.split(|c: char| !c.is_ascii_alphanumeric()).any(|x| x == w);
     if has("obsolete") {
         Some((Severity::Error, "the manufacturer no longer makes it"))
-    } else if has("discontinued") || has("end of life") || has("eol") || has("last time buy") {
+    } else if has("inactive") || has("not active") || has("not in production") {
+        Some((Severity::Warning, "it isn't in production"))
+    } else if has("discontinued") || has("end of life") || word("eol") || word("ltb") || has("last time buy") {
         Some((Severity::Warning, "it is being discontinued"))
-    } else if has("not recommended") || has("not for new") || has("nrnd") {
+    } else if has("not recommended") || has("not for new") || word("nrnd") {
         Some((
             Severity::Warning,
             "the manufacturer doesn't recommend it for new designs",
         ))
-    } else if has("active") || has("new product") || has("new at") || has("production") {
-        None
-    } else if has("preliminary") || has("preview") || has("sample") {
+    } else if has("preliminary") || has("preview") || has("sample") || has("pre-production") || has("preproduction") {
         Some((Severity::Info, "it isn't in full production yet"))
+    } else if word("active") || has("new product") || has("new at") || has("in production") {
+        None
     } else {
         Some((Severity::Unknown, "gerberus doesn't know this lifecycle status"))
     }
@@ -1152,4 +1165,28 @@ pub fn order_csv(design: &Design, boards: u64) -> String {
         out.push('\n');
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Severity, lifecycle_severity};
+
+    #[test]
+    fn lifecycle_words() {
+        let sev = |s: &str| lifecycle_severity(s).map(|(s, _)| s);
+        assert_eq!(sev("Active"), None);
+        assert_eq!(sev("New Product"), None);
+        assert_eq!(sev("In Production"), None);
+        assert_eq!(sev("Obsolete"), Some(Severity::Error));
+        assert_eq!(sev("Inactive"), Some(Severity::Warning));
+        assert_eq!(sev("Not Active"), Some(Severity::Warning));
+        assert_eq!(sev("Not in Production"), Some(Severity::Warning));
+        assert_eq!(sev("Last Time Buy"), Some(Severity::Warning));
+        assert_eq!(sev("EOL"), Some(Severity::Warning));
+        assert_eq!(sev("Not Recommended for New Designs"), Some(Severity::Warning));
+        assert_eq!(sev("Pre-Production"), Some(Severity::Info));
+        assert_eq!(sev("Preliminary"), Some(Severity::Info));
+        // "eol" inside another word isn't end of life.
+        assert_eq!(sev("Geolocated"), Some(Severity::Unknown));
+    }
 }

@@ -36,7 +36,9 @@ number. These give the manufacturer's lifecycle, which LCSC can't:
   gerberus doesn't recognise.
 
 Neither lists similar parts, so second sources aren't judged; use LCSC for that. Answers are cached in
-`~/.cache/gerberus/mouser` or `~/.cache/gerberus/digikey`, and `--offline` needs no key.
+`~/.cache/gerberus/mouser` or `~/.cache/gerberus/digikey` (or `mouser` and `digikey` folders inside `--cache`),
+and `--offline` needs no key. Mouser lookups are spaced 2 s apart to stay inside its limit, so a 50-line BOM
+takes under two minutes the first time.
 
 Getting a key (both are free):
 

@@ -926,7 +926,13 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
         },
         other => return Err(format!("--from takes lcsc, mouser or digikey, not {other:?}")),
     };
-    let cache = cache.or_else(|| Online::cache_dir_for(&from));
+    // Answers are cached per part number, so each distributor needs its own folder: under --cache, Mouser's and
+    // DigiKey's go in a subfolder named after them (LCSC's stay at the top, where earlier versions put them).
+    let cache = match cache {
+        Some(dir) if from != "lcsc" => Some(dir.join(&from)),
+        Some(dir) => Some(dir),
+        None => Online::cache_dir_for(&from),
+    };
     let lcsc = matches!(api, Api::Lcsc);
     let mut source = Online::with_api(api, cache, max_age, offline);
     let report = check(&design, &mut source, opts);
