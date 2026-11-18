@@ -1,5 +1,3 @@
-//! Eye diagrams and impedance profiles as standalone SVG images.
-
 use std::fmt::Write as _;
 
 use super::PairReport;
@@ -21,7 +19,6 @@ fn escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
-/// The pair's eye at the connector, with the template's inner hexagon and outer limits.
 pub fn eye(pair: &PairReport) -> Option<String> {
     let eye = pair.eye.as_ref()?;
     let t = eye.template;
@@ -35,7 +32,6 @@ pub fn eye(pair: &PairReport) -> Option<String> {
         if eye.passes() { "passes" } else { "fails" },
         t.name
     ));
-    // Axes and grid.
     for v in [-0.4, -0.2, 0.0, 0.2, 0.4] {
         let _ = writeln!(
             s,
@@ -60,7 +56,6 @@ pub fn eye(pair: &PairReport) -> Option<String> {
             u
         );
     }
-    // Waveform.
     for trace in &eye.traces {
         let pts: Vec<String> = trace
             .iter()
@@ -72,7 +67,6 @@ pub fn eye(pair: &PairReport) -> Option<String> {
             pts.join(" ")
         );
     }
-    // Mask.
     let hex: Vec<String> = t
         .hexagon()
         .iter()
@@ -106,7 +100,6 @@ pub fn eye(pair: &PairReport) -> Option<String> {
     Some(s)
 }
 
-/// The differential impedance each line shows the driver, against time, with the 81–99 Ω band.
 pub fn tdr(pair: &PairReport) -> Option<String> {
     if pair.tdr.is_empty() {
         return None;

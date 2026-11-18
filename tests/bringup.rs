@@ -1,5 +1,3 @@
-//! The bring-up plan on the kitchen-sink and CAN encoder boards.
-
 use std::path::{Path, PathBuf};
 
 use gerberus::bringup::{plan, rails_by_name, render};
@@ -24,8 +22,6 @@ fn run(dir: &str, sch: &str) -> (gerberus::design::Design, gerberus::bringup::Pl
     (design, p)
 }
 
-/// Each rail follows the one that feeds it: +VDC from VIN through the diode, +5V from the buck on +VDC, +3V3 from
-/// the LDO on +5V.
 #[test]
 fn rails_come_in_the_order_power_flows() {
     let (d, p) = run("can-encoder", "can-encoder.kicad_sch");
@@ -43,8 +39,6 @@ fn rails_come_in_the_order_power_flows() {
     assert_eq!(rails["+3V3"], gerberus::voltage::Span::new(3.234, 3.366));
 }
 
-/// The plan names the supply's range, flags a regulator that may not hold its output, and lists every rail for
-/// the short check.
 #[test]
 fn the_plan_says_what_to_set_and_expect() {
     let (d, p) = run("kitchen-sink", "kitchen-sink.kicad_sch");
@@ -53,14 +47,11 @@ fn the_plan_says_what_to_set_and_expect() {
         text.contains("Power VIN: connect a bench supply to J1.1 (+) to J1.4 (−), set inside 7 to 26 V"),
         "{text}"
     );
-    // The ME6211 on VAUX is planted with too little headroom.
     assert!(text.contains("U3 may not hold it"), "{text}");
     assert!(text.contains("- +3V3 at"), "{text}");
     assert!(text.contains("Power one input at a time"), "{text}");
 }
 
-/// A fuse in front of the input diode doesn't hide the load behind it: VBUS still counts what is past the fuse,
-/// and the rails past it are still in the plan.
 #[test]
 fn a_fuse_before_the_rails_hides_nothing() {
     use gerberus::design::{Component, Net, Pin, PinKind};
@@ -78,7 +69,6 @@ fn a_fuse_before_the_rails_hides_nothing() {
     };
     let before = summary(&d);
     assert!(before.0 > 0 && before.1 > 0, "{before:?}");
-    // Move D1's anode onto a new net FUSED, and put F9 from VBUS to it.
     d.nets.push(Net {
         name: "FUSED".into(),
         pins: vec![],

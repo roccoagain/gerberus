@@ -1,8 +1,3 @@
-//! Checks the KiCad reader against real boards.
-//!
-//! Each board's `.kicad_pcb` was written by KiCad from the same schematic (DRC reports 0 parity errors), so
-//! its pad nets are KiCad's own netlist. The schematic reader must agree with it pin for pin, name for name.
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -76,7 +71,6 @@ fn testbed_matches_board() {
     assert_matches_pcb("testbed/testbed.kicad_sch", "testbed/testbed.kicad_pcb");
 }
 
-/// `expect.md` lists `REF.PIN = NET` (pin is on that net) and `A.1 == B.2` (two pins share a net).
 #[test]
 fn testbed_meets_expectations() {
     let design = kicad::load(&fixture("testbed/testbed.kicad_sch")).unwrap();
@@ -107,17 +101,12 @@ fn testbed_meets_expectations() {
 #[test]
 fn reads_hierarchical_sheets() {
     let design = kicad::load(&fixture("edge/edge.kicad_sch")).unwrap();
-    // R2 is on the root sheet; R1 and R3 live on the child sheet and take their references from its path.
     let refs: Vec<&str> = design.components.keys().map(String::as_str).collect();
     assert_eq!(refs, ["R1", "R2", "R3"]);
-    // R2.2 meets the wire labelled W through a junction in the middle of that wire.
     assert_eq!(design.pin_net("R2", "2").unwrap().name, "/W");
-    // The child's resistors are not wired to anything.
     assert_eq!(design.pin_net("R1", "1").unwrap().name, "unconnected-(R1-Pad1)");
 }
 
-/// A hand-written two-sheet design: a sheet pin wired to R1 meets a hierarchical label on R2 in the child,
-/// and a global label of the same name on each sheet joins R1.2 to R2.2.
 #[test]
 fn joins_sheet_pins_and_global_labels() {
     let design = kicad::load(&fixture("hier/root.kicad_sch")).unwrap();
@@ -126,14 +115,12 @@ fn joins_sheet_pins_and_global_labels() {
         sig.pins,
         [("R1".to_string(), "1".to_string()), ("R2".to_string(), "1".to_string())]
     );
-    // KiCad ranks a hierarchical label above a sheet pin, so the child's label names the net.
     assert_eq!(sig.name, "/child/SIG");
     let g = design.pin_net("R2", "2").unwrap();
     assert_eq!(g.name, "G");
     assert_eq!(g.pins.len(), 2);
 }
 
-/// Reads a netlist that `kicad-cli sch export netlist` wrote into `(reference, pin) -> net name`.
 fn kicad_netlist(rel: &str) -> BTreeMap<(String, String), String> {
     let text = std::fs::read_to_string(fixture(rel)).unwrap();
     let tree = gerberus::sexpr::parse(&text).unwrap();
@@ -149,8 +136,6 @@ fn kicad_netlist(rel: &str) -> BTreeMap<(String, String), String> {
     out
 }
 
-/// Buses on two sheets: vectors that pair by position, a named group, two labels on one bus, an alias and a
-/// global bus. `expect.net` is KiCad's own netlist of the same files (see `bus/gen.py`).
 #[test]
 fn bus_design_matches_kicad_netlist() {
     let design = kicad::load(&fixture("bus/root.kicad_sch")).unwrap();
@@ -177,7 +162,6 @@ fn bus_design_matches_kicad_netlist() {
         )
         .collect();
     assert!(problems.is_empty(), "{}", problems.join("\n"));
-    // The two wires on bus entries with no label are flagged; nothing else is.
     assert_eq!(design.warnings.len(), 2, "{:#?}", design.warnings);
     assert!(
         design.warnings.iter().all(|w| w.contains("has no label")),

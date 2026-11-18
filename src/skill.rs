@@ -1,20 +1,11 @@
-//! `gerberus skill install`: the agent skills that ship with gerberus, written into a board's repository so an
-//! agent working there checks the board and adds parts the same way as in gerberus's own.
-//!
-//! What it wrote is recorded in `.claude/skills/.gerberus-skills` (each file's path and a hash of its text), so a
-//! later install replaces files it wrote itself (an older version's) without asking, and only a file someone
-//! edited needs `--force`.
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// One file of a skill: where it goes under `.claude/skills/`, and its text.
 pub struct File {
     pub path: &'static str,
     pub text: &'static str,
 }
 
-/// The skills, built in.
 pub const FILES: &[File] = &[
     File {
         path: "check-board/SKILL.md",
@@ -24,7 +15,6 @@ pub const FILES: &[File] = &[
         path: "datasheet-to-part/SKILL.md",
         text: include_str!("../.claude/skills/datasheet-to-part/SKILL.md"),
     },
-    // The format guide the skills read, which a board's repository doesn't have.
     File {
         path: "datasheet-to-part/part-format.md",
         text: concat!(
@@ -38,21 +28,16 @@ pub const FILES: &[File] = &[
     },
 ];
 
-/// The file that records what was installed.
 pub const MANIFEST: &str = ".gerberus-skills";
 
-/// What installing did to one file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     Written,
     Unchanged,
-    /// An earlier install's file, replaced with this version's.
     Updated,
-    /// A file someone changed, replaced because of `--force`.
     Replaced,
 }
 
-/// A hash of a file's text that is the same in every build (FNV-1a).
 fn hash(text: &str) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in text.bytes() {
@@ -62,8 +47,6 @@ fn hash(text: &str) -> String {
     format!("{h:016x}")
 }
 
-/// Writes the skills into `<dir>/.claude/skills/`. A file there that an earlier install wrote is updated; one that
-/// someone changed is kept, and nothing is written, unless `force`.
 pub fn install(dir: &Path, force: bool) -> Result<Vec<(PathBuf, Outcome)>, String> {
     let base = dir.join(".claude").join("skills");
     let manifest_path = base.join(MANIFEST);

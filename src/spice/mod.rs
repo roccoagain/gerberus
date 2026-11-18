@@ -1,22 +1,3 @@
-//! Hot-plug stress in ngspice, with tolerance sweeps.
-//!
-//! Every supply input in `inputs.toml` is switched on through a cable (its resistance and inductance from
-//! `policy.toml`'s `[spice]` table) into the board, and the transient is simulated. A cable's inductance rings
-//! with the input capacitors, so a rail can briefly overshoot its steady value, by up to twice in the worst
-//! case. Each run draws a fresh set of part values from their tolerances (resistors and capacitors from their
-//! part files, regulator outputs over their datasheet range, the cable's inductance over its range), so the
-//! worst run shows how far the design can be pushed. The peak voltage across every pin limit is then checked:
-//! past an absolute maximum is an error, past a passive's rating a warning.
-//!
-//! What is modelled: resistors, capacitors, inductors and ferrite beads, jumpers, fuses and net ties (closed),
-//! diodes,
-//! LEDs and TVS diodes from their forward drop, breakdown and clamp figure, transistor switches (a forward
-//! drive) as their channel switched on, step-down regulators as ideal sources that follow their supply when it
-//! is too low to hold them, and every IC's supply current. A limit relative to another pin is checked against
-//! that pin in the same run. IC signal pins are left open, so
-//! their internal clamps don't absorb anything: the result is on the pessimistic side there. Parts gerberus
-//! can't model are listed, and nets they touch come out UNKNOWN rather than PASS.
-
 mod netlist;
 mod run;
 
@@ -34,19 +15,13 @@ use crate::voltage::Voltages;
 pub use netlist::{Circuit, Pair, SWITCH_OHMS, TVS_OHMS, build};
 pub use run::{Measured, simulate};
 
-/// `policy.toml`'s `[spice]` table: the cable a board is plugged in through, and the sweep.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct SpicePolicy {
-    /// The cable's inductance range in henries, `[min, max]`: each run draws one.
     pub cable_inductance: [f64; 2],
-    /// The cable's resistance in ohms, including the connector's contacts.
     pub cable_resistance: f64,
-    /// How fast the supply switches on, 0 to its maximum, in seconds. A hot plug is close to instant.
     pub rise_time: f64,
-    /// How long to simulate, in seconds.
     pub duration: f64,
-    /// How many Monte Carlo runs, besides the one at nominal values.
     pub runs: usize,
     pub reason: String,
 }
@@ -64,7 +39,6 @@ impl Default for SpicePolicy {
     }
 }
 
-/// A small deterministic random number generator (xorshift64*), so a sweep is the same every time.
 #[derive(Debug, Clone)]
 pub struct Rng(u64);
 
@@ -73,7 +47,6 @@ impl Rng {
         Rng(seed.max(1))
     }
 
-    /// Uniform in `[0, 1)`.
     pub fn next_f64(&mut self) -> f64 {
         self.0 ^= self.0 >> 12;
         self.0 ^= self.0 << 25;
@@ -82,24 +55,19 @@ impl Rng {
         (x >> 11) as f64 / (1u64 << 53) as f64
     }
 
-    /// Uniform in `[lo, hi]`.
     pub fn between(&mut self, lo: f64, hi: f64) -> f64 {
         lo + (hi - lo) * self.next_f64()
     }
 }
 
-/// Reads a capacitance such as `100nF`, `2u2`, `4.7µF 16V` or `10p` as farads.
 pub fn parse_farads(value: &str) -> Option<f64> {
     parse_si(value, 'F')
 }
 
-/// Reads an inductance such as `6.8uH`, `4u7` or `100n` as henries.
 pub fn parse_henries(value: &str) -> Option<f64> {
     parse_si(value, 'H')
 }
 
-/// A number with an SI prefix, as a value field writes it: the first word that holds a number, with the
-/// prefix either after it (`100n`, `100nF`) or in place of the decimal point (`4u7`).
 fn parse_si(value: &str, unit: char) -> Option<f64> {
     let word = value
         .split_whitespace()
@@ -131,7 +99,6 @@ fn parse_si(value: &str, unit: char) -> Option<f64> {
 }
 
 fn sig(x: f64) -> String {
-    // Numerical dust from the solver reads as 0.
     if x.abs() < 1e-6 {
         return "0".into();
     }
@@ -144,7 +111,6 @@ fn sig(x: f64) -> String {
     }
 }
 
-/// The worst of all runs for one pair of nets.
 #[derive(Debug, Clone, Copy)]
 struct Worst {
     max: f64,
@@ -154,42 +120,34 @@ struct Worst {
     end_max: f64,
 }
 
-/// The result of a sweep: every run's parameters, and the worst peak across each pair of nets.
 #[derive(Debug, Clone)]
 pub struct Sweep {
     pub circuit: Circuit,
-    /// Each run's drawn values, for the report.
     pub runs: Vec<String>,
-    /// The pairs pin limits read, besides the per-net ones added to tell whether a net was powered.
     limits: Vec<Pair>,
     worst: BTreeMap<Pair, Worst>,
 }
 
 impl Sweep {
-    /// The highest and lowest `V(a) − V(b)` any run reached, and the run that reached each.
     pub fn peak(&self, a: usize, b: Option<usize>) -> Option<(f64, usize, f64, usize)> {
         self.worst.get(&(a, b)).map(|w| (w.max, w.max_run, w.min, w.min_run))
     }
 
-    /// The pairs of nets the pin limits read.
     pub fn limits(&self) -> &[Pair] {
         &self.limits
     }
 
-    /// Whether a pair never moved off 0 V in any run: nothing in the simulation drives it (an IC's signal pin).
     pub fn quiet(&self, a: usize, b: Option<usize>) -> bool {
         self.worst
             .get(&(a, b))
             .is_some_and(|w| w.max.abs() < 1e-3 && w.min.abs() < 1e-3)
     }
 
-    /// The highest settled value at the end of any run.
     pub fn settled(&self, a: usize, b: Option<usize>) -> Option<f64> {
         self.worst.get(&(a, b)).map(|w| w.end_max)
     }
 }
 
-/// Builds the circuit and runs the nominal case plus `policy.runs` Monte Carlo runs.
 pub fn sweep(
     design: &Design,
     lib: &Library,
@@ -205,7 +163,6 @@ pub fn sweep(
     let mut worst: BTreeMap<Pair, Worst> = BTreeMap::new();
     let mut runs = vec![];
     for run in 0..=policy.runs {
-        // Run 0 is nominal, with the largest cable inductance; the rest draw everything.
         let draw = if run == 0 { None } else { Some(&mut rng) };
         let (text, about) = circuit.netlist(policy, &pairs, draw);
         let measured = simulate(&text)?;
@@ -249,15 +206,12 @@ fn part_of<'a>(lib: &'a Library, c: &crate::design::Component) -> Option<std::bo
     }
 }
 
-/// What one end of a limit says about the sweep.
 enum Side {
     Inside,
-    /// Past the limit: why, and the run that went furthest.
     Past(String, usize),
     Unknown(String),
 }
 
-/// `pin + 0.3`, `pin − 0.3` or `pin`, for a bound relative to another pin.
 fn relative(pin: &str, plus: f64) -> String {
     if plus.abs() < 1e-9 {
         pin.to_string()
@@ -268,7 +222,6 @@ fn relative(pin: &str, plus: f64) -> String {
     }
 }
 
-/// Where a part's limit is measured, for the checks on each end.
 struct At<'a> {
     c: &'a crate::design::Component,
     part: &'a Part,
@@ -277,8 +230,6 @@ struct At<'a> {
     kind: &'a str,
 }
 
-/// One end of a limit against the sweep: the maximum when `upper`, else the minimum. A bound relative to
-/// another pin is checked on the difference to that pin in the same run.
 fn side(sweep: &Sweep, at: &At<'_>, bound: &Bound, upper: bool) -> Side {
     let kind = at.kind;
     let Some((max, max_run, min, min_run)) = sweep.peak(at.key.0, at.key.1) else {
@@ -301,7 +252,6 @@ fn side(sweep: &Sweep, at: &At<'_>, bound: &Bound, upper: bool) -> Side {
             };
             let limit = relative(pin, *plus);
             let (rmax, rmax_run, rmin, rmin_run) = match sweep.circuit.key(at.a, rn) {
-                // The same net: the difference is always 0.
                 None => (0.0, 0, 0.0, 0),
                 Some((x, y)) => match sweep.peak(x, y) {
                     Some(p) => p,
@@ -334,7 +284,6 @@ fn side(sweep: &Sweep, at: &At<'_>, bound: &Bound, upper: bool) -> Side {
     }
 }
 
-/// A plain-number minimum of a range.
 fn value_min(r: &Range) -> Option<f64> {
     match r {
         Range::Known {
@@ -344,7 +293,6 @@ fn value_min(r: &Range) -> Option<f64> {
     }
 }
 
-/// The `hot-plug` rule: the peak voltage across every pin limit, over every run, against the limit.
 pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy) -> Vec<Finding> {
     let mut out = vec![];
     let net_name = |n: usize| design.nets[n].name.as_str();
@@ -364,13 +312,11 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
             let Some(bn) = circuit.pin_net(c, &part, to) else {
                 continue;
             };
-            // Passives and connectors are rated on `recommended`; everything else on `abs_max`.
             let (range, kind, severity) = if passive {
                 (&limit.recommended, "rating", Severity::Warning)
             } else {
                 (&limit.abs_max, "absolute maximum", Severity::Error)
             };
-            // A protection part's own stress is its breakdown: past it, it carries current.
             let breakdown = (part.class == Class::Tvs)
                 .then(|| limit.breakdown.as_ref().and_then(value_min))
                 .flatten();
@@ -410,8 +356,6 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                     );
                     continue;
                 };
-                // Why the result can't be trusted: a part on the nets isn't modelled, or the run never powered a
-                // net the static analysis says is powered (a part in its supply path isn't modelled).
                 let mut unsure: Vec<String> = vec![];
                 for n in std::iter::once(an).chain(b) {
                     if let Some(u) = circuit.unmodelled_on(n) {
@@ -428,7 +372,6 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                         ));
                     }
                 }
-                // A net nothing in the simulation drives, and nothing should, says nothing about stress.
                 if sweep.quiet(an, b) && unsure.is_empty() {
                     continue;
                 }
@@ -466,7 +409,6 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                 };
                 let sides = match range {
                     Range::Known { min, max, .. } => vec![side(sweep, &at, max, true), side(sweep, &at, min, false)],
-                    // A protection part's breakdown covers it.
                     Range::Unknown(_) if breakdown.is_some() => vec![],
                     Range::Unknown(why) => vec![Side::Unknown(format!("its {kind} isn't known ({why})"))],
                 };
@@ -511,7 +453,6 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
     out
 }
 
-/// A summary of what the simulation left out, for the report.
 pub fn describe(design: &Design, sweep: &Sweep) -> String {
     let mut out = String::new();
     let skipped = sweep.circuit.skipped();

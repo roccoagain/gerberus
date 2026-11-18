@@ -1,38 +1,26 @@
-//! One Altium schematic sheet (`.SchDoc`): its parts, wires and connection objects, with every position in
-//! hundred-thousandths of an Altium unit (1 unit = 10 mil).
-
 use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::records::{self, Record};
 
-/// A point in hundred-thousandths of an Altium unit.
 pub type Pt = (i64, i64);
 
-/// One Altium unit.
 pub const UNIT: i64 = 100_000;
 
 #[derive(Debug, Clone, Default)]
 pub struct SchDoc {
     pub components: Vec<SchComponent>,
-    /// Wire polylines.
     pub wires: Vec<Vec<Pt>>,
-    /// Bus polylines.
     pub buses: Vec<Vec<Pt>>,
-    /// Bus entries, end to end.
     pub bus_entries: Vec<(Pt, Pt)>,
     pub junctions: Vec<Pt>,
     pub labels: Vec<(Pt, String)>,
     pub power_ports: Vec<(Pt, String)>,
     pub ports: Vec<Port>,
     pub sheet_symbols: Vec<SheetSymbol>,
-    /// No-ERC markers.
     pub no_erc: Vec<Pt>,
-    /// Harness connectors, which gather wires into a signal harness.
     pub harness_connectors: Vec<HarnessConnector>,
-    /// Signal harness polylines, which carry bundles between connectors, ports and sheet entries.
     pub harnesses: Vec<Vec<Pt>>,
-    /// The sheet's `SheetNumber` parameter, if it has one.
     pub sheet_number: Option<String>,
 }
 
@@ -41,27 +29,20 @@ pub struct SchComponent {
     pub designator: String,
     pub lib_ref: String,
     pub description: String,
-    /// Which part of a multi-part component this instance draws.
     pub part_id: i64,
     pub part_count: i64,
     pub display_mode: i64,
-    /// `COMPONENTKIND`: 0 standard, 1 mechanical, 2 graphical, 3 net tie (in BOM), 4 net tie, 5 standard (no
-    /// BOM), 6 jumper.
     pub kind: i64,
-    /// Parameters by name, as written. Look them up with [`SchComponent::param`], which ignores case.
     pub params: BTreeMap<String, String>,
     pub footprint: String,
-    /// Every pin of every part and display mode; [`SchComponent::drawn`] says which ones this instance draws.
     pub pins: Vec<SchPin>,
 }
 
 impl SchComponent {
-    /// True if this instance draws `pin`: the pin belongs to its part (or every part) and display mode.
     pub fn drawn(&self, pin: &SchPin) -> bool {
         (pin.part_id <= 0 || pin.part_id == self.part_id) && pin.display_mode == self.display_mode
     }
 
-    /// A parameter, following `=Other` indirections the way Altium shows them.
     pub fn param(&self, name: &str) -> Option<&str> {
         let get = |n: &str| {
             self.params
@@ -82,44 +63,34 @@ impl SchComponent {
 
 #[derive(Debug, Clone, Default)]
 pub struct SchPin {
-    /// The pin number, Altium's `Designator`.
     pub number: String,
     pub name: String,
-    /// `ELECTRICAL`: 0 input, 1 I/O, 2 output, 3 open collector, 4 passive, 5 hi-Z, 6 open emitter, 7 power.
     pub electrical: i64,
     pub part_id: i64,
     pub display_mode: i64,
-    /// The end on the part body.
     pub base: Pt,
-    /// The end a wire connects to.
     pub tip: Pt,
     pub hidden: bool,
-    /// A hidden pin joins the net of this name, as older power pins do.
     pub hidden_net: String,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Port {
     pub name: String,
-    /// The two ends of the port's bar; a wire may land on either.
     pub ends: [Pt; 2],
     pub harness_type: String,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct SheetSymbol {
-    /// The symbol's designator, such as `U_Power` or `Repeat(CH,1,4)`.
     pub name: String,
-    /// The child document's file name.
     pub file: String,
     pub entries: Vec<SheetEntry>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct HarnessConnector {
-    /// Where the bundle leaves the connector.
     pub primary: Pt,
-    /// One per signal: a wire lands on the entry, or another harness on a nested bundle.
     pub entries: Vec<SheetEntry>,
 }
 
@@ -130,7 +101,6 @@ pub struct SheetEntry {
     pub harness_type: String,
 }
 
-/// Reads a binary `.SchDoc`, or the ASCII form Altium can also save.
 pub fn load(path: &Path) -> Result<SchDoc, String> {
     let raw = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let (recs, additional) = if raw.starts_with(b"|HEADER=") {
@@ -154,14 +124,12 @@ pub fn load(path: &Path) -> Result<SchDoc, String> {
     Ok(from_records(&recs, &additional))
 }
 
-/// How far along its side of the box a sheet or harness entry sits: steps of 10 units, plus millionths of one.
 fn along(r: &Record) -> i64 {
     r.int("DISTANCEFROMTOP").clamp(-1_000_000, 1_000_000) * 10 * UNIT
         + r.int("DISTANCEFROMTOP_FRAC1").clamp(-1_000_000, 1_000_000) * 10 * UNIT / 1_000_000
 }
 
 fn polyline(r: &Record) -> Vec<Pt> {
-    // A record holds at most as many vertices as it has fields.
     let n = (r.int("LOCATIONCOUNT").max(0) as usize).min(r.fields.len());
     (1..=n)
         .map(|i| (r.coord(&format!("X{i}")), r.coord(&format!("Y{i}"))))
@@ -172,11 +140,9 @@ fn location(r: &Record) -> Pt {
     (r.coord("LOCATION.X"), r.coord("LOCATION.Y"))
 }
 
-/// Builds a sheet from its records. `recs[0]` is the header; `OWNERINDEX` counts from the record after it.
 pub fn from_records(recs: &[Record], additional: &[Record]) -> SchDoc {
     let body = recs.get(1..).unwrap_or(&[]);
     let mut doc = SchDoc::default();
-    // Record index of each component, and of each sheet symbol, to the position in `doc`.
     let mut comp_at: BTreeMap<usize, usize> = BTreeMap::new();
     let mut sym_at: BTreeMap<usize, usize> = BTreeMap::new();
     let mut last_component = None;
@@ -201,7 +167,6 @@ pub fn from_records(recs: &[Record], additional: &[Record]) -> SchDoc {
             }
             _ => {}
         }
-        // Binary pins name no owner: they follow the component they belong to.
         if r.kind() == 2
             && r.owner().is_none()
             && let Some(c) = last_component
@@ -211,7 +176,6 @@ pub fn from_records(recs: &[Record], additional: &[Record]) -> SchDoc {
             pin(&mut doc, &comp_at, &r);
         }
     }
-    // The component a record belongs to, following owners up (a footprint sits under an implementation list).
     let owning_component = |r: &Record| {
         let mut owner = r.owner();
         for _ in 0..4 {
@@ -255,7 +219,6 @@ pub fn from_records(recs: &[Record], additional: &[Record]) -> SchDoc {
             18 => {
                 let at = location(r);
                 let w = r.coord("WIDTH");
-                // Styles 4 and up are vertical ports, drawn upward from their location.
                 let end = if r.int("STYLE") >= 4 {
                     (at.0, at.1 + w)
                 } else {
@@ -308,8 +271,6 @@ pub fn from_records(recs: &[Record], additional: &[Record]) -> SchDoc {
     doc
 }
 
-/// Point on a box's edge: `side` 0 left, 1 right, 2 top, 3 bottom; `along` measured down a vertical edge or
-/// rightward along a horizontal one from the top-left corner `(x, y)` (Altium's y axis points up).
 fn on_edge((x, y): Pt, (w, h): Pt, side: i64, along: i64) -> Pt {
     match side {
         1 => (x + w, y - along),
@@ -319,9 +280,7 @@ fn on_edge((x, y): Pt, (w, h): Pt, side: i64, along: i64) -> Pt {
     }
 }
 
-/// Signal harness records, in the `Additional` stream. A connector owns the entries that follow it.
 fn harness_records(doc: &mut SchDoc, additional: &[Record]) {
-    // The current connector's top-left corner, size and bundle side, for the entries that follow it.
     let mut boxed: Option<(Pt, Pt, i64)> = None;
     for r in additional {
         match r.kind() {
@@ -339,7 +298,6 @@ fn harness_records(doc: &mut SchDoc, additional: &[Record]) {
                 let (Some(c), Some((at, size, side))) = (doc.harness_connectors.last_mut(), boxed) else {
                     continue;
                 };
-                // Entries sit on the edge opposite the bundle unless they name their own.
                 let entry_side = match r.get("SIDE") {
                     Some(v) => v.trim().parse().unwrap_or(0),
                     None => [1, 0, 3, 2][side.clamp(0, 3) as usize],

@@ -1,5 +1,3 @@
-# The toolchain CI and local builds use. Bump it on purpose; the oldest supported Rust is `rust-version` in
-# Cargo.toml, which CI also checks.
 [toolchain]
 channel = "1.97.0"
 components = ["rustfmt", "clippy", "llvm-tools-preview"]

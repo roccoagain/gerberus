@@ -1,10 +1,3 @@
-//! `gerberus init`: a starter inputs.toml, with a guess for every connector pin it can make one for.
-//!
-//! Each guess comes from the net's name: a ground, a USB VBUS, D+/D- or CC pin, or a supply named by its
-//! voltage (`12V`, `+5V`, `3V3`). Every guessed entry's `source` starts with [`GUESS`], so `check` can say that
-//! results rest on guesses, and `doctor` lists them to confirm. Pins it can't guess are listed in comments to
-//! fill in.
-
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
@@ -12,14 +5,10 @@ use crate::design::{Design, PinKind};
 use crate::limits::{Library, non_electrical};
 use crate::voltage::is_connector;
 
-/// How every guessed entry's `source` starts.
 pub const GUESS: &str = "GUESS by gerberus init";
 
-/// How an entry init is sure enough of starts: a ground named as one, a test point. These aren't counted as
-/// guesses.
 pub const ASSUMED: &str = "assumed by gerberus init";
 
-/// The pins of every entry in `inputs` that is still a guess from `init`.
 pub fn guesses(inputs: &crate::inputs::BoardInputs) -> Vec<String> {
     let mut out: Vec<String> = inputs
         .inputs
@@ -39,26 +28,20 @@ pub fn guesses(inputs: &crate::inputs::BoardInputs) -> Vec<String> {
     out
 }
 
-/// A connector pin's net, and what init makes of it.
 enum Guess {
     Ground,
-    /// An input: name, min, max, why, and a fault case to add beside it.
     Input {
         name: String,
         min: f64,
         max: f64,
         why: String,
-        /// Why it can't be connected backwards, when it can't.
         reverse: Option<String>,
         fault: Option<(String, f64, f64, String)>,
     },
-    /// Nothing outside drives it.
     Undriven(String),
-    /// Nothing to go on.
     Unknown,
 }
 
-/// The text of a starter inputs.toml for `design`.
 pub fn template(design: &Design, lib: &Library, board: &str) -> String {
     let mut out = String::new();
     let _ = writeln!(
@@ -78,8 +61,6 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
          # [temperature]\n# min = 0\n# max = 40\n# source = \"...\""
     );
 
-    // What the board drives by itself, worked out with nothing plugged in: a net with a step that isn't
-    // UNKNOWN, a ground reference or a pull-up is set by a part on the board.
     let alone = crate::voltage::compute(design, lib, &crate::inputs::BoardInputs::none(board, design));
     let driven = |net: usize| -> Option<String> {
         alone.nets.get(net)?.why.iter().find_map(|w| {
@@ -108,8 +89,6 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
         .collect();
     let net_name = |r: &str, p: &str| design.pin_net(r, p).map_or(String::new(), |n| n.name.clone());
     let short = |n: &str| n.rsplit('/').next().unwrap_or("").to_string();
-    // The board's ground: a ground pin on a connector, else any pin on a net named as a ground. It is written as
-    // a 0 V reference, so ground is known even when no other input is.
     let board_ground = connectors
         .iter()
         .flat_map(|r| design.components[*r].pins.keys().map(move |p| (*r, p.as_str())))
@@ -182,8 +161,6 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
             }
             let net = net_name(r, p);
             let g = guess(&short(&net), usb, driven(pin.net));
-            // An [[undriven]] entry covers one pin, so every pin on the net gets one. An input covers the whole
-            // net, so a connector's second VBUS pin needs none.
             if !matches!(g, Guess::Undriven(_)) && !seen.insert(pin.net) {
                 continue;
             }
@@ -255,9 +232,6 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
     out
 }
 
-/// Whether the output pin a step names (`U6.19, which reaches...`) surely drives its net: a push-pull output
-/// on a fitted part. A bidirectional or tri-state pin, or a module plugged in by hand, may leave it to whatever
-/// is plugged in.
 fn drives_out(design: &Design, step: &str) -> bool {
     let pin = step.split([',', ' ']).next().unwrap_or("");
     let Some((r, p)) = pin.split_once('.') else {
@@ -269,14 +243,11 @@ fn drives_out(design: &Design, step: &str) -> bool {
         .is_some_and(|c| !c.dnp && c.in_bom && c.on_board && c.pins.get(p).is_some_and(|q| q.kind == PinKind::Output))
 }
 
-/// A ground net's name: GND…, AGND, DGND, PGND, SGND, 0V or VSS. Not VSS1 or VSS_15, which may be a negative
-/// rail.
 fn is_ground_net(name: &str) -> bool {
     let n = name.to_ascii_uppercase();
     n.starts_with("GND") || matches!(n.as_str(), "AGND" | "DGND" | "PGND" | "SGND" | "0V" | "VSS")
 }
 
-/// `VBUS`, `VBUS1`, `USB_VBUS`; not `VBUS_DET` or `VBUS_SENSE`.
 fn is_vbus(upper: &str) -> bool {
     let words: Vec<&str> = upper
         .split(|c: char| !c.is_ascii_alphanumeric())
@@ -288,14 +259,11 @@ fn is_vbus(upper: &str) -> bool {
     }) && !words.iter().any(|w| SIGNAL_WORDS.contains(w))
 }
 
-/// Words that make a net a signal, whatever voltage its name gives: `EN_3V3`, `PG_5V`, `VBUS_DET`.
 const SIGNAL_WORDS: &[&str] = &[
     "EN", "PG", "OK", "SENSE", "SNS", "DET", "DETECT", "TX", "RX", "SDA", "SCL", "CS", "CLK", "INT", "RST", "RESET",
     "IO", "LED", "FLT", "FAULT", "ALERT", "MON", "ADC", "SIG", "CTRL", "SEL", "OC", "PWR_EN", "ON", "OFF",
 ];
 
-/// What init makes of a connector pin's net, from its name (`usb`: the connector is a USB one) and whether the
-/// board drives it (`driven`: the step that sets it).
 fn guess(name: &str, usb: bool, driven: Option<String>) -> Guess {
     let upper = name.to_ascii_uppercase();
     if is_ground_net(&upper) {
@@ -376,7 +344,6 @@ fn guess(name: &str, usb: bool, driven: Option<String>) -> Guess {
     Guess::Unknown
 }
 
-/// `12V` → 12, `+5V` → 5, `3V3` → 3.3, `3.3V` → 3.3, `-12V` → -12; not `0V`, `V`, `VIN` or `5VA`.
 fn volts_in(word: &str) -> Option<f64> {
     let (neg, w) = match word.strip_prefix('-') {
         Some(w) => (true, w),
@@ -441,7 +408,6 @@ mod tests {
     fn guesses_from_net_names() {
         assert_eq!(kind("+12V", false), "supply");
         assert_eq!(kind("3V3_D", false), "supply");
-        // A signal named after its logic level is no supply.
         for signal in ["UART_TX_3V3", "EN_3V3", "PG_5V", "VCC_5V_EN", "SDA_3V3"] {
             assert_eq!(kind(signal, false), "unknown", "{signal}");
         }
@@ -449,7 +415,6 @@ mod tests {
         assert_eq!(kind("VBUS_DET", true), "unknown");
         assert_eq!(kind("USB1_D+", true), "data");
         assert_eq!(kind("USB_DN", true), "data");
-        // Data and CC names count only on a USB connector.
         assert_eq!(kind("DP_AUX", false), "unknown");
         assert_eq!(kind("CC_LED", false), "unknown");
         assert_eq!(kind("CC1", true), "cc");

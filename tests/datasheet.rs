@@ -1,6 +1,3 @@
-//! Checks `gerberus datasheet`: finding a part file's values on the datasheet pages they cite, and comparing
-//! two blind readings. The pages here are made-up tables laid out the way `pdftotext -layout` prints real ones.
-
 use std::path::{Path, PathBuf};
 
 use gerberus::datasheet::{
@@ -62,20 +59,16 @@ fn a_typical_value_filed_as_a_limit_is_a_mismatch() {
     let o = check_claim(&claim(1.0, Role::Max, Unit::Volt, &["FB"]), ELECTRICAL);
     assert_eq!(o.status, Status::Mismatch, "{o:?}");
     assert!(o.reason.contains("TYP"), "{}", o.reason);
-    // The real maximum is confirmed.
     let o = check_claim(&claim(1.015, Role::Max, Unit::Volt, &["FB"]), ELECTRICAL);
     assert_eq!(o.status, Status::Confirmed, "{o:?}");
 }
 
 #[test]
 fn units_come_from_the_unit_column_and_are_scaled() {
-    // 120 µA is 0.00012 A.
     let o = check_claim(&claim(120e-6, Role::Max, Unit::Amp, &["VEN"]), ELECTRICAL);
     assert_eq!(o.status, Status::Confirmed, "{o:?}");
-    // The same number taken as amps isn't there.
     let o = check_claim(&claim(120.0, Role::Max, Unit::Amp, &[]), ELECTRICAL);
     assert_eq!(o.status, Status::NotFound, "{o:?}");
-    // A number printed in another unit is another quantity, so the claim isn't found.
     let o = check_claim(&claim(36.0, Role::Max, Unit::Amp, &["VIN"]), ELECTRICAL);
     assert_eq!(o.status, Status::NotFound, "{o:?}");
 }
@@ -89,15 +82,12 @@ IR              Leakage current                                 VIO = 5 V       
 
 #[test]
 fn capacitance_is_read_in_picofarads_from_its_column() {
-    // 0.42 pF typical, 0.6 pF maximum.
     let o = check_claim(&claim(0.42e-12, Role::Typ, Unit::Farad, &["I/O"]), CAPACITANCE);
     assert_eq!(o.status, Status::Confirmed, "{o:?}");
     let o = check_claim(&claim(0.6e-12, Role::Max, Unit::Farad, &["I/O"]), CAPACITANCE);
     assert_eq!(o.status, Status::Confirmed, "{o:?}");
-    // The typical value filed as a maximum is the mistake to catch.
     let o = check_claim(&claim(0.42e-12, Role::Max, Unit::Farad, &["I/O"]), CAPACITANCE);
     assert_eq!(o.status, Status::Mismatch, "{o:?}");
-    // 10 nA is not 10 pF, and ppm is not a pico prefix.
     let o = check_claim(&claim(10e-12, Role::Max, Unit::Farad, &[]), CAPACITANCE);
     assert_eq!(o.status, Status::NotFound, "{o:?}");
 }
@@ -141,7 +131,6 @@ fn relative_bounds_are_found_in_their_column() {
         ..c.clone()
     };
     assert_eq!(check_claim(&wrong, ABS_MAX).status, Status::NotFound);
-    // A pin named VDD/VDDA is printed as either.
     let slash = Claim {
         value: Claimed::Pin {
             pin: "VDD/VIN".into(),
@@ -152,7 +141,6 @@ fn relative_bounds_are_found_in_their_column() {
     assert_eq!(check_claim(&slash, ABS_MAX).status, Status::Confirmed);
 }
 
-/// TI prints a pin with a sign in brackets: `(V+) + 0.5`.
 #[test]
 fn bracketed_pin_names_are_found() {
     let page = "
@@ -176,8 +164,6 @@ fn bracketed_pin_names_are_found() {
     );
 }
 
-/// A title such as "ESD maximum ratings" above some rows is not a column header: the rows' kV stays in the
-/// UNIT column of the table's real header.
 #[test]
 fn a_title_is_not_a_header() {
     let page = "
@@ -191,7 +177,6 @@ VESD                   electrostatic discharge               IEC 61000-4-2 (cont
     assert_eq!(o.status, Status::Confirmed, "{o:?}");
 }
 
-/// One value column under a PARAMETER heading is a header: "Parameter  Conditions  Value".
 #[test]
 fn a_single_value_column_under_parameter_is_a_header() {
     let page = "
@@ -267,12 +252,10 @@ Output voltage                         VOUT                3.3                  
     c.derived = Some("3.3 - 3.3 * 0.02 .. 3.3 + 3.3 * 0.02; VOUT ± 2 %".into());
     let o = check_claim(&c, page);
     assert_eq!(o.status, Status::Derived, "{o:?}");
-    // Arithmetic that doesn't give the claimed value is a mismatch.
     c.derived = Some("3.3 * 0.97 .. 3.3 * 1.03; VOUT ± 3 %".into());
     let o = check_claim(&c, page);
     assert_eq!(o.status, Status::Mismatch, "{o:?}");
     assert!(o.reason.contains("3.201"), "{}", o.reason);
-    // Inputs the page doesn't print are listed for whoever checks them.
     let mut r = claim(7.906, Role::Max, Unit::Volt, &[]);
     r.derived = Some("-sqrt(0.0625 * 1000) .. sqrt(0.0625 * 1000); RCWV = sqrt(P x R)".into());
     let o = check_claim(
@@ -281,10 +264,8 @@ Output voltage                         VOUT                3.3                  
     );
     assert_eq!(o.status, Status::Plausible, "{o:?}");
     assert!(o.reason.contains("1000 not on this page"), "{}", o.reason);
-    // A text that isn't `<min> .. <max>; explanation` is reported.
     c.derived = Some("3.3 V × (1 − 2 %)".into());
     assert_eq!(check_claim(&c, page).status, Status::Mismatch);
-    // A non-polar rating's minimum is the negative of its maximum; a zero is the bottom of a maximum.
     let mut sym = claim(-3.3, Role::Min, Unit::Volt, &[]);
     sym.other_end = Some(3.3);
     assert_eq!(check_claim(&sym, page).status, Status::Derived);
@@ -312,7 +293,6 @@ fn derived_texts_parse() {
         }
     );
     assert_eq!(d.explanation, "why");
-    // Pin names with a sign of their own (an op-amp's V+ and V–), with the offset set off by spaces.
     let d = parse_derived("-0.5 .. V+ + 0.5; why").unwrap();
     assert_eq!(
         d.max,
@@ -372,7 +352,6 @@ TSTG        Storage temperature               -65       150      °C
 TJ          Operating junction temperature    -40       125      °C
 VESD        Human-body model                            2,000    V
 ";
-    // `+ 0.3` after VIN is an offset, not a voltage of its own.
     assert_eq!(
         check_claim(&claim(0.3, Role::Max, Unit::Volt, &["EN"]), page).status,
         Status::NotFound
@@ -389,7 +368,6 @@ VESD        Human-body model                            2,000    V
         check_claim(&claim(2000.0, Role::Max, Unit::Volt, &[]), page).status,
         Status::Confirmed
     );
-    // A maximum filed as a minimum, on the pin's own row, is a mismatch.
     let o = check_claim(&claim(-0.3, Role::Max, Unit::Volt, &["VEN"]), page);
     assert_eq!(o.status, Status::Mismatch, "{o:?}");
 }
@@ -463,14 +441,13 @@ recommended = { min = 0, max = 5, page = 9 }
     assert!(report.contains("6 confirmed"), "{report}");
 }
 
-/// Every value in the shared library cites a page, and a blind copy of every file asks the same questions.
 #[test]
 fn every_library_file_blanks_and_compares_with_itself() {
     let lib = Library::load_dir(&root("parts")).unwrap();
     for (mpn, path) in &lib.files {
         let part = &lib.parts[mpn];
         if part.mpn != *mpn {
-            continue; // a variant; its file is checked under its own part number
+            continue;
         }
         for c in claims(part) {
             assert!(c.page > 0, "{mpn}: {}", c.label);
@@ -567,14 +544,11 @@ VIN       I/O input voltage     FT I/O             -0.3             VDDIOx+4.0  
 Operating temperature                              -55°C~+125°C
 VDIF      Dropout voltage       IOUT = 100 mA               0.25    0.35     V
 ";
-    // An offset is not a number of its own.
     assert!(check_claim(&claim(4.0, Role::Max, Unit::Volt, &["VIN"]), page).is_problem());
-    // The wrong end of a `~` cell is a mismatch; the right one is found.
     let o = check_claim(&claim(-55.0, Role::Max, Unit::Celsius, &[]), page);
     assert_eq!(o.status, Status::Mismatch, "{o:?}");
     let o = check_claim(&claim(-55.0, Role::Min, Unit::Celsius, &[]), page);
     assert!(!o.is_problem(), "{o:?}");
-    // A typical dropout filed as the headroom rating is a mismatch.
     let o = check_claim(&claim(0.25, Role::Value, Unit::Volt, &[]), page);
     assert_eq!(o.status, Status::Mismatch, "{o:?}");
 }
@@ -590,14 +564,12 @@ ICC     Supply current      Dominant, RL = 50 Ω        45      80     mA
 ";
     let o = check_claim(&claim(173.0, Role::Value, Unit::CelsiusPerWatt, &[]), page);
     assert!(!o.is_problem(), "{o:?}");
-    // Supply currents are claimed in amps; the table prints mA.
     let o = check_claim(&claim(0.08, Role::Max, Unit::Amp, &["ICC"]), page);
     assert!(!o.is_problem(), "{o:?}");
     let mut tj = claim(125.0, Role::Max, Unit::Celsius, &["TJ"]);
     tj.avoid = vec!["storage".into()];
     let o = check_claim(&tj, page);
     assert!(!o.is_problem(), "{o:?}");
-    // The storage maximum isn't a junction maximum.
     let mut wrong = claim(150.0, Role::Max, Unit::Celsius, &["TJ"]);
     wrong.avoid = vec!["storage".into()];
     assert!(check_claim(&wrong, page).is_problem());

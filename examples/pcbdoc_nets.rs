@@ -1,4 +1,3 @@
-//! Prints `REF.PAD NET` for every pad on a net in a `.PcbDoc`, sorted.
 fn main() {
     let path = std::env::args().nth(1).expect("usage: pcbdoc_nets <board.PcbDoc>");
     let mut lines: Vec<String> = gerberus::altium::pcb::load_pad_nets(std::path::Path::new(&path))

@@ -1,5 +1,3 @@
-//! Works out which pins connect across every sheet of an Altium project, and names the nets as Altium does.
-
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -8,10 +6,8 @@ use super::project::{self, Project, Scope};
 use super::schematic::{self, Pt, SchComponent, SchDoc, UNIT};
 use crate::design::{Component, Design, Net, Pin, PinKind};
 
-/// Objects closer than half a unit touch. Imported designs place objects up to 0.315 units off the grid.
 const TOUCH: i64 = UNIT / 2;
 
-/// Loads a `.PrjPcb` and every schematic it lists, or a lone `.SchDoc`.
 pub fn load(path: &Path) -> Result<Design, String> {
     let ext = path
         .extension()
@@ -38,26 +34,17 @@ pub fn load(path: &Path) -> Result<Design, String> {
     Ok(build(&project, &docs, warnings))
 }
 
-/// One level of an instance's channel order: the room as (prefix, number, suffix), then the symbol's position.
 type OrderKey = ((String, u64, String), std::cmp::Reverse<(usize, usize)>);
 
-/// One placement of a sheet: the document no symbol places, or a channel of a sheet symbol.
 #[derive(Debug, Clone)]
 struct Instance {
     doc: usize,
-    /// Unique key, such as `/0` or `/0/3.2` (document, then symbol index and channel down the tree).
     key: String,
-    /// The designator of the sheet symbol (and channel) that placed it: its room, if the sheet is multi-channel.
     room: String,
-    /// Sorts instances of one document into channel order: level by level, by room in natural order, then,
-    /// between symbols of one designator, the one later in the project first.
     order: Vec<OrderKey>,
-    /// The instances each sheet symbol on this sheet places, by symbol index, with each one's channel number
-    /// (from `Repeat(name,a,b)`, or 1).
     children: Vec<Vec<(usize, i64)>>,
 }
 
-/// Splits `Repeat(NAME,a,b)` into its parts.
 fn parse_repeat(s: &str) -> Option<(String, Vec<String>)> {
     let inner = s
         .trim()
@@ -69,10 +56,8 @@ fn parse_repeat(s: &str) -> Option<(String, Vec<String>)> {
     Some((name, parts.collect()))
 }
 
-/// The most channels a `Repeat()` or members a bus range may have; a larger one is read as a plain name.
 const MAX_CHANNELS: i64 = 4096;
 
-/// Channels a sheet symbol places: `(room, channel number)`.
 fn channels(designator: &str) -> Vec<(String, i64)> {
     if let Some((name, args)) = parse_repeat(designator)
         && let [a, b] = args.as_slice()
@@ -85,8 +70,6 @@ fn channels(designator: &str) -> Vec<(String, i64)> {
     vec![(designator.to_string(), 1)]
 }
 
-/// Whether channel instances all lie on one branch of the sheet tree (each placed, maybe indirectly, by the
-/// next), so a net among them stays inside one channel.
 fn one_channel_path(insts: &BTreeSet<usize>, instances: &[Instance]) -> bool {
     let mut keys: Vec<&str> = insts.iter().map(|&i| instances[i].key.as_str()).collect();
     keys.sort_by_key(|k| k.len());
@@ -94,7 +77,6 @@ fn one_channel_path(insts: &BTreeSet<usize>, instances: &[Instance]) -> bool {
         .all(|w| w[1].starts_with(w[0]) && w[1][w[0].len()..].starts_with('/'))
 }
 
-/// Expands `NAME[a..b]` into its members.
 fn expand_range(s: &str) -> Option<Vec<String>> {
     let open = s.rfind('[')?;
     let inner = s[open + 1..].strip_suffix(']')?;
@@ -155,7 +137,6 @@ fn touches(p: Pt, a: Pt, b: Pt) -> bool {
     dist2_to_segment(p, a, b) <= (TOUCH as f64).powi(2)
 }
 
-/// Segments bucketed on a coarse grid, so a point only tests the segments near it.
 struct SegIndex {
     segs: Vec<(Pt, Pt, usize)>,
     cells: HashMap<(i64, i64), Vec<usize>>,
@@ -173,8 +154,6 @@ impl SegIndex {
     fn add(&mut self, a: Pt, b: Pt, node: usize) {
         let i = self.segs.len();
         self.segs.push((a, b, node));
-        // Step along the segment a cell at a time, adding the cells within reach of each step, so a long
-        // diagonal costs its length rather than its bounding box.
         let steps = (b.0 - a.0).abs().max((b.1 - a.1).abs()) / CELL + 1;
         let mut cells = BTreeSet::new();
         for k in 0..=steps {
@@ -190,7 +169,6 @@ impl SegIndex {
             self.cells.entry(c).or_default().push(i);
         }
     }
-    /// Nodes with a segment touching `p`.
     fn at(&self, p: Pt) -> impl Iterator<Item = usize> + '_ {
         let cell = (p.0.div_euclid(CELL), p.1.div_euclid(CELL));
         self.cells
@@ -202,7 +180,6 @@ impl SegIndex {
     }
 }
 
-/// Points bucketed by grid cell, to find points that coincide.
 fn coincident(points: &[(Pt, usize)], mut f: impl FnMut(usize, usize)) {
     let mut cells: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     for (i, (p, _)) in points.iter().enumerate() {
@@ -226,12 +203,9 @@ fn coincident(points: &[(Pt, usize)], mut f: impl FnMut(usize, usize)) {
     }
 }
 
-/// How strongly a name names its net. Lower wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Rank {
-    /// A power port, when `PowerPortNamesTakePriority` is on.
     Power0,
-    /// A member of a labelled harness, `<label>.<entry>`.
     Harness,
     Label,
     Power,
@@ -242,7 +216,6 @@ enum Rank {
 struct Name {
     rank: Rank,
     name: String,
-    /// The instance whose object gives the name.
     inst: usize,
 }
 
@@ -254,19 +227,14 @@ struct PinRef {
     kind: PinKind,
 }
 
-/// One connected group of objects on one sheet instance, or a link-only group joining two identifiers.
 #[derive(Debug, Default)]
 struct Subgraph {
     pins: Vec<PinRef>,
     names: Vec<Name>,
     links: Vec<String>,
-    /// Instances in which this group has a port, a harness or a project-wide identifier that carries it off
-    /// its sheet.
     leaves: bool,
     no_erc: bool,
-    /// The sheet instance the group is on; `None` for link-only groups.
     inst: Option<usize>,
-    /// Harness signals on the group: `(bundle key, member name)`. They become links once bundles are resolved.
     bundle_links: Vec<(String, String)>,
 }
 
@@ -284,7 +252,6 @@ pub fn pin_kind(electrical: i64) -> PinKind {
     }
 }
 
-/// Splits a designator into prefix, number and suffix, so `R9` sorts before `R11`.
 fn designator_key(s: &str) -> (String, u64, String) {
     let start = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
     let end = s[start..]
@@ -297,8 +264,6 @@ fn designator_key(s: &str) -> (String, u64, String) {
     )
 }
 
-/// Altium compares text ignoring case, with `_` after digits but before letters: `USB2_N` before `USB_N`, and
-/// `SUMPB_U1` before `SUMPBX_C1`.
 fn sort_text(s: &str) -> String {
     s.chars()
         .map(|c| match c {
@@ -317,12 +282,10 @@ fn cmp_pin_number(a: &str, b: &str) -> Ordering {
     }
 }
 
-/// `$ChannelAlpha`: A to Z, then the characters after Z.
 fn channel_alpha(i: usize) -> String {
     char::from_u32(64 + i as u32).map(String::from).unwrap_or_default()
 }
 
-/// Applies the project's channel designator format to a designator.
 fn channel_designator(format: &str, designator: &str, room: &str, index: usize) -> String {
     let split = designator.trim_end_matches(|c: char| c.is_ascii_digit()).len();
     let tokens = [
@@ -337,8 +300,6 @@ fn channel_designator(format: &str, designator: &str, room: &str, index: usize) 
     let mut rest = format;
     'outer: while let Some(c) = rest.chars().next() {
         for (t, v) in &tokens {
-            // `get` rather than slicing: the format can hold non-ASCII text, and a token's length may not end on a
-            // character boundary there.
             if rest.get(..t.len()).is_some_and(|head| head.eq_ignore_ascii_case(t)) {
                 out.push_str(v);
                 rest = &rest[t.len()..];
@@ -352,7 +313,6 @@ fn channel_designator(format: &str, designator: &str, room: &str, index: usize) 
 }
 
 fn build(project: &Project, docs: &[(PathBuf, SchDoc)], mut warnings: Vec<String>) -> Design {
-    // Which document each sheet symbol places, by file name.
     let by_name: HashMap<String, usize> = docs
         .iter()
         .enumerate()
@@ -443,7 +403,6 @@ fn build(project: &Project, docs: &[(PathBuf, SchDoc)], mut warnings: Vec<String
             );
         }
     }
-    // Sheets that only place each other in a loop have no root: start each such loop at its first sheet.
     for i in 0..docs.len() {
         if !instances.iter().any(|inst| inst.doc == i) {
             let order = vec![(Default::default(), std::cmp::Reverse((i, 0)))];
@@ -461,8 +420,6 @@ fn build(project: &Project, docs: &[(PathBuf, SchDoc)], mut warnings: Vec<String
         }
     }
 
-    // A document placed more than once is multi-channel: its parts get one designator per channel, numbered in
-    // instance order.
     let mut per_doc: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for (i, inst) in instances.iter().enumerate() {
         per_doc.entry(inst.doc).or_default().push(i);
@@ -476,7 +433,6 @@ fn build(project: &Project, docs: &[(PathBuf, SchDoc)], mut warnings: Vec<String
         }
     }
 
-    // Scope.
     let scope = match project.scope {
         Scope::Automatic => {
             let entries = docs
@@ -528,23 +484,16 @@ struct Builder<'a> {
     scope: Scope,
     ports_global: bool,
     power_global: bool,
-    /// Every power port name in the project, upper-cased, when power ports are global.
     power_names: HashSet<String>,
     subgraphs: Vec<Subgraph>,
     components: BTreeMap<String, Component>,
-    /// Every pin of every part of each component, whether drawn or not.
     all_pins: BTreeMap<String, BTreeMap<String, PinRef>>,
-    /// `(reference, part)` → the sheet that draws it, to spot duplicate designators.
     drawn_parts: HashMap<(String, i64), String>,
     warnings: Vec<String>,
-    /// Pairs of bundle keys that are one bundle.
     bundle_unions: Vec<(String, String)>,
-    /// Names for a bundle's members, `<name>.<member>`: a label drawn on a signal harness, or a harness port
-    /// when ports may name nets. By a key of the bundle.
     bundle_labels: Vec<(String, Name)>,
 }
 
-/// What sits at a connection point on a sheet.
 #[derive(Debug)]
 enum Item {
     Pin(PinRef, Option<String>),
@@ -552,7 +501,6 @@ enum Item {
     Power(String),
     Port(usize),
     Entry(usize, usize),
-    /// A harness connector's entry: the wire on it is that member of the connector's bundle.
     HarnessEntry(usize, usize),
     Junction,
     NoErc,
@@ -571,17 +519,15 @@ impl Builder<'_> {
         let sheet_name = path.file_name().and_then(|f| f.to_str()).unwrap_or("?").to_string();
         let ik = &inst.key;
 
-        // Nodes: wires first, then items.
         let nw = doc.wires.len();
         let mut items: Vec<Item> = Vec::new();
-        let mut points: Vec<(Pt, usize)> = Vec::new(); // item connection points, by node
+        let mut points: Vec<(Pt, usize)> = Vec::new();
         let mut segs = SegIndex::new();
         for (wi, w) in doc.wires.iter().enumerate() {
             for s in w.windows(2) {
                 segs.add(s[0], s[1], wi);
             }
         }
-        // Pins: a wire may join anywhere along a pin, so pins get segments that only wire ends test.
         let mut pin_segs = SegIndex::new();
         for c in &doc.components {
             if c.kind == 2 {
@@ -602,8 +548,6 @@ impl Builder<'_> {
                     name: p.name.clone(),
                     kind: pin_kind(p.electrical),
                 };
-                // A hidden pin joins the net its `HiddenNetName` gives. Older libraries leave that empty; their
-                // hidden power pins, and hidden pins named after a supply, join the net of their name.
                 let hidden_net = if p.hidden_net.is_empty() {
                     &p.name
                 } else {
@@ -618,7 +562,6 @@ impl Builder<'_> {
                 items.push(Item::Pin(pr, hidden));
             }
         }
-        // Labels on a bus name the bus, not a wire.
         let mut bus_segs = SegIndex::new();
         for (bi, bus) in doc.buses.iter().enumerate() {
             for s in bus.windows(2) {
@@ -649,7 +592,6 @@ impl Builder<'_> {
             points.push((*p, nw + items.len()));
             items.push(Item::Power(name.clone()));
         }
-        // Ports and entries on a bus carry the bus's members instead of joining a wire.
         let mut bus_ids: Vec<(usize, Item)> = Vec::new();
         for (pi, port) in doc.ports.iter().enumerate() {
             if let Some(bus) = port.ends.iter().find_map(|e| bus_segs.at(*e).next()) {
@@ -697,7 +639,6 @@ impl Builder<'_> {
         }
 
         let mut uf = UnionFind::new(nw + items.len());
-        // A wire end joins any wire it lands on, and any pin along its length.
         for (wi, w) in doc.wires.iter().enumerate() {
             for v in w {
                 for n in segs.at(*v).chain(pin_segs.at(*v)).collect::<Vec<_>>() {
@@ -705,7 +646,6 @@ impl Builder<'_> {
                 }
             }
         }
-        // Every other object joins the wires its point lands on and the objects at the same point.
         for (p, n) in &points {
             for w in segs.at(*p).collect::<Vec<_>>() {
                 uf.union(*n, w);
@@ -713,7 +653,6 @@ impl Builder<'_> {
         }
         coincident(&points, |a, b| uf.union(a, b));
 
-        // Buses: joined where a vertex of one lands on another.
         let mut bus_uf = UnionFind::new(doc.buses.len());
         for (bi, bus) in doc.buses.iter().enumerate() {
             for v in bus {
@@ -743,7 +682,6 @@ impl Builder<'_> {
                     let name = doc.sheet_symbols[*si].entries[*ei].name.clone();
                     let children = &inst.children[*si];
                     match parse_repeat(&name) {
-                        // A `Repeat(NAME)` entry on a labelled wire hands member `<label><n>` to channel n.
                         Some((port, _)) => {
                             let root = uf.find(nw + i);
                             let labels: Vec<String> = items_in_group(&items, &mut uf, nw, root);
@@ -777,7 +715,6 @@ impl Builder<'_> {
         }
         self.bundles(instances, ii, doc, &harness_segs, &harness_labels);
 
-        // Each bus: the members its ranges name, linked through every identifier on it.
         let mut bus_groups: BTreeMap<usize, (Vec<String>, Vec<&Item>)> = BTreeMap::new();
         for (bus, name) in &bus_labels {
             bus_groups.entry(bus_uf.find(*bus)).or_default().0.push(name.clone());
@@ -796,8 +733,6 @@ impl Builder<'_> {
         for (names, ids) in bus_groups.values() {
             let members: BTreeSet<String> = names.iter().filter_map(|n| expand_range(n)).flatten().collect();
             let prefixes: BTreeSet<&str> = names.iter().filter_map(|n| range_prefix(n)).collect();
-            // Each member net links through the identifiers on its bus, as it would through a plain port or entry
-            // of the member's name; a bus reaching a harness puts its members in the bundle.
             let member_group = |m: &str| Subgraph {
                 links: vec![format!("L:{ik}:{}", key(m))],
                 leaves: true,
@@ -881,8 +816,6 @@ impl Builder<'_> {
         }
     }
 
-    /// Works out which harness objects on a sheet carry one bundle, and records the keys that join bundles
-    /// across sheets.
     fn bundles(
         &mut self,
         instances: &[Instance],
@@ -894,11 +827,9 @@ impl Builder<'_> {
         let inst = &instances[ii];
         let ik = &inst.key;
         let nl = doc.harnesses.len();
-        // Bundle nodes after the harness lines, each with its points and the keys it gives its bundle.
         let mut nodes: Vec<(Vec<Pt>, Vec<String>)> = Vec::new();
         for (ci, c) in doc.harness_connectors.iter().enumerate() {
             nodes.push((vec![c.primary], vec![format!("C:{ik}:{ci}")]));
-            // An entry another harness lands on carries a nested bundle: that member of this one.
             for e in &c.entries {
                 nodes.push((vec![e.at], vec![format!("C:{ik}:{ci}|{}", key(&e.name))]));
             }
@@ -979,7 +910,6 @@ impl Builder<'_> {
             g.links.push(format!("P:{k}"));
             g.leaves = true;
         } else if self.power_names.contains(&k) {
-            // A label spelled as a global power port names that supply.
             g.links.push(format!("P:{k}"));
         }
         g.names.push(Name {
@@ -1095,7 +1025,6 @@ impl Builder<'_> {
         docs: &[(PathBuf, SchDoc)],
         channel_of: &HashMap<usize, (String, usize)>,
     ) -> Design {
-        // Every pin of a part no sheet draws is a net of its own.
         let mut drawn: HashSet<(String, String)> = HashSet::new();
         for g in &self.subgraphs {
             for p in &g.pins {
@@ -1113,7 +1042,6 @@ impl Builder<'_> {
             }
         }
 
-        // Harness signals become links once every bundle is resolved.
         let mut bundles = Bundles::default();
         for (a, b) in &self.bundle_unions {
             bundles.union(a, b);
@@ -1169,7 +1097,6 @@ impl Builder<'_> {
             let mut names: Vec<Name> = Vec::new();
             let mut leaves = false;
             let mut nc = false;
-            // The channel instances the net reaches.
             let mut channels_on: BTreeSet<usize> = BTreeSet::new();
             for &m in members {
                 let g = &mut self.subgraphs[m];
@@ -1211,8 +1138,6 @@ impl Builder<'_> {
                             .unwrap_or("*".into());
                         name = append_sheet_number(&name, &num);
                     }
-                    // A net that stays inside one channel of a multi-channel sheet is named the way the
-                    // channel's parts are, unless it is a supply.
                     if let Some((room, index)) = channel_of.get(&nm.inst)
                         && one_channel_path(&channels_on, instances)
                         && !self.power_names.contains(&key(&nm.name))
@@ -1237,7 +1162,6 @@ impl Builder<'_> {
             });
         }
 
-        // Nets that end up sharing a name without joining keep it once; the rest are numbered.
         let mut taken: HashMap<String, usize> = HashMap::new();
         let all: HashSet<String> = nets.iter().map(|n| key(&n.name)).collect();
         for net in &mut nets {
@@ -1276,9 +1200,6 @@ impl Builder<'_> {
     }
 }
 
-/// Harness bundles, by key. A key is an object that carries a bundle (`C:<sheet>:<connector>`,
-/// `HX:<sheet>:<port>`) or a member of one (`<bundle>|<member>`). Wherever two bundles join, their members of
-/// one name join too.
 #[derive(Default)]
 struct Bundles {
     ids: HashMap<String, usize>,
@@ -1313,7 +1234,6 @@ impl Bundles {
         self.parent[a.max(b)] = a.min(b);
         true
     }
-    /// The key's member path rebuilt on its bundle's representative, joined to the key itself.
     fn rebuild(&mut self, k: &str) -> bool {
         let Some((prefix, member)) = k.rsplit_once('|') else {
             return false;
@@ -1324,7 +1244,6 @@ impl Bundles {
         let canonical = format!("{}|{member}", self.names[root]);
         self.union(k, &canonical)
     }
-    /// Joins members of joined bundles until nothing changes.
     fn close(&mut self, queries: &[String]) {
         for q in queries {
             self.id(q);
@@ -1340,7 +1259,6 @@ impl Bundles {
             }
         }
     }
-    /// The representative of a key's bundle or member.
     fn canon(&mut self, k: &str) -> usize {
         self.rebuild(k);
         let i = self.id(k);
@@ -1348,8 +1266,6 @@ impl Bundles {
     }
 }
 
-/// A net name inside a channel: the channel designator format applied to it, with a differential-pair suffix
-/// kept last.
 fn channel_name(format: &str, name: &str, room: &str, index: usize) -> String {
     for suffix in ["_P", "_N"] {
         if let Some(base) = name.strip_suffix(suffix) {
@@ -1359,7 +1275,6 @@ fn channel_name(format: &str, name: &str, room: &str, index: usize) -> String {
     channel_designator(format, name, room, index)
 }
 
-/// `VBAT` on sheet 8 is `VBAT_8`; a differential-pair suffix stays last, so `HV_P` on sheet 3 is `HV_3_P`.
 fn append_sheet_number(name: &str, number: &str) -> String {
     for suffix in ["_P", "_N"] {
         if let Some(base) = name.strip_suffix(suffix) {
@@ -1369,7 +1284,6 @@ fn append_sheet_number(name: &str, number: &str) -> String {
     format!("{name}_{number}")
 }
 
-/// Label names in the group rooted at `root`.
 fn items_in_group(items: &[Item], uf: &mut UnionFind, nw: usize, root: usize) -> Vec<String> {
     let mut out: Vec<String> = items
         .iter()
@@ -1389,7 +1303,6 @@ mod tests {
 
     #[test]
     fn channel_format_with_non_ascii_text() {
-        // "µ" is two bytes, so the 9-byte "$RoomName" ends inside one; this used to panic on a bad slice.
         assert_eq!(channel_designator("µµµµµ", "R12", "Amp", 2), "µµµµµ");
         assert_eq!(
             channel_designator("$ComponentPrefixµµµµµ$ChannelAlpha", "R12", "Amp", 2),

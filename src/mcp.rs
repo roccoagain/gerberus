@@ -1,28 +1,16 @@
-//! `gerberus mcp`: a Model Context Protocol server on stdin and stdout, so an AI agent can run the checks, read
-//! net voltages and their reasons, and see what to add next, without parsing a shell's output.
-//!
-//! Each tool runs the `gerberus` command of the same name in a child process and returns what it prints, so the
-//! tools behave exactly as the commands do. Messages are JSON-RPC 2.0, one per line.
-
 use std::io::{BufRead, Write};
 use std::path::Path;
 use std::process::Command;
 
 use serde_json::{Value, json};
 
-/// The protocol versions this server speaks, newest first. A client asking for another gets the newest.
 const PROTOCOLS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 
-/// A tool: its name, what it does, its extra arguments, and how they become command-line flags.
 struct Tool {
     name: &'static str,
     description: &'static str,
-    /// `(argument, JSON type, description, flag)`. A boolean argument adds its flag when true; a string adds the
-    /// flag and its value; an array of strings adds the flag once per item. An empty flag is a positional.
     args: &'static [(&'static str, &'static str, &'static str, &'static str)],
-    /// The command's words before the design path.
     command: &'static [&'static str],
-    /// The tool takes a `design` path.
     design: bool,
 }
 
@@ -176,7 +164,6 @@ fn schema(t: &Tool) -> Value {
     json!({"type": "object", "properties": props, "required": required})
 }
 
-/// The command-line arguments for a call, or what is wrong with it.
 fn argv(t: &Tool, args: &Value) -> Result<Vec<String>, String> {
     let mut out: Vec<String> = t.command.iter().map(|s| (*s).to_string()).collect();
     let get = |k: &str| args.get(k).filter(|v| !v.is_null());
@@ -211,8 +198,6 @@ fn argv(t: &Tool, args: &Value) -> Result<Vec<String>, String> {
             vec![v.as_str().ok_or(format!("`{name}` is a string"))?.to_string()]
         };
         for x in values {
-            // A value after its flag is read as that flag's value whatever it is (a net named -12V); only a
-            // positional could be taken for a flag.
             if flag.is_empty() && x.starts_with('-') {
                 return Err(format!("`{name}` can't start with '-'"));
             }
@@ -228,7 +213,6 @@ fn argv(t: &Tool, args: &Value) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-/// Runs a tool and returns the MCP result: the command's output, and whether it failed.
 fn call(exe: &Path, t: &Tool, args: &Value) -> Value {
     let argv = match argv(t, args) {
         Ok(a) => a,
@@ -249,15 +233,14 @@ fn call(exe: &Path, t: &Tool, args: &Value) -> Value {
         }
         text.push_str(stderr.trim_end());
     }
-    // Status 1 is a finding (a check that failed), not a broken call; 2 is an error.
     let code = out.status.code();
-    if code == Some(1) {
+    let check_failed = i32::from(crate::EXIT_CHECK_FAILED);
+    if code == Some(check_failed) {
         text.push_str("\n\n(exit status 1: a check failed with an error)");
     }
-    json!({"content": [{"type": "text", "text": text}], "isError": code.is_none_or(|c| c > 1)})
+    json!({"content": [{"type": "text", "text": text}], "isError": code.is_none_or(|c| c > check_failed)})
 }
 
-/// The answer to one message, or none for a notification.
 pub fn handle(exe: &Path, msg: &Value) -> Option<Value> {
     let id = msg.get("id").cloned();
     let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
@@ -306,7 +289,6 @@ pub fn handle(exe: &Path, msg: &Value) -> Option<Value> {
     }
 }
 
-/// Serves until `input` closes.
 pub fn serve(exe: &Path, input: impl BufRead, mut output: impl Write) -> Result<(), String> {
     for line in input.lines() {
         let line = line.map_err(|e| e.to_string())?;

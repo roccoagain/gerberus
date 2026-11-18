@@ -1,2 +1,1 @@
-# Tests may unwrap; shipped code may not (see the `unwrap_used` lint in src/lib.rs and src/main.rs).
 allow-unwrap-in-tests = true

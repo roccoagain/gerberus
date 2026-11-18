@@ -1,25 +1,14 @@
-//! Telling the user a newer release is out, and `gerberus update`.
-//!
-//! The check is at most once a day: it asks GitHub for the latest release, remembers the answer in the cache
-//! folder, and waits for GitHub at most [`WAIT`] after the command itself has finished. Updating itself is done
-//! by `gerberus-update`, which the installers put next to `gerberus` (cargo-dist's updater, axoupdater).
-
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-/// Where releases are published.
 pub const REPO: &str = "roccoagain/gerberus";
 
-/// How long a remembered answer is trusted before GitHub is asked again.
 pub const MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// The longest the check may hold up a command that has already finished.
 pub const WAIT: Duration = Duration::from_secs(1);
 
-/// The environment variable that turns the check off.
 pub const OPT_OUT: &str = "GERBERUS_NO_UPDATE_CHECK";
 
-/// A version as `major.minor.patch`, with an optional pre-release (`-rc.1`), which sorts before the release.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Version {
     numbers: [u64; 3],
@@ -27,7 +16,6 @@ struct Version {
 }
 
 impl Version {
-    /// Reads `1.2.3`, `v1.2.3` or `1.2.3-rc.1`; build metadata (`+...`) is ignored.
     fn parse(text: &str) -> Option<Version> {
         let text = text.trim().trim_start_matches('v');
         let text = text.split('+').next()?;
@@ -51,8 +39,6 @@ impl Version {
     }
 }
 
-/// Whether `latest` (a release tag such as `v0.2.0`) is a newer version than `current`. Anything that isn't a
-/// version is never newer.
 pub fn is_newer(latest: &str, current: &str) -> bool {
     match (Version::parse(latest), Version::parse(current)) {
         (Some(l), Some(c)) => l.is_newer_than(&c),
@@ -60,10 +46,8 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
     }
 }
 
-/// The folder the latest release tag is remembered in: the user's cache folder, `gerberus` in it.
 pub fn default_cache_dir() -> Option<PathBuf> {
     let var = |v: &str| std::env::var_os(v).filter(|x| !x.is_empty()).map(PathBuf::from);
-    // On Windows, the same folder whichever shell runs it (Git Bash and MSYS2 set HOME, PowerShell doesn't).
     let local = if cfg!(windows) { var("LOCALAPPDATA") } else { None };
     let base = local
         .or_else(|| var("XDG_CACHE_HOME"))
@@ -76,8 +60,6 @@ fn cache_file(dir: &Path) -> PathBuf {
     dir.join("latest-release")
 }
 
-/// The remembered latest release tag, and whether it is older than [`MAX_AGE`] (or missing), so GitHub
-/// should be asked again.
 pub fn remembered(dir: &Path) -> (Option<String>, bool) {
     let file = cache_file(dir);
     let tag = std::fs::read_to_string(&file)
@@ -92,8 +74,6 @@ pub fn remembered(dir: &Path) -> (Option<String>, bool) {
     (tag, stale)
 }
 
-/// Remembers `tag` as the latest release. The file is replaced in one step, so a run that exits half way
-/// through leaves the old answer, not half a new one.
 pub fn remember(dir: &Path, tag: &str) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let tmp = dir.join(format!("latest-release.{}.tmp", std::process::id()));
@@ -102,7 +82,6 @@ pub fn remember(dir: &Path, tag: &str) -> Result<(), String> {
     std::fs::rename(&tmp, &file).map_err(|e| format!("{}: {e}", file.display()))
 }
 
-/// Asks GitHub for the latest release's tag. `Ok(None)` when there is no release yet.
 pub fn fetch_latest() -> Result<Option<String>, String> {
     let tls = ureq::tls::TlsConfig::builder()
         .root_certs(ureq::tls::RootCerts::PlatformVerifier)
@@ -137,13 +116,11 @@ pub fn fetch_latest() -> Result<Option<String>, String> {
         .ok_or_else(|| format!("{url}: no tag_name in the answer"))
 }
 
-/// The `tag_name` of a GitHub release, from the API's JSON.
 pub fn latest_tag(json: &str) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     Some(v.get("tag_name")?.as_str()?.to_string())
 }
 
-/// The line to print when `latest` is newer than this build, saying how to update.
 pub fn notice(latest: &str, current: &str, has_updater: bool) -> Option<String> {
     if !is_newer(latest, current) {
         return None;
@@ -159,7 +136,6 @@ pub fn notice(latest: &str, current: &str, has_updater: bool) -> Option<String> 
     ))
 }
 
-/// `gerberus-update` (with `.exe` on Windows) in the folder `exe` is in, where the installers put it.
 pub fn updater_next_to(exe: &Path) -> Option<PathBuf> {
     let path = exe
         .parent()?
@@ -167,8 +143,6 @@ pub fn updater_next_to(exe: &Path) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-/// Moves the running binary `exe` to `<exe>.old`, so an installer can write a new one in its place (Windows
-/// can't overwrite a running program, but can rename it). Removes an `.old` left by an earlier update first.
 pub fn set_aside(exe: &Path) -> Result<PathBuf, String> {
     let mut name = exe
         .file_name()
@@ -183,7 +157,6 @@ pub fn set_aside(exe: &Path) -> Result<PathBuf, String> {
     Ok(aside)
 }
 
-/// Undoes [`set_aside`] after a failed update, unless the installer already put a new binary at `exe`.
 pub fn restore(exe: &Path, aside: &Path) -> Result<(), String> {
     if exe.exists() {
         return Ok(());
@@ -256,7 +229,6 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&aside).unwrap(), "old");
         restore(&exe, &aside).unwrap();
         assert_eq!(std::fs::read_to_string(&exe).unwrap(), "old");
-        // When the installer has already written a new binary, it stays.
         let aside = set_aside(&exe).unwrap();
         std::fs::write(&exe, "new").unwrap();
         restore(&exe, &aside).unwrap();

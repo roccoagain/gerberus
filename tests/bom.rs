@@ -1,7 +1,3 @@
-//! BOM health against a snapshot of LCSC's answers in `tests/fixtures/lcsc` (taken 2026-11-17, with LCSC's
-//! parameter tables), so these tests never touch the network. Refresh the snapshot with
-//! `gerberus bom <board> --cache tests/fixtures/lcsc --max-age 0` and update the expected findings.
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -25,7 +21,6 @@ fn board(rel: &str) -> Vec<Health> {
     check(&design, &mut snapshot(), Options::default())
 }
 
-/// `(first reference, severity, topic)` for every finding at or above `Unknown`.
 fn findings(report: &[Health]) -> Vec<(String, Severity, Topic)> {
     report
         .iter()
@@ -122,7 +117,6 @@ fn can_encoder_rev2() {
     );
     let f = findings(&r);
     assert!(f.contains(&("L1".into(), Severity::Warning, Topic::Lifecycle)), "{f:?}");
-    // Passives from one maker are not flagged as single source.
     assert!(
         !f.iter()
             .any(|(r, _, t)| r.starts_with('R') && *t == Topic::SecondSource),
@@ -136,7 +130,6 @@ fn can_encoder_rev2() {
 
 #[test]
 fn can_encoder_rev1_and_sniffer_have_only_stock_errors() {
-    // JLCPCB basic parts LCSC had run out of on 2026-11-17.
     assert_eq!(
         errors(&board("tests/fixtures/sniffer/sniffer.kicad_sch")),
         [
@@ -173,7 +166,6 @@ fn testbed_catches_an_lcsc_number_for_a_different_part() {
             "U1: LCSC C7950 is onsemi LM358DR2G, but the MPN field says LM358DR"
         ]
     );
-    // Parts named only by value can't be compared with LCSC's part number, so they aren't.
     assert!(
         r.iter()
             .find(|h| h.line.mpn == "1uF")
@@ -268,9 +260,9 @@ fn listing_status_other_than_normal_is_a_warning() {
 #[test]
 fn second_sources_need_another_maker_the_same_package_and_stock() {
     let sims = vec![
-        similar("C2", "Acme", 1000, "SOT-23"),    // same maker
-        similar("C3", "Other", 1000, "SOT-23-5"), // another package
-        similar("C4", "Third", 5, "SOT-23"),      // not enough for 10 boards
+        similar("C2", "Acme", 1000, "SOT-23"),
+        similar("C3", "Other", 1000, "SOT-23-5"),
+        similar("C4", "Third", 5, "SOT-23"),
     ];
     let l = listing("C1", "A", "Acme", 1000, "normal", sims.clone());
     let r = run(vec![part("U1", "X:Y", "A", "C1")], vec![("C1", Some(l))], 10);
@@ -353,7 +345,6 @@ fn only_plain_resistors_and_capacitors_are_commodities() {
 
 #[test]
 fn one_mpn_field_in_a_line_is_enough_to_compare() {
-    // A0 has no MPN field and its value happens to equal the other's MPN, so both land on one line.
     let mut a = part("A0", "X:Y", "", "C1");
     a.value = "WRONG".into();
     let b = part("A1", "X:Y", "WRONG", "C1");
@@ -425,7 +416,6 @@ fn json(rel: &str) -> serde_json::Value {
 fn reads_a_mouser_answer() {
     let raw = json("tests/fixtures/distributors/mouser-LM358DR2G.json");
     let l = Listing::from_mouser_json(&raw, "LM358DR2G").unwrap().unwrap();
-    // Only the exact part number counts; LM358DR2GH is another part.
     assert_eq!(l.code, "863-LM358DR2G");
     assert_eq!(l.manufacturer, "onsemi");
     assert_eq!(l.stock, 12345);
@@ -437,7 +427,6 @@ fn reads_a_mouser_answer() {
             .unwrap_err()
             .contains("Invalid unique identifier")
     );
-    // Stock given only as text.
     let text = serde_json::json!({"Errors": [], "SearchResults": {"Parts": [
         {"ManufacturerPartNumber": "A-1", "Availability": "1,500 In Stock", "LifecycleStatus": "Obsolete"}
     ]}});
@@ -455,7 +444,6 @@ fn reads_a_digikey_answer() {
     assert_eq!(l.stock, 81234);
     assert_eq!(l.lifecycle.as_deref(), Some("Active"));
     assert_eq!(l.package, "TO-236-3, SC-59, SOT-23-3");
-    // A status given as plain text reads the same.
     let flat = serde_json::json!({"Product": {"ManufacturerProductNumber": "X", "QuantityAvailable": 0,
         "Manufacturer": "Acme", "ProductStatus": "Obsolete"}});
     let l = Listing::from_digikey_json(&flat).unwrap().unwrap();
@@ -483,7 +471,6 @@ fn mouser(mpn: &str, stock: u64, lifecycle: Option<&str>) -> Listing {
     }
 }
 
-/// Mouser and DigiKey are asked by the MPN field, and give the manufacturer's lifecycle.
 #[test]
 fn lookups_by_mpn_judge_lifecycle_and_need_an_mpn() {
     let parts = vec![
@@ -517,7 +504,6 @@ fn lookups_by_mpn_judge_lifecycle_and_need_an_mpn() {
             .iter()
             .any(|f| f.message.contains("595-OLD1") && f.message.contains("Obsolete"))
     );
-    // No similar parts from Mouser: second sources aren't judged, so no single-source warning.
     let u3 = r.iter().find(|h| h.line.references[0] == "U3").unwrap();
     assert!(
         u3.findings.iter().all(|f| f.severity == Severity::Info),
@@ -569,7 +555,6 @@ fn reads_lcsc_parameters() {
     assert_eq!(s.describe(), "220nF ±10% 25V X7R 0603 capacitor");
 }
 
-/// A plain resistor or capacitor with a value and footprint, as `Device:R` or `Device:C`.
 fn passive(reference: &str, value: &str, footprint: &str, mpn: &str, lcsc: &str) -> Component {
     let lib_id = if reference.starts_with('R') {
         "Device:R"
@@ -665,7 +650,6 @@ fn an_lcsc_number_for_another_value_or_size_is_an_error() {
 
 #[test]
 fn a_capacitor_rated_below_the_mpn_is_an_error() {
-    // CL10B224KB8NNNC is 50 V (Samsung CL family); C21120 is the 25 V CL10B224KA8NNNC.
     let mut lib = gerberus::limits::Library::builtin().unwrap();
     let design = Design {
         components: [passive(
@@ -692,7 +676,6 @@ fn a_capacitor_rated_below_the_mpn_is_an_error() {
         f.message,
         "LCSC C21120 is rated below the schematic's part: rated voltage 25V, where the schematic's part has 50V"
     );
-    // Without the part file only value and size can be compared, which match.
     let r = check(&design, &mut src, Options::default());
     assert_eq!(r[0].findings[0].severity, Severity::Warning);
 }
@@ -708,11 +691,8 @@ fn out_of_stock_resistors_get_checked_equivalents_basic_first() {
         vec![passive("R1", "10k", R0603, "", "C1")],
         vec![
             ("C1", Some(resistor("C1", "A", "10kΩ", "0603", 0, true, sims))),
-            // Extended, fits.
             ("C2", Some(resistor("C2", "B", "10kΩ", "0603", 9000, false, vec![]))),
-            // Basic, fits.
             ("C3", Some(resistor("C3", "C", "10kΩ", "0603", 9000, true, vec![]))),
-            // Wrong value.
             ("C4", Some(resistor("C4", "D", "1kΩ", "0603", 9000, true, vec![]))),
         ],
     );
@@ -749,7 +729,6 @@ fn for_jlcpcb_a_missing_lcsc_number_is_an_error_with_a_search_link() {
             .unwrap()
             .contains("https://www.lcsc.com/search?q=S2B-XH-A")
     );
-    // The board-wide count of extended parts.
     let last = r.last().unwrap().findings.last().unwrap();
     assert!(
         last.message
@@ -796,7 +775,6 @@ fn packing_suffixes_after_a_comma_or_bracket_are_the_same_part() {
         ],
         10,
     );
-    // A letter after the part number is another part.
     assert_eq!(
         errors(&r),
         ["D2: LCSC C1 is Nexperia PESD5V0S1BA,115, but the MPN field says PESD5V0S1BAF"]
@@ -874,7 +852,6 @@ fn every_part_of_a_line_and_every_unreadable_value_is_accounted_for() {
         ],
     );
     let f = findings(&r);
-    // R1 and R2 share a line; R2's footprint is another size.
     assert_eq!(
         errors(&r)[0],
         "R1: for R2, LCSC C1 is a different part: size 0603, not the 0805 of the footprint"
@@ -890,7 +867,6 @@ fn every_part_of_a_line_and_every_unreadable_value_is_accounted_for() {
         "LCSC",
         &gerberus::diag::Show::everything(),
     );
-    // Lines are counted once each: R1+R2, R3, R4.
     assert!(
         text.contains("error: 2 errors, 0 warnings, 1 unknown, 0 passed"),
         "{text}"

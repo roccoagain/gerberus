@@ -1,19 +1,3 @@
-//! Checking a part file against its datasheet.
-//!
-//! A person or an LLM reads the datasheet and writes the part file. Nothing here reads a datasheet for
-//! meaning; it only checks what someone else wrote, in two independent ways:
-//!
-//! 1. [`verify`] looks for every cited number on the page it cites, in the PDF's own text. It finds the
-//!    table's MIN, TYP and MAX columns, so a typical value filed as a maximum, a value in the wrong unit, or
-//!    a value from the wrong page is caught. It reads the row too: a value whose row doesn't name the pin is
-//!    only plausible.
-//! 2. [`blank`] writes a copy of the part file with every value replaced by `"?"`. A second reader who has
-//!    not seen the first fills it in from the datasheet, and [`compare`] lists every value where the two
-//!    disagree.
-//!
-//! Neither decides that a part file is right. A value passes when both readers agree and its number sits in
-//! the right column of the cited page; anything else goes back to a careful reading of the datasheet.
-
 use std::collections::BTreeMap;
 use std::fmt::{self, Write as _};
 use std::path::{Path, PathBuf};
@@ -21,20 +5,15 @@ use std::time::Duration;
 
 use crate::limits::{Bound, DriveKind, Part, Quantity, Range};
 
-/// The base unit a value is in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Unit {
     Volt,
     Amp,
     Watt,
     Celsius,
-    /// Parts per million (per °C), for a resistor's TCR.
     Ppm,
-    /// A fraction (0.01) that a datasheet prints as a percentage (1 %).
     Fraction,
-    /// Thermal resistance, °C/W (or K/W).
     CelsiusPerWatt,
-    /// Farads. Part files give capacitance in pF; claims carry it in farads.
     Farad,
 }
 
@@ -61,46 +40,30 @@ impl Unit {
     }
 }
 
-/// Which end of a range a value is, and so which table column it should come from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
     Min,
     Max,
-    /// A single figure, such as a tolerance.
     Value,
-    /// A typical value, which belongs in a TYP column.
     Typ,
 }
 
-/// What the part file says.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Claimed {
     Number(f64),
-    /// `V(pin) + plus`, which a datasheet prints as `VIN + 0.3`.
-    Pin {
-        pin: String,
-        plus: f64,
-    },
+    Pin { pin: String, plus: f64 },
 }
 
-/// One value a part file cites from its datasheet.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Claim {
-    /// Where it is in the part file, such as `limit 1 (VIN to GND) abs_max max`.
     pub label: String,
     pub value: Claimed,
     pub role: Role,
     pub unit: Unit,
-    /// 1-based page of the PDF.
     pub page: u32,
-    /// Pin names the value's table row should mention, and the part number.
     pub context: Vec<String>,
-    /// The range's `derived` text: how a value the page doesn't print was worked out.
     pub derived: Option<String>,
-    /// The other end of the same range, when it is a number: a non-polar rating's minimum is the negative of
-    /// its maximum, which the page needn't print.
     pub other_end: Option<f64>,
-    /// Words that mark a row as some other quantity: a storage temperature is not an operating one.
     pub avoid: Vec<String>,
 }
 
@@ -114,11 +77,8 @@ impl fmt::Display for Claimed {
     }
 }
 
-/// Every value in a part file that cites a datasheet page, in file order.
 pub fn claims(part: &Part) -> Vec<Claim> {
     let mut out = Vec::new();
-    // Pins named only by number ("1", "2") say nothing a table row would print.
-    // The part number counts too: a TVS or a resistor series prints one row per part number.
     let named = |names: &[&str]| -> Vec<String> {
         let mut v: Vec<String> = names
             .iter()
@@ -466,23 +426,13 @@ fn range_claims(label: &str, r: &Range, unit: Unit, context: &[String], out: &mu
     }
 }
 
-/// How well the cited page backs a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Status {
-    /// The page prints the value in the wrong column (a TYP filed as a MAX) or a different unit, and nowhere
-    /// in the right one.
     Mismatch,
-    /// The value isn't on the page at all.
     NotFound,
-    /// The page has no text to search (a scanned image); someone must read it.
     NoText,
-    /// The number is on the page, but its column, unit or row couldn't be confirmed. Read the evidence.
     Plausible,
-    /// The page doesn't print the value, but it follows from what it does print: the `derived` text's numbers
-    /// are on the page, or the value is zero or the negative of the other end (a non-polar rating). Check
-    /// the arithmetic.
     Derived,
-    /// In the right column, in the right unit, on a row that names the pin.
     Confirmed,
 }
 
@@ -503,29 +453,23 @@ impl fmt::Display for Status {
 pub struct Outcome {
     pub claim: Claim,
     pub status: Status,
-    /// Why, in a few words.
     pub reason: String,
-    /// The page's lines the value was found on, trimmed.
     pub evidence: Vec<String>,
 }
 
 impl Outcome {
-    /// Whether this value needs fixing or a person: a mismatch or a value that isn't there.
     pub fn is_problem(&self) -> bool {
         matches!(self.status, Status::Mismatch | Status::NotFound)
     }
 }
 
-/// A table column, from a header line such as `PARAMETER  MIN  TYP  MAX  UNIT`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Col {
     Min,
     Typ,
     Max,
-    /// A single-value column (`VALUE`, `RATINGS`).
     Value,
     Unit,
-    /// Any other header word: parameter, symbol, conditions.
     Other,
 }
 
@@ -542,18 +486,13 @@ impl fmt::Display for Col {
     }
 }
 
-/// A number printed on the page.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Token {
-    /// Character columns, start inclusive, end exclusive.
     start: usize,
     end: usize,
     value: f64,
-    /// Printed with `±`.
     plus_minus: bool,
-    /// Unit printed right after it, with its scale: `mV` is (Volt, 1e-3).
     unit: Option<(Unit, f64)>,
-    /// Which end of a `min~max` cell it is (`20.00~22.10`), which settles its role whatever column it is in.
     cell: Option<Role>,
 }
 
@@ -561,10 +500,7 @@ fn is_minus(c: char) -> bool {
     matches!(c, '-' | '–' | '−' | '‑' | '—' | '－')
 }
 
-/// Reads a unit right after a number (`mV`, ` V`, `%`, `°C`, `ppm`). `None` when there isn't one.
 fn unit_at(chars: &[char], i: usize) -> Option<(Unit, f64, usize)> {
-    // Right after the number, or after one space; or, as a table's next cell, after a wider gap when the cell
-    // is nothing but a unit.
     let gap = chars[i.min(chars.len())..].iter().take_while(|c| **c == ' ').count();
     if gap <= 1 {
         return unit_word(chars, i + gap);
@@ -613,7 +549,6 @@ fn unit_word(chars: &[char], i: usize) -> Option<(Unit, f64, usize)> {
     } else {
         return None;
     };
-    // A scale prefix only goes with V, A, W and F.
     if scale != 1.0 && !matches!(unit, Unit::Volt | Unit::Amp | Unit::Watt | Unit::Farad) {
         return None;
     }
@@ -622,9 +557,6 @@ fn unit_word(chars: &[char], i: usize) -> Option<(Unit, f64, usize)> {
     Some((unit, scale, i + prefix + len))
 }
 
-/// Whether the text ends with a ground pin's name, so `VSS - 0.3` reads as -0.3 V.
-/// Whether the text ends with a pin name, such as `VIN` or `VDDIOx` or `V(BAT)`: a sign after it makes an offset
-/// (`VIN + 0.3`). Words like `to` and units (`-0.3 V – 6.0 V`) make a range instead.
 fn names_a_pin(chars: &[char]) -> bool {
     let text: String = chars.iter().collect();
     let word = text.rsplit(char::is_whitespace).next().unwrap_or("");
@@ -652,8 +584,6 @@ fn ends_with_ground(chars: &[char]) -> bool {
     )
 }
 
-/// The numbers on a line, with where they sit. Digits that are part of a name (`SOT-23`, `C5446`, `VDD2`)
-/// are left out.
 fn tokens(line: &str) -> Vec<Token> {
     let chars: Vec<char> = line.chars().collect();
     let mut out = Vec::new();
@@ -677,7 +607,6 @@ fn tokens(line: &str) -> Vec<Token> {
         while j < chars.len() && chars[j].is_ascii_digit() {
             j += 1;
         }
-        // Thousands separators: `2,000`, `15,000`.
         let mut grouped = false;
         while j - i <= 3 + 4 * usize::from(grouped)
             && chars.get(j) == Some(&',')
@@ -694,7 +623,6 @@ fn tokens(line: &str) -> Vec<Token> {
             }
         }
         let mut text: String = chars[i..j].iter().filter(|c| **c != ',').collect();
-        // 1/16 W
         if chars.get(j) == Some(&'/') && chars.get(j + 1).is_some_and(char::is_ascii_digit) {
             let mut k = j + 1;
             while k < chars.len() && chars[k].is_ascii_digit() {
@@ -708,7 +636,6 @@ fn tokens(line: &str) -> Vec<Token> {
                 j = k;
             }
         }
-        // A digit run glued to letters that aren't a unit is a name (0402WGF, 25C08).
         let unit = unit_at(&chars, j);
         if unit.is_none() && chars.get(j).is_some_and(|c| c.is_alphabetic()) {
             let glued = !matches!(chars.get(j), Some('x' | 'X'));
@@ -721,8 +648,6 @@ fn tokens(line: &str) -> Vec<Token> {
             i = j;
             continue;
         };
-        // The offset in `VIN + 0.3` or `VDD - 0.4` belongs to a relative bound, not a number of its own. (A wide
-        // gap before the sign makes it a table cell instead: `voltage     - 0.3`.)
         let mut q = i;
         if q > 0 && chars[q - 1] == ' ' {
             q -= 1;
@@ -738,12 +663,9 @@ fn tokens(line: &str) -> Vec<Token> {
                 continue;
             }
         }
-        // Look back for a sign: `-0.3`, `– 0.3`, `±2000`, `± 15`.
         let mut start = i;
         let mut plus_minus = false;
         let mut k = i;
-        // A sign set apart by one space: `± 15`, or `- 0.3` in a table cell (but not `VDD - 0.3`, which the
-        // space before the minus would make a cell of its own only when the gap is wide).
         if k > 2 && chars[k - 3..k] == ['+', '/', '-'] {
             plus_minus = true;
             start = k - 3;
@@ -782,7 +704,6 @@ fn tokens(line: &str) -> Vec<Token> {
         };
         out.push(Token {
             start,
-            // The number's own extent: a unit in the next cell mustn't pull it towards the UNIT column.
             end: j,
             value,
             plus_minus,
@@ -794,7 +715,6 @@ fn tokens(line: &str) -> Vec<Token> {
     out
 }
 
-/// The words of a line with their character columns.
 fn words(line: &str) -> Vec<(usize, usize, String)> {
     let mut out = Vec::new();
     let mut start = None;
@@ -812,8 +732,6 @@ fn words(line: &str) -> Vec<(usize, usize, String)> {
     out
 }
 
-/// The columns of a table header line, by their centre: `None` when the line isn't a header. A header word
-/// that is one of `own` (the part number, in a table with a column per part) is that part's value column.
 fn header(line: &str, own: &[String]) -> Option<Vec<(f64, Col)>> {
     let mut cols = Vec::new();
     let mut values = 0;
@@ -836,22 +754,16 @@ fn header(line: &str, own: &[String]) -> Option<Vec<(f64, Col)>> {
         }
         cols.push(((s + e) as f64 / 2.0, col));
     }
-    // Table columns stand apart. Value words that only ever follow each other with a single space are a
-    // title, such as "ESD maximum ratings" above the rows of a limiting values table.
     let apart = value_spans.windows(2).any(|w| w[1].0 >= w[0].1 + 2);
-    // One value column is enough beside a UNIT column, or under a table's own PARAMETER or SYMBOL heading
-    // ("Parameter  Conditions  Value").
     let labelled = words(line).iter().any(|(_, _, w)| {
         let w = w.trim_matches(|c: char| !c.is_alphanumeric()).to_ascii_uppercase();
         matches!(w.as_str(), "PARAMETER" | "PARAMETERS" | "SYMBOL")
     });
     let ok = (values >= 2 && apart) || (values == 1 && (cols.iter().any(|(_, c)| *c == Col::Unit) || labelled));
-    // A header is mostly header words; a sentence that happens to contain "max" is not one.
     let others = cols.iter().filter(|(_, c)| *c == Col::Other).count();
     (ok && others <= 10).then_some(cols)
 }
 
-/// The column a span of characters sits under, from the nearest header line above it.
 fn column(lines: &[&str], at: usize, start: usize, end: usize, own: &[String]) -> Option<(Col, usize)> {
     let centre = (start + end) as f64 / 2.0;
     (0..=at).rev().take(60).find_map(|i| {
@@ -863,8 +775,6 @@ fn column(lines: &[&str], at: usize, start: usize, end: usize, own: &[String]) -
     })
 }
 
-/// The unit a number without one of its own takes: the nearest unit in the table's UNIT column, on its line
-/// or the few lines around it (merged cells print the unit once, beside the middle row).
 fn unit_column(lines: &[&str], at: usize, header_line: usize, own: &[String]) -> Option<((Unit, f64), bool)> {
     let cols = header(lines[header_line], own)?;
     let (unit_centre, _) = cols.iter().find(|(_, c)| *c == Col::Unit)?;
@@ -885,7 +795,6 @@ fn unit_column(lines: &[&str], at: usize, header_line: usize, own: &[String]) ->
                 if w.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                     return None;
                 }
-                // Read the unit as if a number stood just before it.
                 let mut probe = vec!['1'];
                 probe.extend(&chars[s..]);
                 unit_at(&probe, 1).map(|(u, sc, _)| ((u, sc), same_line))
@@ -893,14 +802,10 @@ fn unit_column(lines: &[&str], at: usize, header_line: usize, own: &[String]) ->
     })
 }
 
-/// Whether two values are the same number. The tolerance is relative, so picofarads and nanoamps compare as
-/// finely as volts; the tiny floor only absorbs rounding around zero.
 fn close(a: f64, b: f64) -> bool {
     (a - b).abs() <= 1e-15_f64.max(1e-6 * a.abs().max(b.abs()))
 }
 
-/// Whether `name` appears in `text` as a word of its own (case-insensitive): `VIN` in `VIN to GND`, but not in
-/// `VINT`.
 fn mentions(text: &str, name: &str) -> bool {
     let t = text.to_ascii_uppercase();
     let n = name.to_ascii_uppercase();
@@ -921,7 +826,6 @@ fn mentions(text: &str, name: &str) -> bool {
     false
 }
 
-/// Checks one claim against the text of its page, as `pdftotext -layout` prints it.
 pub fn check_claim(claim: &Claim, page: &str) -> Outcome {
     let lines: Vec<&str> = page.lines().collect();
     if page.split_whitespace().count() < 5 {
@@ -932,8 +836,6 @@ pub fn check_claim(claim: &Claim, page: &str) -> Outcome {
             evidence: vec![],
         };
     }
-    // (line, status, score, reason) for each place the value turns up. Among hits of one status, a higher
-    // score met more of the checks.
     let mut hits: Vec<(usize, Status, u8, String)> = Vec::new();
     for (n, line) in lines.iter().enumerate() {
         match &claim.value {
@@ -964,7 +866,6 @@ pub fn check_claim(claim: &Claim, page: &str) -> Outcome {
             evidence: vec![],
         };
     };
-    // A worked-out value is checked by its arithmetic, but never hides a value printed in the wrong place.
     if best != Status::Mismatch
         && claim.derived.is_some()
         && let Some(o) = derivation(claim, page)
@@ -981,22 +882,12 @@ pub fn check_claim(claim: &Claim, page: &str) -> Outcome {
     }
 }
 
-/// One end of a `derived` range: a number worked out from printed ones, or a pin plus an offset as the page
-/// names it (`VDDIOx + 4.0`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum DerivedEnd {
-    Number {
-        value: f64,
-        /// The numbers the arithmetic starts from.
-        inputs: Vec<f64>,
-    },
-    Pin {
-        pin: String,
-        plus: f64,
-    },
+    Number { value: f64, inputs: Vec<f64> },
+    Pin { pin: String, plus: f64 },
 }
 
-/// A range's `derived` text, `<min> .. <max>; explanation`, with each end worked out.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Derived {
     pub min: DerivedEnd,
@@ -1004,12 +895,6 @@ pub struct Derived {
     pub explanation: String,
 }
 
-/// Reads a `derived` text: `<min> .. <max>; explanation`. Each end is arithmetic on numbers (`+ - * /`,
-/// brackets and `sqrt(...)`), or a pin name plus or minus a number as the page prints it.
-///
-/// # Errors
-///
-/// Says what is wrong when the text doesn't have that shape.
 pub fn parse_derived(text: &str) -> Result<Derived, String> {
     let (ends, explanation) = text.split_once(';').ok_or("no `;` before the explanation")?;
     let (min, max) = ends.split_once("..").ok_or("no `..` between the two ends")?;
@@ -1028,14 +913,11 @@ fn parse_end(text: &str) -> Result<DerivedEnd, String> {
     let text = text.trim();
     let first = text.chars().next().ok_or("an empty end")?;
     if first.is_ascii_alphabetic() && !text.starts_with("sqrt") {
-        // A pin name can carry a sign of its own (`V+`, `V-`), so an offset after one is set off by spaces:
-        // `V+ + 0.5`. Otherwise the first sign starts the offset: `VDD+0.3`.
         let spaced = [" + ", " - "]
             .iter()
             .filter_map(|op| text.rfind(op).map(|i| i + 1))
             .max();
         let mut split = spaced.unwrap_or_else(|| text.find(['+', '-']).unwrap_or(text.len()));
-        // With no offset after it, a trailing sign is part of the name: `V+`.
         if spaced.is_none() && text[split..].trim_start_matches(['+', '-']).trim().is_empty() {
             split = text.len();
         }
@@ -1155,7 +1037,6 @@ impl Arith {
     }
 }
 
-/// A value the page doesn't print but that follows from it.
 fn derivation(claim: &Claim, page: &str) -> Option<Outcome> {
     let outcome = |status: Status, reason: String| Outcome {
         claim: claim.clone(),
@@ -1171,14 +1052,12 @@ fn derivation(claim: &Claim, page: &str) -> Option<Outcome> {
         let end = if claim.role == Role::Min { &d.min } else { &d.max };
         return Some(match (end, &claim.value) {
             (DerivedEnd::Number { value, inputs }, Claimed::Number(want)) => {
-                // Part files round worked-out values to four significant figures.
-                if (value - want).abs() > 5e-4 * value.abs().max(want.abs()) + 1e-12 {
+                if differs_beyond_four_significant_figures(*value, *want) {
                     return Some(outcome(
                         Status::Mismatch,
                         format!("the derived arithmetic gives {value:.4}, not {want}"),
                     ));
                 }
-                // A percentage counts as itself and as a fraction: `2 %` backs an input of 0.02.
                 let printed: Vec<f64> = page
                     .lines()
                     .flat_map(tokens)
@@ -1191,10 +1070,9 @@ fn derivation(claim: &Claim, page: &str) -> Option<Outcome> {
                     })
                     .flatten()
                     .collect();
-                // 0, 1 and 100 are arithmetic (1 − 2 %, 100 %), not readings.
                 let missing: Vec<String> = inputs
                     .iter()
-                    .filter(|v| ![0.0, 1.0, 100.0].contains(*v) && !printed.iter().any(|p| close(*p, **v)))
+                    .filter(|v| !ARITHMETIC_CONSTANTS.contains(*v) && !printed.iter().any(|p| close(*p, **v)))
                     .map(ToString::to_string)
                     .collect();
                 if missing.is_empty() {
@@ -1235,7 +1113,6 @@ fn derivation(claim: &Claim, page: &str) -> Option<Outcome> {
                     outcome(Status::NotFound, format!("{pin} + {plus} isn't on the page either"))
                 }
             }
-            // A cap on a relative bound is an ordinary number; the derived text is about the bound.
             (DerivedEnd::Pin { .. }, Claimed::Number(_)) => return None,
             (DerivedEnd::Number { .. }, Claimed::Pin { .. }) => outcome(
                 Status::Mismatch,
@@ -1261,8 +1138,6 @@ fn derivation(claim: &Claim, page: &str) -> Option<Outcome> {
     None
 }
 
-/// Whether the row around line `n` names one of the claim's pins: its own line or two either side, the
-/// way a table's merged cells print a pin name once beside several lines.
 fn row_mentions(claim: &Claim, lines: &[&str], n: usize) -> bool {
     let lo = n.saturating_sub(2);
     let hi = (n + 2).min(lines.len().saturating_sub(1));
@@ -1273,13 +1148,11 @@ fn row_mentions(claim: &Claim, lines: &[&str], n: usize) -> bool {
 
 fn role_fits(role: Role, col: Col, plus_minus: bool) -> bool {
     match (role, col) {
-        // A one-figure rating (a tolerance, a duty cycle) is often printed in a MIN or MAX column on its own.
         (_, Col::Value)
         | (Role::Min, Col::Min)
         | (Role::Max, Col::Max)
         | (Role::Typ, Col::Typ)
         | (Role::Value, Col::Min | Col::Max) => true,
-        // ±15 kV in a MAX column bounds both ends.
         (Role::Min, Col::Max) => plus_minus,
         _ => false,
     }
@@ -1295,17 +1168,12 @@ fn as_role(role: Role) -> &'static str {
 }
 
 fn judge_number(claim: &Claim, want: f64, t: &Token, lines: &[&str], n: usize) -> Option<(Status, u8, String)> {
-    // Every reading of the number that could be the claimed value, with its unit and how sure that is.
     let own = &claim.context[claim.context.len().saturating_sub(1)..];
     let col = column(lines, n, t.start, t.end, own);
-    // The unit printed right after the number, or in the UNIT column of its own line, is certain; one from a
-    // line nearby is only likely, since merged cells and neighbouring tables can put another unit near it.
     let unit = t
         .unit
         .map(|u| (u, true))
         .or_else(|| col.and_then(|(_, h)| unit_column(lines, n, h, own)));
-    // A unit from a nearby line that isn't the claim's is likely another row's: read the number as unitless,
-    // with that as a doubt.
     let nearby_other = unit.filter(|((u, _), printed)| !printed && *u != claim.unit);
     let (value_matches, unit_known, unit_ok, unit_printed) =
         if let Some(((u, scale), printed)) = unit.filter(|_| nearby_other.is_none()) {
@@ -1313,8 +1181,6 @@ fn judge_number(claim: &Claim, want: f64, t: &Token, lines: &[&str], n: usize) -
             let matches = close(v, want) || (t.plus_minus && close(-v, want));
             (matches, true, u == claim.unit, printed)
         } else {
-            // With no unit in sight, a current or voltage may be printed in milli- or micro- units (a table whose
-            // UNIT column sits on another line). That stays a doubt: the unit isn't printed beside it.
             let scales: &[f64] = if matches!(claim.unit, Unit::Volt | Unit::Amp | Unit::Watt) {
                 &[1.0, 1e-3, 1e-6]
             } else {
@@ -1332,19 +1198,15 @@ fn judge_number(claim: &Claim, want: f64, t: &Token, lines: &[&str], n: usize) -
     let row = claim.context.is_empty() || row_mentions(claim, lines, n);
     let mut doubts = Vec::new();
     let col = match t.cell {
-        // A `min~max` cell says which end it is, whatever the header above says.
         Some(end) if end == claim.role || claim.role == Role::Value => Some((Col::Value, n)),
         Some(Role::Min) => Some((Col::Min, n)),
         Some(_) => Some((Col::Max, n)),
         None => col,
     };
-    // A number printed with another unit is another quantity, not this one.
     if !unit_ok && unit_printed {
         return None;
     }
     match col {
-        // A typical value filed as a limit, or one end filed as the other, is the mistake that matters most.
-        // (On a row about some other pin, the number is most likely some other quantity.)
         Some((c @ (Col::Typ | Col::Min | Col::Max), _)) if row && !role_fits(claim.role, c, t.plus_minus) => {
             return Some((
                 Status::Mismatch,
@@ -1391,7 +1253,6 @@ fn judge_number(claim: &Claim, want: f64, t: &Token, lines: &[&str], n: usize) -
     }
 }
 
-/// Whether a relative bound is the low end of a `min ~ max` cell: `VIN + 0.3 ~ ...`.
 fn trimmed_after_cell(rest: &str) -> bool {
     let r = rest.trim_start();
     let r = r.strip_prefix('+').map_or(r, |x| {
@@ -1402,7 +1263,6 @@ fn trimmed_after_cell(rest: &str) -> bool {
 }
 
 fn judge_relative(claim: &Claim, pin: &str, plus: f64, lines: &[&str], n: usize) -> Option<(Status, String)> {
-    // A pin named `VDD/VDDA` is printed as either.
     pin.split('/')
         .filter(|p| !p.is_empty())
         .find_map(|p| judge_relative_one(claim, p.trim(), plus, lines, n))
@@ -1420,7 +1280,6 @@ fn judge_relative_one(claim: &Claim, pin: &str, plus: f64, lines: &[&str], n: us
             continue;
         }
         let rest = &line[from..];
-        // TI prints a pin in brackets when it carries a sign: `(V+) + 0.5`.
         let trimmed = rest.trim_start();
         let trimmed = if line[..s].ends_with('(') {
             trimmed.strip_prefix(')').map_or(trimmed, str::trim_start)
@@ -1461,7 +1320,6 @@ fn judge_relative_one(claim: &Claim, pin: &str, plus: f64, lines: &[&str], n: us
     None
 }
 
-/// The text of one page of a PDF, laid out as printed, from poppler's `pdftotext`.
 pub fn page_text(pdf: &Path, page: u32) -> Result<String, String> {
     let out = std::process::Command::new("pdftotext")
         .args([
@@ -1487,8 +1345,6 @@ pub fn page_text(pdf: &Path, page: u32) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// Checks every cited value of a part file against the PDF. `pages` gives each page's text; tests pass
-/// their own, [`verify`] reads the PDF.
 pub fn verify_with(part: &Part, mut pages: impl FnMut(u32) -> Result<String, String>) -> Vec<Outcome> {
     let mut cache: BTreeMap<u32, Result<String, String>> = BTreeMap::new();
     claims(part)
@@ -1508,12 +1364,10 @@ pub fn verify_with(part: &Part, mut pages: impl FnMut(u32) -> Result<String, Str
         .collect()
 }
 
-/// Checks every cited value of a part file against its datasheet PDF.
 pub fn verify(part: &Part, pdf: &Path) -> Vec<Outcome> {
     verify_with(part, |p| page_text(pdf, p))
 }
 
-/// A report of [`verify`]'s outcomes, problems first.
 pub fn render(mpn: &str, outcomes: &[Outcome], all: bool) -> String {
     let mut s = String::new();
     let mut sorted: Vec<&Outcome> = outcomes.iter().collect();
@@ -1551,7 +1405,6 @@ pub fn render(mpn: &str, outcomes: &[Outcome], all: bool) -> String {
     s
 }
 
-/// The keys of a part file whose values a second reader fills in.
 const VALUE_KEYS: [&str; 21] = [
     "on",
     "swing",
@@ -1576,9 +1429,6 @@ const VALUE_KEYS: [&str; 21] = [
     "max",
 ];
 
-/// A copy of a part file's TOML with every value from the datasheet replaced by `"?"`, for a second reader
-/// to fill in without seeing the first reader's numbers. Pins, limit groups and drive kinds stay, so both
-/// readers answer the same questions.
 pub fn blank(toml_text: &str) -> Result<String, String> {
     let mut doc: toml::Table = toml::from_str(toml_text).map_err(|e| e.to_string())?;
     fn clear(t: &mut toml::Table) {
@@ -1603,7 +1453,6 @@ pub fn blank(toml_text: &str) -> Result<String, String> {
     Ok(out)
 }
 
-/// One place where two readings of a datasheet disagree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Difference {
     pub at: String,
@@ -1667,7 +1516,6 @@ fn compare_range(at: &str, a: Option<&Range>, b: Option<&Range>, out: &mut Vec<D
             page.map_or("?".into(), |p| p.to_string())
         ),
     };
-    // A range whose ends are both unknown says the same as an unknown range.
     let blank = |r: Option<&Range>| match r {
         Some(Range::Known { min, max, .. }) if !min.is_known() && !max.is_known() => {
             Some(Range::Unknown(String::new()))
@@ -1691,7 +1539,6 @@ fn compare_range(at: &str, a: Option<&Range>, b: Option<&Range>, out: &mut Vec<D
                 ..
             }),
         ) => {
-            // A page only matters when it backs a number.
             let numbers = m1.is_known() || x1.is_known();
             same_bound(m1, m2) && same_bound(x1, x2) && (p1 == p2 || !numbers)
         }
@@ -1706,9 +1553,6 @@ fn compare_range(at: &str, a: Option<&Range>, b: Option<&Range>, out: &mut Vec<D
     }
 }
 
-/// Every value where two readings of the same datasheet disagree: the numbers, which ends are unknown, and
-/// the pages. Limits and drives are matched by position, so both readings must come from the same
-/// [`blank`] file.
 pub fn compare(first: &Part, second: &Part) -> Vec<Difference> {
     let mut out = Vec::new();
     let opt = |label: &str, a: Option<String>, b: Option<String>, out: &mut Vec<Difference>| {
@@ -1928,8 +1772,6 @@ pub fn compare(first: &Part, second: &Part) -> Vec<Difference> {
     out
 }
 
-/// Where downloaded datasheets are kept: `$XDG_CACHE_HOME/gerberus/datasheets`, or
-/// `~/.cache/gerberus/datasheets`.
 pub fn default_cache_dir() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
@@ -1937,14 +1779,21 @@ pub fn default_cache_dir() -> Option<PathBuf> {
     Some(base.join("gerberus").join("datasheets"))
 }
 
-/// A file name for a URL that is the same every run.
+const ARITHMETIC_CONSTANTS: [f64; 3] = [0.0, 1.0, 100.0];
+
+fn differs_beyond_four_significant_figures(value: f64, want: f64) -> bool {
+    (value - want).abs() > 5e-4 * value.abs().max(want.abs()) + 1e-12
+}
+
+fn fnv1a_hash_stable_across_rust_versions(text: &str) -> u64 {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0100_0000_01b3;
+    text.bytes()
+        .fold(FNV_OFFSET_BASIS, |h, b| (h ^ u64::from(b)).wrapping_mul(FNV_PRIME))
+}
+
 fn cache_name(url: &str) -> String {
-    // FNV-1a: stable across Rust versions, unlike the standard hasher.
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in url.bytes() {
-        h ^= u64::from(b);
-        h = h.wrapping_mul(0x0100_0000_01b3);
-    }
+    let h = fnv1a_hash_stable_across_rust_versions(url);
     let tail: String = url
         .rsplit('/')
         .next()
@@ -1955,14 +1804,11 @@ fn cache_name(url: &str) -> String {
     format!("{h:016x}-{tail}")
 }
 
-/// The PDF link in an LCSC datasheet page (`https://www.lcsc.com/datasheet/C1525.pdf` serves HTML that
-/// points at the real file).
 pub fn lcsc_pdf_link(html: &str) -> Option<String> {
     for host in ["https://datasheet.lcsc.com/", "https://wmsc.lcsc.com/"] {
         if let Some(s) = html.find(host) {
             let rest = &html[s..];
             let end = rest.find(['"', '\'', ' ', '<', '>'])?;
-            // `...pdf?productCode=C1525`: the query only names the part.
             let link = rest[..end].split('?').next().unwrap_or("");
             if link.to_ascii_lowercase().ends_with(".pdf") {
                 return Some(link.to_string());
@@ -1972,17 +1818,13 @@ pub fn lcsc_pdf_link(html: &str) -> Option<String> {
     None
 }
 
-/// The folder a board keeps its datasheet PDFs in, beside its `parts/` folder. `datasheet verify` reads a part's
-/// PDF from there before it downloads anything, and `doctor` says what name to save each one under.
 pub const FOLDER: &str = "datasheets";
 
-/// The name a part's datasheet is saved under: the part number, cleaned as a part file's name is, with `.pdf`.
 pub fn saved_name(mpn: &str) -> String {
     let toml = crate::doctor::file_name(mpn);
     format!("{}.pdf", toml.strip_suffix(".toml").unwrap_or(&toml))
 }
 
-/// The first of `names` saved in `dir`: an exact match first, then one in any letter case.
 pub fn saved_in(dir: &Path, names: &[String]) -> Option<PathBuf> {
     let files: Vec<PathBuf> = std::fs::read_dir(dir)
         .ok()?
@@ -2004,8 +1846,6 @@ pub fn saved_in(dir: &Path, names: &[String]) -> Option<PathBuf> {
     })
 }
 
-/// The folder datasheets go in for part files kept in `parts`: `datasheets/` beside it. A folder named only by
-/// `.` or `..` is resolved first, so `parts/` itself still finds the board's folder.
 pub fn folder_beside(parts: &Path) -> PathBuf {
     let named = matches!(parts.components().next_back(), Some(std::path::Component::Normal(_)));
     let parts = if named {
@@ -2024,8 +1864,6 @@ pub fn folder_beside(parts: &Path) -> PathBuf {
     }
 }
 
-/// The datasheet saved for the part file at `part_file`, whose part number is `mpn`: named after the part number
-/// or after the file, in `datasheets/` beside the file's folder or in a `datasheets/` inside it.
 pub fn saved_for(part_file: &Path, mpn: &str) -> Option<PathBuf> {
     let dir = part_file.parent().unwrap_or(Path::new(""));
     let mut names = vec![saved_name(mpn)];
@@ -2043,12 +1881,10 @@ pub fn saved_for(part_file: &Path, mpn: &str) -> Option<PathBuf> {
     saved_in(&folder_beside(dir), &names).or_else(|| saved_in(&inside, &names))
 }
 
-/// Where to save the datasheet for the part file at `part_file`: the name `verify` looks for first.
 pub fn save_as(part_file: &Path, mpn: &str) -> PathBuf {
     folder_beside(part_file.parent().unwrap_or(Path::new(""))).join(saved_name(mpn))
 }
 
-/// Downloads a datasheet into `cache` (or returns the copy already there) and gives its path.
 pub fn fetch(url: &str, cache: &Path) -> Result<PathBuf, String> {
     let path = cache.join(cache_name(url));
     if path.is_file() {
