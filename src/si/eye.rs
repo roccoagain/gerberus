@@ -1,23 +1,16 @@
-//! Eye diagrams: folding a simulated waveform into one unit interval and checking it against a mask.
-
 use super::channel::Waveform;
 
-/// A USB 2.0 high-speed eye template (USB 2.0 specification, section 7.1.2.2).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Template {
     pub name: &'static str,
     pub source: &'static str,
-    /// Inner hexagon: zero volts at `edge` and `1 − edge` of the UI, `inner` volts from `flat` to `1 − flat`.
     pub edge: f64,
     pub flat: f64,
     pub inner: f64,
-    /// Outer limits, volts: in the UI after a transition, and in every other UI.
     pub outer_after_transition: f64,
     pub outer: f64,
 }
 
-/// Template 1: the transmit eye for a hub at TP2 and for a device without a captive cable at TP3, both at the
-/// mated pins of the connector.
 pub const USB2_TEMPLATE_1: Template = Template {
     name: "USB 2.0 Template 1",
     source: "USB 2.0 specification, Figure 7-13, PDF page 161",
@@ -29,7 +22,6 @@ pub const USB2_TEMPLATE_1: Template = Template {
 };
 
 impl Template {
-    /// The inner mask's half-height at a fraction `u` of the UI, volts (0 outside the hexagon).
     pub fn inner_at(&self, u: f64) -> f64 {
         if u <= self.edge || u >= 1.0 - self.edge {
             0.0
@@ -42,7 +34,6 @@ impl Template {
         }
     }
 
-    /// The hexagon's vertices as `(fraction of UI, volts)`, for drawing.
     pub fn hexagon(&self) -> [(f64, f64); 6] {
         [
             (self.edge, 0.0),
@@ -55,21 +46,14 @@ impl Template {
     }
 }
 
-/// What an eye looks like against a template.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Eye {
     pub template: Template,
-    /// Smallest distance from the waveform out to the inner mask, volts. Negative when it enters the mask.
     pub inner_margin: f64,
-    /// Where the waveform comes closest to the inner mask, as a fraction of the UI.
     pub inner_worst_at: f64,
-    /// Smallest distance from the waveform in to the outer limits, volts. Negative when it overshoots them.
     pub outer_margin: f64,
-    /// The smallest |D+ − D−| in the middle 10 % of the UI, volts.
     pub height: f64,
-    /// The UI less the spread of zero crossings, as a fraction of the UI.
     pub width: f64,
-    /// Each UI as `(fraction of UI, volts)` samples, for drawing.
     pub traces: Vec<Vec<(f64, f64)>>,
 }
 
@@ -79,11 +63,9 @@ impl Eye {
     }
 }
 
-/// Folds `w` into unit intervals aligned on its zero crossings and measures it against `template`.
 pub fn measure(w: &Waveform, template: Template) -> Eye {
     let n = w.diff.len();
     let period = n as f64 * w.dt;
-    // Zero crossings, interpolated between samples, as phases within the UI.
     let mut phases = Vec::new();
     for i in 0..n {
         let (a, b) = (w.diff[i], w.diff[(i + 1) % n]);
@@ -92,7 +74,6 @@ pub fn measure(w: &Waveform, template: Template) -> Eye {
             phases.push((t % w.ui) / w.ui);
         }
     }
-    // Their circular mean is where each UI starts.
     let (s, c) = phases.iter().fold((0.0, 0.0), |(s, c), p| {
         let a = p * std::f64::consts::TAU;
         (s + a.sin(), c + a.cos())
@@ -154,7 +135,6 @@ pub fn measure(w: &Waveform, template: Template) -> Eye {
                 inner_margin = v.abs() - mask;
                 inner_worst_at = u;
             }
-            // Where the trace runs into the next UI's crossing, the outer limit of this UI still applies.
             outer_margin = outer_margin.min(outer - v.abs());
             if (0.45..=0.55).contains(&u) {
                 height = height.min(v.abs());
@@ -188,7 +168,6 @@ mod tests {
 
     #[test]
     fn a_perfect_channel_has_an_open_eye() {
-        // No elements: the driver straight into the load.
         let w = simulate(
             &Line::default(),
             &Line::default(),

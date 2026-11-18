@@ -1,6 +1,3 @@
-//! Reads which net each pad is on from a `.PcbDoc`, the netlist Altium compiled from the schematics. Tests use
-//! it as the reference for the schematic reader.
-
 use std::path::Path;
 
 use super::records::{parse_text, read_stream};
@@ -12,7 +9,6 @@ pub struct PadNet {
     pub net: String,
 }
 
-/// `|KEY=VALUE` records each behind a 4-byte length, as in `Nets6/Data` and `Components6/Data`.
 fn text_records(path: &Path, stream: &str) -> Result<Vec<super::records::Record>, String> {
     let data = read_stream(path, stream)?.ok_or_else(|| format!("{}: no {stream} stream", path.display()))?;
     let mut out = Vec::new();
@@ -38,12 +34,6 @@ fn le_i16(d: &[u8], p: usize) -> Option<i16> {
     d.get(p..p + 2).and_then(|b| b.try_into().ok()).map(i16::from_le_bytes)
 }
 
-/// The designator each component carries on the board, by component index.
-///
-/// `Components6` records only the schematic designator, which every channel of a multi-channel sheet shares.
-/// The designator Altium gave each channel (`IC49A`, `R5_CH2`) is the component's designator text in `Texts6`:
-/// the text primitive (type 5) owned by that component that starts with the schematic designator. Each record
-/// is a type byte, a length-prefixed header (component index at byte 7) and a length-prefixed Pascal string.
 fn board_designators(path: &Path, sources: &[String]) -> Result<Vec<String>, String> {
     let mut out = sources.to_vec();
     let Some(texts) = read_stream(path, "Texts6/Data")? else {
@@ -76,9 +66,10 @@ fn board_designators(path: &Path, sources: &[String]) -> Result<Vec<String>, Str
             out[comp] = text;
         } else if !exact[comp]
             && let Some(suffix) = text.strip_prefix(source.as_str())
-            // Only a channel suffix may follow: letters, digits, `_` and the characters Altium counts past Z.
             && suffix.starts_with(|c: char| c.is_ascii_alphabetic() || "_[\\]^`".contains(c))
-            && suffix.chars().all(|c| c.is_ascii_alphanumeric() || "_[\\]^`".contains(c))
+            && suffix
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "_[\\]^`".contains(c))
         {
             out[comp] = text;
         }
@@ -86,11 +77,6 @@ fn board_designators(path: &Path, sources: &[String]) -> Result<Vec<String>, Str
     Ok(out)
 }
 
-/// Every component pad that is on a net.
-///
-/// `Pads6/Data` is binary: each pad is a type byte (2) and six length-prefixed blocks. The first holds the pad
-/// name as a Pascal string; the fifth holds the net index at byte 3 and the component index at byte 7, both
-/// little-endian `i16`, -1 when unset.
 pub fn load_pad_nets(path: &Path) -> Result<Vec<PadNet>, String> {
     let nets: Vec<String> = text_records(path, "Nets6/Data")?
         .iter()

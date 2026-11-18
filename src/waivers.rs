@@ -1,11 +1,3 @@
-//! `waivers.toml`: findings the board's designers have looked at and accepted, each with the reason.
-//!
-//! A waiver names a rule and a part, and optionally text the finding's message contains and a fault case. Every
-//! FAIL or UNKNOWN finding it matches moves out of the report's findings into its `waived` list, so it isn't
-//! counted and doesn't fail `check`; `--all` and `--json` still show it with the reason. A waiver that matches
-//! nothing is a warning, so a waiver can't outlive the finding it was written for unnoticed. A waiver with
-//! `proposed` (written by an agent) waits for a person to approve it: the findings it matches still count.
-
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -24,26 +16,15 @@ pub struct Waivers {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Waiver {
-    /// The rule, as a report prints it in brackets: `esd` for `error[esd]`.
     pub rule: String,
-    /// The part the finding is on, such as `J1`.
     pub reference: String,
-    /// Text the finding's message must contain, such as a pin (`J1.1`) or a net name. Left out: every finding
-    /// of the rule on the part.
     pub contains: Option<String>,
-    /// A fault case's name: only the findings of that case. Left out: normal operation and every case.
     pub case: Option<String>,
-    /// Why the finding is acceptable. Required: a waiver nobody can explain is a finding hidden.
     pub reason: String,
-    /// Who accepted it, and when, for the record.
     pub by: Option<String>,
-    /// Who proposed it, when it isn't accepted yet: an agent writes its waivers with this, and they don't apply
-    /// until a person reads the reason and deletes the line. Until then each finding it matches still counts,
-    /// with a note that the waiver is waiting.
     pub proposed: Option<String>,
 }
 
-/// A finding a waiver accepted, and why.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Waived {
     pub finding: Finding,
@@ -58,7 +39,6 @@ impl Waivers {
         toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
     }
 
-    /// Waivers that can't match anything on this design: a part it doesn't have, or no reason.
     pub fn problems(&self, design: &Design) -> Vec<String> {
         let mut out = vec![];
         for (i, w) in self.waiver.iter().enumerate() {
@@ -88,15 +68,11 @@ impl Waivers {
         out
     }
 
-    /// Moves every FAIL and UNKNOWN finding a waiver matches into `report.waived`, and adds a warning for each
-    /// waiver that matched nothing.
     pub fn apply(&self, report: &mut Report, file: &str) {
         let mut used = vec![false; self.waiver.len()];
         report.waivers_file = file.to_string();
         let findings = std::mem::take(&mut report.findings);
         for mut f in findings {
-            // Every waiver that matches counts as used; the first approved one's reason is kept. A proposed one
-            // only adds a note.
             let hits: Vec<usize> = if f.verdict == Verdict::Pass {
                 vec![]
             } else {
@@ -128,8 +104,6 @@ impl Waivers {
                 None => report.findings.push(f),
             }
         }
-        // A reverse-polarity summary FAILs because of its fault case's own FAILs; once every one of those is
-        // waived, so is the summary.
         let all = std::mem::take(&mut report.findings);
         let settled: Vec<bool> = all
             .iter()

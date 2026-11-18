@@ -1,18 +1,3 @@
-//! Pinout agreement: a part's schematic symbol, its footprint on the board and its datasheet pin table must
-//! describe the same pins.
-//!
-//! Three sources are compared, each by pin number:
-//!
-//! - the symbol's pins (number and name), from the schematic;
-//! - the footprint's pads, from the `.kicad_pcb` file, which is what gets built;
-//! - the datasheet pin table, from the part's `[pins]` map in `parts/` (see `parts/README.md`).
-//!
-//! Numbers must line up: a symbol pin with no pad never reaches copper, and a datasheet pin with no symbol pin
-//! is left floating on the board. Names are compared loosely (case, KiCad markup, alternate functions written
-//! as `PA9/PA11`, and a few common synonyms such as `GND`/`VSS`), because symbols rarely copy the datasheet
-//! letter for letter. A name that matches a *different* datasheet pin is reported as a swap, which is an
-//! error. Any other name difference is a warning for a person to look at, never a pass or a fail by guesswork.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::design::{Component, Design, PinKind};
@@ -36,25 +21,20 @@ impl std::fmt::Display for Severity {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
-    /// Reference designator, such as `U2`.
     pub reference: String,
     pub severity: Severity,
     pub message: String,
 }
 
-/// What one component was compared against.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Coverage {
-    /// The footprint on the board was compared with the symbol.
     pub footprint: bool,
-    /// The part file whose `[pins]` map was compared, by part number.
     pub datasheet: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Report {
     pub findings: Vec<Finding>,
-    /// Every schematic component, keyed by reference.
     pub coverage: BTreeMap<String, Coverage>,
 }
 
@@ -67,14 +47,11 @@ impl Report {
         self.findings.iter().filter(|f| f.severity == Severity::Warning).count()
     }
 
-    /// Findings for one reference.
     pub fn for_ref<'a>(&'a self, reference: &'a str) -> impl Iterator<Item = &'a Finding> + 'a {
         self.findings.iter().filter(move |f| f.reference == reference)
     }
 }
 
-/// Compares every component's symbol with its footprint (when `footprints` is given) and with its part
-/// file's pin map (when the library has one for its part number).
 pub fn check(design: &Design, footprints: Option<&[Footprint]>, lib: &Library) -> Report {
     let mut report = Report::default();
     let mut by_ref: BTreeMap<&str, Vec<&Footprint>> = BTreeMap::new();
@@ -186,7 +163,6 @@ fn symbol_vs_footprint(c: &Component, fp: &Footprint, part: Option<&Part>, out: 
             }
         }
     }
-    // With a part file, pads the symbol lacks are judged against the datasheet in `symbol_vs_datasheet`.
     if part.is_some() {
         return;
     }
@@ -228,8 +204,6 @@ fn symbol_vs_datasheet(design: &Design, c: &Component, part: &Part, fp: Option<&
         }
     }
 
-    // A polarised two-terminal part drawn with a symbol that has no polarity, such as a bidirectional TVS
-    // symbol on a unidirectional part. Reported once, instead of as two name differences.
     let ds_names: BTreeSet<&str> = ds.values().map(String::as_str).collect();
     let sym_names: Vec<String> = c.pins.values().filter_map(|p| shown_name(&p.name)).collect();
     let unpolarised_symbol = ds_names == BTreeSet::from(["A", "K"])
@@ -257,7 +231,6 @@ fn symbol_vs_datasheet(design: &Design, c: &Component, part: &Part, fp: Option<&
         ));
     }
 
-    // Names, for numbers both sides have.
     let mut differ: Vec<String> = Vec::new();
     for (num, pin) in c.pins.iter().filter(|_| !unpolarised_symbol) {
         let Some(ds_name) = ds.get(num) else { continue };
@@ -292,7 +265,6 @@ fn symbol_vs_datasheet(design: &Design, c: &Component, part: &Part, fp: Option<&
         ));
     }
 
-    // Pins the datasheet says must not be connected.
     for (num, name) in ds {
         if !is_do_not_connect(name) {
             continue;
@@ -365,7 +337,6 @@ fn natural(s: &str) -> (u64, &str) {
     (s.parse().unwrap_or(u64::MAX), s)
 }
 
-/// Pads that KiCad's libraries use for mechanical anchors: `MP`, `MH`, `SH` and numbered forms like `MP1`.
 fn is_mechanical_pad(pad: &str) -> bool {
     let up = pad.to_ascii_uppercase();
     ["MP", "MH", "SH"].iter().any(|p| {
@@ -382,8 +353,6 @@ fn is_do_not_connect(name: &str) -> bool {
     matches!(compact(name).as_str(), "DNC" | "DONOTCONNECT")
 }
 
-/// A pin name as a person reads it, without KiCad markup (`~{CS}`, `V_{IN}`). `None` for an unnamed pin
-/// (`~` or empty), whose name says nothing about the datasheet.
 pub fn shown_name(name: &str) -> Option<String> {
     let mut out = String::new();
     let mut chars = name.trim().chars().peekable();
@@ -395,7 +364,6 @@ pub fn shown_name(name: &str) -> Option<String> {
         if ch == '}' {
             continue;
         }
-        // Datasheets print a minus sign or an en dash where a symbol has a hyphen: TI's `V–` and `–IN`.
         out.push(if matches!(ch, '–' | '—' | '−' | '‐') {
             '-'
         } else {
@@ -406,8 +374,6 @@ pub fn shown_name(name: &str) -> Option<String> {
     (!out.is_empty() && out != "~").then_some(out)
 }
 
-/// Upper case with only letters, digits and polarity signs kept: `TRI-STATE` is `TRISTATE`, but `V+` and `V-`,
-/// and `-IN` and `IN`, stay apart.
 fn compact(name: &str) -> String {
     let shown = shown_name(name).unwrap_or_default();
     let n = shown.chars().count();
@@ -419,8 +385,6 @@ fn compact(name: &str) -> String {
         .collect()
 }
 
-/// The words in a name: `PA9/PA11`, `PA11 [PA9]` and `PB8-BOOT0` each name two signals. A trailing `-` or
-/// `+` (`V-`, `IN+`) stays part of the word. `Pin_3` is `3`.
 fn tokens(name: &str) -> BTreeSet<String> {
     let shown = shown_name(name).unwrap_or_default().to_ascii_uppercase();
     let mut out = BTreeSet::new();
@@ -428,8 +392,6 @@ fn tokens(name: &str) -> BTreeSet<String> {
         if word.is_empty() {
             continue;
         }
-        // `PB8-BOOT0` and `PF0-OSC_IN` are a port pin and its alternate function. Other hyphenated names
-        // (`LED-A`, `VDD-IO`) are one name, so they are split only after a port pin.
         let pieces: Vec<&str> = match word.split_once('-') {
             Some((port, rest)) if is_port_pin(port) && !rest.is_empty() => std::iter::once(port)
                 .chain(rest.split('-'))
@@ -449,12 +411,10 @@ fn tokens(name: &str) -> BTreeSet<String> {
     out
 }
 
-/// `TRI-STATE`: letters on both sides of each hyphen, so the hyphen is spelling, not a polarity sign.
 fn is_hyphenated_word(word: &str) -> bool {
     !word.starts_with('-') && !word.ends_with('-') && !word.contains('+')
 }
 
-/// A microcontroller port pin such as `PA9` or `PB12`.
 fn is_port_pin(word: &str) -> bool {
     let mut c = word.chars();
     c.next() == Some('P') && c.next().is_some_and(|ch| ch.is_ascii_uppercase()) && {
@@ -463,24 +423,17 @@ fn is_port_pin(word: &str) -> bool {
     }
 }
 
-/// Names that mean the same pin across vendors. Kept short on purpose: every entry is a way for a real
-/// mistake to go unreported.
 const SYNONYMS: &[&[&str]] = &[
-    // VSSA is here because small packages bond analog ground to VSS and datasheets name the pin either way.
-    // AGND, DGND and PGND are not: chips that have them usually have them side by side.
     &["GND", "VSS", "VSSA", "GROUND"],
     &["VIN", "IN", "VI"],
     &["VOUT", "OUT", "VO", "OUTPUT"],
     &["VDD", "VCC"],
-    // Not CE or OE: memories have both, next to each other.
     &["EN", "ENABLE", "TRISTATE"],
     &["K", "CATHODE"],
     &["A", "ANODE"],
     &["NC", "DNC", "NOCONNECT", "DONOTCONNECT"],
 ];
 
-/// A word's synonym-group name. A word with a polarity sign (`IN+`, `-IN`, `OUT-`) is never a synonym, so a
-/// differential pair can't collapse into one name.
 fn canonical(word: &str) -> String {
     if word.contains(['+', '-']) && word.chars().any(|c| c.is_ascii_alphanumeric()) && !is_hyphenated_word(word) {
         return word.to_string();
@@ -492,10 +445,8 @@ fn canonical(word: &str) -> String {
         .map_or(word.to_string(), |g| g[0].to_string())
 }
 
-/// Whether a symbol pin name and a datasheet pin name plausibly name the same pin.
 pub fn names_match(a: &str, b: &str) -> bool {
     let (ca, cb) = (compact(a), compact(b));
-    // KiCad's op-amp symbols name the inputs `+` and `-`; datasheets say `+IN`, `IN+`, `-IN` or `IN-`.
     let bare_input = |sign: &str, other: &str| {
         (sign == "+" || sign == "-") && (other == format!("{sign}IN") || other == format!("IN{sign}"))
     };

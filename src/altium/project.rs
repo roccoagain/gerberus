@@ -1,25 +1,16 @@
-//! The `.PrjPcb` project file: which sheets make up the design, and the options that decide how they connect.
-
 use std::path::{Path, PathBuf};
 
-/// How net identifiers reach across sheets (`HierarchyMode`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
-    /// Decided from the design: sheet entries make it hierarchical, ports alone flat, neither global.
     Automatic,
-    /// Ports and power ports join by name project-wide; net labels stay on their sheet.
     Flat,
-    /// Ports join only their sheet entry; net labels stay on their sheet; power ports are global.
     Hierarchical,
-    /// Ports, net labels and power ports all join by name project-wide.
     Global,
-    /// As hierarchical, and power ports stay on their sheet too.
     StrictHierarchical,
 }
 
 #[derive(Debug, Clone)]
 pub struct Project {
-    /// Schematic documents, in project order.
     pub documents: Vec<PathBuf>,
     pub scope: Scope,
     pub allow_port_net_names: bool,
@@ -29,7 +20,6 @@ pub struct Project {
 }
 
 impl Project {
-    /// The options a lone `.SchDoc` gets: Altium's defaults.
     pub fn single(sheet: &Path) -> Project {
         Project {
             documents: vec![sheet.to_path_buf()],
@@ -42,7 +32,6 @@ impl Project {
     }
 }
 
-/// Reads a `.PrjPcb`. Document paths are relative to the project, with `\` separators.
 pub fn load(path: &Path) -> Result<Project, String> {
     let raw = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let text = String::from_utf8_lossy(&raw);

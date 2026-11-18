@@ -1,7 +1,3 @@
-//! What a plain resistor or capacitor is (value, size and ratings) read two ways: from the schematic and the
-//! part file of its `MPN` field, and from LCSC's listing of an LCSC number. Comparing the two tells whether an
-//! LCSC number is the part the schematic means, and which of LCSC's similar parts could replace it.
-
 use std::collections::BTreeMap;
 
 use crate::design::Component;
@@ -22,25 +18,17 @@ impl Kind {
     }
 }
 
-/// Everything that is `None` wasn't given, so it isn't compared.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Spec {
     pub kind: Option<Kind>,
-    /// Ohms or farads.
     pub value: Option<f64>,
-    /// Imperial chip size, such as `0603`.
     pub size: Option<String>,
-    /// As a fraction: 0.01 is ±1 %.
     pub tolerance: Option<f64>,
-    /// A capacitor's rated voltage.
     pub voltage: Option<f64>,
-    /// A resistor's rated power, in watts.
     pub power: Option<f64>,
-    /// A ceramic capacitor's dielectric, such as `X7R` (`NP0` is written `C0G`).
     pub dielectric: Option<String>,
 }
 
-/// Ceramic dielectrics from the most stable to the least. One further down the list is a worse part.
 const DIELECTRICS: [&str; 9] = ["C0G", "X8R", "X7R", "X7S", "X6S", "X5R", "X7T", "Y5V", "Z5U"];
 
 fn dielectric_in(text: &str) -> Option<String> {
@@ -52,7 +40,6 @@ fn dielectric_in(text: &str) -> Option<String> {
     })
 }
 
-/// `0603` from a KiCad footprint such as `Resistor_SMD:R_0603_1608Metric`.
 pub fn footprint_size(footprint: &str) -> Option<String> {
     let name = footprint.rsplit(':').next()?;
     let words: Vec<&str> = name.split('_').collect();
@@ -62,7 +49,6 @@ pub fn footprint_size(footprint: &str) -> Option<String> {
     })
 }
 
-/// A number with an optional SI prefix and unit, as LCSC writes parameters: `25V`, `100mW`, `1/10W`, `1kV`.
 fn si_number(text: &str, unit: &str) -> Option<f64> {
     let t = text.trim().trim_end_matches(unit).trim();
     if let Some((a, b)) = t.split_once('/') {
@@ -78,7 +64,6 @@ fn si_number(text: &str, unit: &str) -> Option<f64> {
     v.is_finite().then_some(v)
 }
 
-/// `±1%` as 0.01. An absolute tolerance such as `±0.25pF` gives none.
 fn percent(text: &str) -> Option<f64> {
     let t = text.trim().trim_start_matches('±').trim();
     let n = t.strip_suffix('%')?;
@@ -90,8 +75,6 @@ fn is_size(s: &str) -> bool {
 }
 
 impl Spec {
-    /// From LCSC's parameter table and package. Gives no kind (so nothing is compared) for a listing that is not
-    /// a resistor or capacitor, or that has no parameters, such as one cached by an older gerberus.
     pub fn from_lcsc(params: &BTreeMap<String, String>, package: &str) -> Spec {
         let get = |k: &str| params.get(k).map(String::as_str);
         let mut s = Spec {
@@ -101,7 +84,6 @@ impl Spec {
         };
         if let Some(r) = get("Resistance") {
             s.kind = Some(Kind::Resistor);
-            // LCSC writes milliohms as `10mΩ`, which a schematic value never is.
             s.value = match r.trim().strip_suffix("mΩ") {
                 Some(m) => m.trim().parse::<f64>().ok().map(|v| v * 1e-3),
                 None => crate::voltage::parse_ohms(r),
@@ -110,7 +92,6 @@ impl Spec {
         } else if let Some(c) = get("Capacitance") {
             s.kind = Some(Kind::Capacitor);
             s.value = crate::spice::parse_farads(c);
-            // A small capacitor's tolerance is in picofarads (`±0.25pF`): as a fraction of its value.
             if s.tolerance.is_none()
                 && let (Some(t), Some(v)) = (get("Tolerance"), s.value)
                 && let Some(pf) = t.trim().trim_start_matches('±').trim().strip_suffix("pF")
@@ -126,8 +107,6 @@ impl Spec {
         s
     }
 
-    /// From a schematic part: its kind from the symbol, value from the value, size from the footprint, and
-    /// ratings from its part file when there is one. Only plain resistors and capacitors have a kind.
     pub fn from_component(c: &Component, part: Option<&Part>) -> Spec {
         let symbol = c.lib_id.rsplit(':').next().unwrap_or("");
         let kind = if c.lib_id.starts_with("Device:R") {
@@ -167,8 +146,6 @@ impl Spec {
         s
     }
 
-    /// The ratings a part of this kind needs before another can be shown to be as good: tolerance, and power for
-    /// a resistor or rated voltage and dielectric for a capacitor.
     pub fn missing_ratings(&self) -> Vec<&'static str> {
         let mut m = vec![];
         if self.value.is_none() {
@@ -199,7 +176,6 @@ impl Spec {
         m
     }
 
-    /// `2.2 Ω ±1% 100 mW 0603 resistor`.
     pub fn describe(&self) -> String {
         let mut words = vec![];
         if let Some(v) = self.value {
@@ -231,16 +207,11 @@ impl Spec {
     }
 }
 
-/// How an offered part (`have`) stands against the one the schematic means (`want`).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Comparison {
-    /// It is a different part: another kind, value or size.
     pub different: Vec<String>,
-    /// Same part, rated worse: looser tolerance, lower voltage or power, a less stable dielectric.
     pub worse: Vec<String>,
-    /// What both sides gave, so was compared.
     pub compared: Vec<&'static str>,
-    /// What only `have` gave, so couldn't be compared.
     pub unchecked: Vec<&'static str>,
 }
 
@@ -254,8 +225,6 @@ fn close(a: f64, b: f64) -> bool {
     (a - b).abs() <= 1e-3 * a.abs().max(b.abs()) + 1e-15
 }
 
-/// Compares an offered part with the wanted one. A rating the offered part doesn't give, when the wanted one
-/// has it, counts as worse: it can't be shown to be good enough.
 pub fn compare(want: &Spec, have: &Spec) -> Comparison {
     let mut c = Comparison::default();
     if let (Some(w), Some(h)) = (want.kind, have.kind)
@@ -349,7 +318,6 @@ pub fn compare(want: &Spec, have: &Spec) -> Comparison {
     c
 }
 
-/// A number with an SI prefix: `2.2`, `10k`, `100n`, `100m`.
 pub fn eng(v: f64) -> String {
     if v == 0.0 {
         return "0".into();
@@ -373,7 +341,6 @@ pub fn eng(v: f64) -> String {
     format!("{}{p}", trim(v / scale))
 }
 
-/// Up to three significant decimals, without trailing zeros.
 fn trim(v: f64) -> String {
     let s = format!("{v:.3}");
     let s = s.trim_end_matches('0').trim_end_matches('.');
@@ -469,7 +436,6 @@ mod tests {
             compare(&want, &have).different,
             ["22nF, not the 220nF the schematic gives"]
         );
-        // A value-only line compares value and size, and leaves the ratings to the offered part.
         let bare = Spec {
             kind: Some(Kind::Resistor),
             value: Some(2.2),

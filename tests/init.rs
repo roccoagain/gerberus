@@ -1,5 +1,3 @@
-//! `gerberus init`: a starter inputs.toml guessed from net names, which loads as written and says it is a guess.
-
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -39,23 +37,18 @@ fn usb_pins_get_usb_ranges_and_a_short_to_vbus() {
     let short = at("J5.A6", true);
     assert_eq!(short.max, Max::Value(5.5));
     assert_eq!(short.fault.as_deref(), Some("J5 USB data shorted to VBUS"));
-    // Every entry but the ground reference is measured from a ground pin.
     for i in inputs.inputs.iter().filter(|i| i.name != "ground") {
         assert_ne!(i.pin, i.to);
     }
-    // A USB plug can't reverse VBUS.
     assert!(vbus.reverse.is_some());
 }
 
 #[test]
 fn nets_the_board_drives_and_unnamed_signals() {
     let (_, inputs, text) = kitchen_sink();
-    // J3.1 is on +3V3, which the board's own regulator makes.
     assert!(inputs.undriven.iter().any(|u| u.pin.to_string() == "J3.1"), "{text}");
-    // A UART pin's name says nothing about its voltage: it is left for a person, in a comment.
     assert!(text.contains("# J4.1 (/mcu/UART_TX): what drives it?"), "{text}");
     assert!(!inputs.inputs.iter().any(|i| i.pin.to_string() == "J4.1"));
-    // Each guessed pin is listed once, though a USB data pin has a fault-case entry too.
     let guesses = gerberus::init::guesses(&inputs);
     let guessed = |src: &str| src.starts_with(gerberus::init::GUESS);
     assert_eq!(
@@ -69,8 +62,6 @@ fn nets_the_board_drives_and_unnamed_signals() {
     );
 }
 
-/// The command writes inputs.toml once; `check` then says its results rest on guesses, and `doctor` lists them
-/// to confirm first.
 #[test]
 fn command_writes_and_check_says_guesses() {
     let dir = std::env::temp_dir().join(format!("gerberus-init-{}", std::process::id()));
@@ -105,7 +96,6 @@ fn command_writes_and_check_says_guesses() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
-/// A file with no other input still knows ground: init writes it as a 0 V reference.
 #[test]
 fn ground_is_known_without_other_inputs() {
     let design = kicad::load(&root("tests/fixtures/kitchen-sink/power.kicad_sch")).unwrap();

@@ -1,14 +1,3 @@
-//! What changed between two revisions of a design: parts added, removed or changed, connections made or broken,
-//! and the check findings that are new, fixed or changed verdict.
-//!
-//! Nets are matched by the pins on them, not by name, since KiCad names unlabelled nets after a pin
-//! (`Net-(R1-Pad1)`) and those names move when parts are renumbered. A pin on both revisions keeps its place if
-//! the pins it shares a net with are the same; otherwise its old net was split or its new net joins pins that
-//! were apart.
-//!
-//! Findings are matched by rule, part, fault case and the pin a message opens with (`U1.VIN`), so a number that
-//! moves inside a message is a change of the same finding, not a new one.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
@@ -17,28 +6,20 @@ use serde::Serialize;
 use crate::design::{Component, Design};
 use crate::rules::{Finding, Report, Severity, Verdict};
 
-/// A part on one revision only, or on both with something changed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PartChange {
     pub reference: String,
-    /// `added`, `removed` or `changed`.
     pub kind: &'static str,
-    /// For `changed`: each field as `name: old → new`. For the others: the part's value and symbol.
     pub what: Vec<String>,
 }
 
-/// Pins that were on one net and now are on several, or the other way round.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NetChange {
-    /// `split` (an old net's pins are now on several nets) or `joined` (a new net has pins from several).
     pub kind: &'static str,
-    /// The net named in the revision it is whole in: the old one for `split`, the new one for `joined`.
     pub net: String,
-    /// Each group of pins, and the net it is on in the other revision.
     pub groups: Vec<(String, Vec<String>)>,
 }
 
-/// A finding whose verdict changed, or that is on one revision only.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FindingChange {
     pub rule: &'static str,
@@ -46,34 +27,27 @@ pub struct FindingChange {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub case: Option<String>,
     pub severity: Severity,
-    /// The worst verdict on each revision, among findings no waiver accepted.
     pub old: Option<Verdict>,
     pub new: Option<Verdict>,
-    /// How many FAILs (not waived) each revision has under this key, and of those how many are errors.
     pub old_fails: usize,
     pub new_fails: usize,
     pub old_errors: usize,
     pub new_errors: usize,
-    /// How many findings a waiver accepted, on each revision.
     pub old_waived: usize,
     pub new_waived: usize,
-    /// The new revision's message, or the old one's when the finding is gone.
     pub message: String,
 }
 
 impl FindingChange {
-    /// FAILs the old revision didn't have.
     pub fn added_fails(&self) -> usize {
         self.new_fails.saturating_sub(self.old_fails)
     }
 
-    /// Error-severity FAILs the old revision didn't have.
     pub fn added_errors(&self) -> usize {
         self.new_errors.saturating_sub(self.old_errors)
     }
 }
 
-/// Everything that changed.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Diff {
     pub parts: Vec<PartChange>,
@@ -82,13 +56,11 @@ pub struct Diff {
 }
 
 impl Diff {
-    /// FAILs with error severity that the old revision didn't have.
     pub fn new_errors(&self) -> usize {
         self.findings.iter().map(FindingChange::added_errors).sum()
     }
 }
 
-/// Compares two revisions and their check reports.
 pub fn diff(old: &Design, old_report: &Report, new: &Design, new_report: &Report) -> Diff {
     Diff {
         parts: parts(old, new),
@@ -97,7 +69,6 @@ pub fn diff(old: &Design, old_report: &Report, new: &Design, new_report: &Report
     }
 }
 
-/// Fields a part change lists, besides its pins.
 fn fields(c: &Component) -> Vec<(&'static str, String)> {
     let mpn = ["MPN", "Manufacturer Part Number", "Part Number", "MFR Part Number"]
         .iter()
@@ -157,7 +128,6 @@ fn show(s: &str) -> &str {
     if s.is_empty() { "(none)" } else { s }
 }
 
-/// Every pin, as `REF.PIN`, with its net. A pin left alone on its own net counts, as that is a connection broken.
 fn pin_nets(d: &Design) -> BTreeMap<String, usize> {
     let mut out = BTreeMap::new();
     for (r, c) in &d.components {
@@ -170,7 +140,6 @@ fn pin_nets(d: &Design) -> BTreeMap<String, usize> {
 
 pub fn nets(old: &Design, new: &Design) -> Vec<NetChange> {
     let (po, pn) = (pin_nets(old), pin_nets(new));
-    // Pins on both revisions, by their net on each.
     let common: Vec<(&String, usize, usize)> = po.iter().filter_map(|(p, &a)| pn.get(p).map(|&b| (p, a, b))).collect();
     let mut out = vec![];
     let mut group = |by_whole: bool| {
@@ -201,8 +170,6 @@ pub fn nets(old: &Design, new: &Design) -> Vec<NetChange> {
 
 type Key = (&'static str, String, Option<String>, String);
 
-/// What a finding is about: its rule, part, fault case and the first `REF.PIN` its message names (a fault case's
-/// message opens with the case's name, so the pin may come later).
 fn key(f: &Finding) -> Key {
     let prefix = format!("{}.", f.reference);
     let pin = f
@@ -215,7 +182,6 @@ fn key(f: &Finding) -> Key {
     (f.rule, f.reference.clone(), f.case.clone(), pin)
 }
 
-/// One revision's findings under one key.
 #[derive(Default)]
 struct Side<'a> {
     worst: Option<&'a Finding>,
@@ -261,7 +227,6 @@ pub fn findings(old: &Report, new: &Report) -> Vec<FindingChange> {
             continue;
         }
         let (ov, nv) = (x.worst.map(|f| f.verdict), y.worst.map(|f| f.verdict));
-        // Passes that come and go with a part aren't worth listing.
         if ov.is_none_or(|v| v == Verdict::Pass) && nv.is_none_or(|v| v == Verdict::Pass) && x.waived == y.waived {
             continue;
         }
@@ -284,7 +249,6 @@ pub fn findings(old: &Report, new: &Report) -> Vec<FindingChange> {
             message: f.message.clone(),
         });
     }
-    // New FAILs first, then new UNKNOWNs, then what was fixed.
     out.sort_by_key(|c| (c.new.map_or(3, |v| v as u8), c.severity, c.reference.clone()));
     out
 }
@@ -298,7 +262,6 @@ fn verdict(v: Option<Verdict>) -> &'static str {
     }
 }
 
-/// The diff as text.
 pub fn render(d: &Diff) -> String {
     let mut out = String::new();
     if d.parts.is_empty() && d.nets.is_empty() && d.findings.is_empty() {
@@ -388,9 +351,7 @@ pub fn render(d: &Diff) -> String {
     out
 }
 
-/// A design's folder as it was at a git revision, in a temporary folder removed on drop.
 pub struct OldTree {
-    /// The design file inside the temporary folder.
     pub path: std::path::PathBuf,
     root: std::path::PathBuf,
 }
@@ -401,10 +362,6 @@ impl Drop for OldTree {
     }
 }
 
-/// Extracts the git repository holding `design` at `rev` into a temporary folder: the whole tree, so the old
-/// revision's sheets, `parts/`, `inputs.toml` and `waivers.toml` come with it. It is what `git archive` gives:
-/// submodules and `export-ignore` paths are left out, and Git LFS files are their pointers. The design file may
-/// not be there, when the revision is older than it.
 pub fn checkout(design: &std::path::Path, rev: &str) -> Result<OldTree, String> {
     use std::process::Command;
     let abs = std::fs::canonicalize(design).map_err(|e| format!("{}: {e}", design.display()))?;
@@ -431,7 +388,6 @@ pub fn checkout(design: &std::path::Path, rev: &str) -> Result<OldTree, String> 
         .strip_prefix(std::fs::canonicalize(&top).map_err(|e| e.to_string())?)
         .map_err(|_| "the design isn't inside its git repository".to_string())?
         .to_path_buf();
-    // A new folder of our own: `create_dir` fails rather than reuse one that is already there.
     let base = std::env::temp_dir();
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -444,7 +400,6 @@ pub fn checkout(design: &std::path::Path, rev: &str) -> Result<OldTree, String> 
         path: root.join(&rel),
         root: root.clone(),
     };
-    // Streamed from git into tar, so a large repository isn't held in memory.
     let mut archive = Command::new("git")
         .arg("-C")
         .arg(&top)

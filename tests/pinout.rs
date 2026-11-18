@@ -1,5 +1,3 @@
-//! Symbol, footprint and datasheet pinout agreement, on the real boards and on boards broken on purpose.
-
 use std::path::{Path, PathBuf};
 
 use gerberus::design::{Design, Pin, PinKind};
@@ -46,8 +44,6 @@ fn footprint_mut<'a>(fps: &'a mut [Footprint], reference: &str) -> &'a mut Footp
     fps.iter_mut().find(|f| f.reference == reference).unwrap()
 }
 
-/// The real boards have no pinout errors. Their warnings are each a real difference a person should see,
-/// listed here so a new one shows up as a test failure.
 #[test]
 fn real_boards_have_no_errors_and_known_warnings() {
     let lib = library();
@@ -81,13 +77,11 @@ fn unidirectional_tvs_on_a_bidirectional_symbol_names_its_cathode_net() {
 
 #[test]
 fn sensor_supply_pin_named_after_another_pin_is_a_warning_not_a_swap() {
-    // SCD41 pin 19 is VDDH; the symbol calls it VDD, which is also pin 7's name.
     let (design, fps) = board("sniffer", "sniffer");
     let report = run(&design, &fps, &library());
     assert!(has(&report, "U3", Severity::Warning, "19 \"VDD\" (datasheet VDDH)"));
 }
 
-/// A differential pair swapped on the symbol must not hide behind the `OUT`/`IN` synonyms.
 #[test]
 fn swapped_differential_pair_is_an_error() {
     let (mut design, fps) = board("can-encoder", "can-encoder");
@@ -145,7 +139,6 @@ fn datasheet_pin_missing_from_the_symbol_is_an_error() {
 
 #[test]
 fn footprint_for_another_package_is_reported() {
-    // A SOT-23-5 footprint under a SOT-23-3 regulator: two pads the datasheet doesn't have.
     let (design, mut fps) = board("can-encoder", "can-encoder");
     let fp = footprint_mut(&mut fps, "U5");
     for n in ["4", "5"] {
@@ -184,7 +177,6 @@ fn symbol_pin_the_datasheet_does_not_have_is_an_error() {
 
 #[test]
 fn do_not_connect_pin_on_a_net_is_an_error() {
-    // Give the SCD41's DNC pin 1 a symbol pin on the GND net.
     let (mut design, fps) = board("sniffer", "sniffer");
     let gnd = design.components["U3"].pins["20"].net;
     design.components.get_mut("U3").unwrap().pins.insert(
@@ -259,7 +251,6 @@ fn without_a_board_only_the_datasheet_is_compared() {
 
 #[test]
 fn mounting_pads_need_no_symbol_pin() {
-    // JST connectors have two MP pads that are not in the symbol or the part file.
     let (design, fps) = board("can-encoder", "can-encoder");
     assert!(
         footprint_mut(&mut fps.clone(), "J1")

@@ -1,5 +1,3 @@
-//! Worst-case net voltages on the test boards, worked out from their inputs and part files.
-
 use std::path::{Path, PathBuf};
 
 use gerberus::design::Design;
@@ -36,8 +34,6 @@ fn close(s: Span, lo: f64, hi: f64) -> bool {
     near(s.min, lo) && near(s.max, hi)
 }
 
-/// `vref * (1 + Rtop / Rbottom)` at the ends that make it smallest and largest, where each resistor can be
-/// off by `dev` (tolerance plus temperature drift).
 fn divider(vref: (f64, f64), rt: f64, rb: f64, dev: f64) -> (f64, f64) {
     (
         vref.0 * (1.0 + rt * (1.0 - dev) / (rb * (1.0 + dev))),
@@ -45,7 +41,6 @@ fn divider(vref: (f64, f64), rt: f64, rb: f64, dev: f64) -> (f64, f64) {
     )
 }
 
-/// UNI-ROYAL 0402: ±1 % (p2) plus 100 ppm/°C (p6) over the rated -55 to 155 °C (p5), 130 °C from 25 °C.
 const DEV: f64 = 0.01 + 100e-6 * 130.0;
 
 fn net_index(d: &Design, name: &str) -> usize {
@@ -67,17 +62,13 @@ fn rev2_rails() {
     let (d, v) = run("can-encoder", "can-encoder.kicad_sch");
     assert!(close(span(&d, &v, "VBUS"), 7.0, 26.0));
     assert!(close(span(&d, &v, "GND"), 0.0, 0.0));
-    // B5819WS drops at most 0.6 V (p1), and no minimum is given.
     assert!(close(span(&d, &v, "+VDC"), 6.4, 26.0), "{}", span(&d, &v, "+VDC"));
     let (lo, hi) = divider((0.985, 1.015), 47e3, 12e3, DEV);
     assert!(close(span(&d, &v, "+5V"), lo, hi), "{}", span(&d, &v, "+5V"));
     assert!(close(span(&d, &v, "Net-(U1-FB)"), 0.985, 1.015));
-    // +5V's low end clears the XC6206's VOUT + 1 V headroom (p4), so +3V3 is held.
     assert!(lo >= 3.366 + 1.0);
     assert!(close(span(&d, &v, "+3V3"), 3.234, 3.366));
-    // How far the switch node rings past ground and VIN isn't given.
     assert_eq!(span(&d, &v, "Net-(U1-SW)"), Span::unknown());
-    // Logic nets reach at most the highest supply of the parts driving them.
     assert!(close(span(&d, &v, "/SPI_MISO"), 0.0, 3.366));
     assert!(
         close(span(&d, &v, "/CAN_RX"), 0.0, hi),
@@ -89,7 +80,6 @@ fn rev2_rails() {
 fn rev1_rails() {
     let (d, v) = run("can-encoder-rev1", "can-encoder.kicad_sch");
     assert!(close(span(&d, &v, "+12V"), 6.4, 25.2), "{}", span(&d, &v, "+12V"));
-    // The AP63200's datasheet gives no headroom figure, so +3V3 isn't assumed to be held at its low end.
     let (_, hi) = divider((0.792, 0.808), 47e3, 15e3, DEV);
     assert!(close(span(&d, &v, "+3V3"), 0.0, hi), "{}", span(&d, &v, "+3V3"));
     assert!(
@@ -104,7 +94,6 @@ fn rev1_rails() {
 fn sniffer_rails() {
     let (d, v) = run("sniffer", "sniffer.kicad_sch");
     assert!(close(span(&d, &v, "+5V"), 3.6, 5.5));
-    // The ME6211's output is specified at VIN = VOUT + 1 V (p8), but VIN can be as low as 3.6 V.
     assert!(close(span(&d, &v, "+3V3"), 0.0, 3.366));
     assert!(
         text(&v, &d, "+3V3").contains("below the 4.366 V"),
@@ -112,13 +101,10 @@ fn sniffer_rails() {
         text(&v, &d, "+3V3")
     );
     assert!(close(span(&d, &v, "/UART_RX"), 0.0, 3.3));
-    // J1.2 is listed as undriven: only the host's RX listens on it.
     assert!(close(span(&d, &v, "/UART_TX"), 0.0, 3.366));
-    // The LED's anode is reached through R3 from the MCU pin and through the LED from ground.
     assert!(close(span(&d, &v, "Net-(D1-A)"), 0.0, 3.366));
 }
 
-/// The rev 1 bug: the explanation for +12V names the diode, its drop, and the bus it comes from.
 #[test]
 fn rev1_explanation_names_the_chain() {
     let (d, v) = run("can-encoder-rev1", "can-encoder.kicad_sch");
@@ -136,7 +122,6 @@ fn rev1_explanation_names_the_chain() {
     }
 }
 
-/// Without a CAN bus range in the inputs, the bus nets stay unknown and say why.
 #[test]
 fn can_bus_is_unknown_without_an_input() {
     for dir in ["can-encoder", "can-encoder-rev1"] {
@@ -160,7 +145,6 @@ fn can_bus_is_unknown_without_an_input() {
     }
 }
 
-/// Every net has a range, or says why one of its ends is unknown.
 #[test]
 fn every_net_is_known_or_says_why() {
     for (dir, sch) in [
@@ -190,8 +174,6 @@ fn with_vbus(min: f64, max: f64) -> BoardInputs {
     .unwrap()
 }
 
-/// A regulator only holds its output while its supply is in range. Below that the low end drops to 0 V;
-/// above the recommended maximum the output can follow the supply.
 #[test]
 fn regulators_hold_only_inside_their_supply_range() {
     let (d, _) = board("can-encoder", "can-encoder.kicad_sch");
@@ -203,14 +185,12 @@ fn regulators_hold_only_inside_their_supply_range() {
     let why = &low.by_name(&d, "+5V").unwrap().why[0].text;
     assert!(why.contains("below its recommended minimum"), "{why}");
 
-    // The TPS560430 is recommended up to 36 V (p4).
     let high = compute(&d, &lib, &with_vbus(7.0, 40.0));
     assert_eq!(span(&d, &high, "+5V").max, Some(40.0));
     let why = &high.by_name(&d, "+5V").unwrap().why[0].text;
     assert!(why.contains("above its recommended"), "{why}");
 }
 
-/// Without a resistor's tolerance the divider's output can't be bounded, and the rail says so.
 #[test]
 fn divider_needs_resistor_tolerances() {
     let (d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
@@ -224,7 +204,6 @@ fn divider_needs_resistor_tolerances() {
         "{:?}",
         nv.why
     );
-    // Whatever +5V powers is unknown at the top too.
     assert_eq!(span(&d, &v, "+3V3").max, None);
 }
 
@@ -247,7 +226,6 @@ fn resistor_values() {
     }
 }
 
-/// A connector pin on a driven net that inputs.toml doesn't describe makes the net UNKNOWN.
 #[test]
 fn connector_on_a_driven_net_is_unknown() {
     let (d, mut inputs) = board("can-encoder", "can-encoder.kicad_sch");
@@ -260,11 +238,9 @@ fn connector_on_a_driven_net_is_unknown() {
         "{}",
         text(&v, &d, "+3V3")
     );
-    // And so is everything that reads +3V3.
     assert_eq!(span(&d, &v, "/LED").max, None);
 }
 
-/// Adds a two-pin part between two nets.
 fn add_part(d: &mut Design, reference: &str, lib_id: &str, a: &str, b: &str) {
     use gerberus::design::{Component, Pin, PinKind};
     let mut c = Component {
@@ -293,7 +269,6 @@ fn add_part(d: &mut Design, reference: &str, lib_id: &str, a: &str, b: &str) {
     d.components.insert(reference.into(), c);
 }
 
-/// Anything on a feedback net besides the divider and capacitors makes the output UNKNOWN, not a guess.
 #[test]
 fn extra_parts_on_the_feedback_net_are_unknown() {
     let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
@@ -304,7 +279,6 @@ fn extra_parts_on_the_feedback_net_are_unknown() {
     assert!(text(&v, &d, "Net-(U1-FB)").contains("D9.1 is on the feedback net"));
 }
 
-/// A part gerberus can't model (a plain diode here) may pull a net anywhere.
 #[test]
 fn unmodelled_passive_pins_make_a_net_unknown() {
     let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
@@ -319,7 +293,6 @@ fn unmodelled_passive_pins_make_a_net_unknown() {
     );
 }
 
-/// A regulator fed from its own output can't be worked out.
 #[test]
 fn loops_are_unknown() {
     let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
@@ -335,7 +308,6 @@ fn loops_are_unknown() {
     );
 }
 
-/// A switch node's range that follows a pin other than its supply has no value for it.
 #[test]
 fn switch_range_needs_its_supply() {
     use gerberus::limits::{Bound, DriveKind, Range};
@@ -371,7 +343,6 @@ fn switch_range_needs_its_supply() {
     assert!(text(&v, &d, "Net-(U1-SW)").contains("highest point UNKNOWN"));
 }
 
-/// A board temperature range narrows the resistors' drift.
 #[test]
 fn board_temperature_narrows_divider_drift() {
     let (d, mut inputs) = board("can-encoder", "can-encoder.kicad_sch");
@@ -382,7 +353,6 @@ fn board_temperature_narrows_divider_drift() {
     assert!(close(span(&d, &v, "+5V"), lo, hi), "{}", span(&d, &v, "+5V"));
 }
 
-/// A net read twice in one explanation is spelled out once.
 #[test]
 fn explanations_dont_repeat() {
     let (d, v) = run("can-encoder", "can-encoder.kicad_sch");
@@ -391,8 +361,6 @@ fn explanations_dont_repeat() {
     assert_eq!(text.matches("input VBUS on J1.1").count(), 1, "{text}");
 }
 
-/// `stays_below` only trusts steps that can't rise above their sources: a switch node that may overshoot its
-/// supply doesn't count.
 #[test]
 fn stays_below_needs_bounded_steps() {
     use gerberus::limits::{Bound, DriveKind, Range};
@@ -423,7 +391,6 @@ fn stays_below_needs_bounded_steps() {
     };
     assert!(with_plus(0.0).stays_below(sw, vdc));
     assert!(!with_plus(0.7).stays_below(sw, vdc));
-    // Pull-ups and outputs supplied from +3V3 stay below it.
     let (_, v) = run("can-encoder", "can-encoder.kicad_sch");
     assert!(v.stays_below(net_index(&d, "/SPI_CS"), net_index(&d, "+3V3")));
     assert!(
@@ -432,8 +399,6 @@ fn stays_below_needs_bounded_steps() {
     );
 }
 
-/// The bus lines carry the ISO 11898 common-mode range, and the termination node between R4 and JP1 stays
-/// between them.
 #[test]
 fn can_bus_lines() {
     for dir in ["can-encoder", "can-encoder-rev1"] {
@@ -445,13 +410,10 @@ fn can_bus_lines() {
         let mut around: Vec<&str> = v.nets[jp].between.iter().map(|&n| d.nets[n].name.as_str()).collect();
         around.sort_unstable();
         assert_eq!(around, ["/CANH", "/CANL"], "{dir}");
-        // A net with an input isn't a passive node.
         assert!(v.nets[net_index(&d, "/CANH")].between.is_empty());
     }
 }
 
-/// No particular debug probe is used, so SWDIO, SWCLK and NRST cover both kinds: one that follows the target
-/// voltage it senses, and one fixed at 3.3 V. The fixed one isn't bounded by +3V3, so the pins don't stay below it.
 #[test]
 fn probe_pins_cover_any_probe() {
     for (dir, sch) in [
@@ -474,8 +436,6 @@ fn probe_pins_cover_any_probe() {
     }
 }
 
-/// Fault inputs stay out of the normal analysis. A case puts its inputs in place of the normal ones on the same
-/// net, and drops a differential limit on that net.
 #[test]
 fn fault_cases_replace_normal_inputs() {
     let (d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
@@ -501,8 +461,6 @@ fn fault_cases_replace_normal_inputs() {
     assert!(close(span(&d, &v, "Net-(JP1-B)"), -4.5, 26.0));
 }
 
-/// Adds a MOSFET Q9 with pins 1 = G, 2 = S, 3 = D, and a net `LOAD`, pulled up to +5V by R99, for whichever
-/// pins name it.
 fn add_fet(d: &mut Design, value: &str, gate: &str, source: &str, drain: &str) {
     use gerberus::design::{Component, Net, Pin, PinKind};
     d.nets.push(Net {
@@ -537,7 +495,6 @@ fn add_fet(d: &mut Design, value: &str, gate: &str, source: &str, drain: &str) {
     d.components.insert("Q9".into(), c);
 }
 
-/// A MOSFET with no part file is still a part gerberus can't model: no datasheet says which way it conducts.
 #[test]
 fn a_mosfet_with_no_part_file_is_unknown() {
     let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
@@ -552,7 +509,6 @@ fn a_mosfet_with_no_part_file_is_unknown() {
     );
 }
 
-/// With its gate on its source and its drain above, a 2N7002NXAKR's gate never rises above either end: off.
 #[test]
 fn a_mosfet_held_below_threshold_is_off() {
     let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
@@ -566,8 +522,6 @@ fn a_mosfet_held_below_threshold_is_off() {
     assert_eq!(q9.state, gerberus::voltage::ChannelState::Off);
 }
 
-/// A gate the MCU drives (0 to 3.366 V) may turn the channel on; a gate on VBUS (at least 7 V) is past the 5 V
-/// RDS(on) is given at (p6) from both ends (GND, and LOAD at most +5V), so it is on.
 #[test]
 fn a_mosfet_gate_decides_its_state() {
     use gerberus::voltage::ChannelState;
@@ -578,15 +532,11 @@ fn a_mosfet_gate_decides_its_state() {
         let v = compute(&d, &lib, &inputs);
         let q9 = v.channels.iter().find(|c| c.reference == "Q9").unwrap();
         assert_eq!(q9.state, state, "{}", q9.reason);
-        // Either way the drain can be pulled down to GND: the channel's drop isn't known.
         let top = span(&d, &v, "+5V").max.unwrap();
         assert!(close(span(&d, &v, "LOAD"), 0.0, top), "{}", span(&d, &v, "LOAD"));
     }
 }
 
-/// A P-channel part turns on with its gate below its channel. AO3401A fed at its drain from +5V (the way the amp
-/// board uses it against a reversed supply) is on with its gate grounded, and off with its gate on VBUS, above
-/// both ends.
 #[test]
 fn a_p_channel_mosfet_reads_its_threshold_negative() {
     use gerberus::voltage::ChannelState;
@@ -600,8 +550,6 @@ fn a_p_channel_mosfet_reads_its_threshold_negative() {
     }
 }
 
-/// A level shifter: a 2N7002NXAKR with its gate on +3V3 between an MCU pin and a pull-up to +5V. The channel
-/// can't raise the MCU side above its gate, so the 5 V pull-up never reaches the MCU pin through it.
 #[test]
 fn a_channel_cant_pull_past_its_gate() {
     let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
@@ -617,13 +565,10 @@ fn a_channel_cant_pull_past_its_gate() {
     );
 }
 
-/// A gate only another off channel reaches floats, so the channel it drives may be on, not off.
 #[test]
 fn a_floating_gate_leaves_its_channel_maybe_on() {
     use gerberus::voltage::ChannelState;
     let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
-    // Q9: gate and source on GND, drain on LOAD (pulled up to +5V): off. Q8: gate on Q9's source side... use
-    // a net only Q8's gate is on.
     add_fet(&mut d, "2N7002NXAKR", "GND", "GND", "LOAD");
     use gerberus::design::{Component, Net, Pin, PinKind};
     d.nets.push(Net {
@@ -661,8 +606,6 @@ fn a_floating_gate_leaves_its_channel_maybe_on() {
     assert_eq!(q8.state, ChannelState::Maybe, "{}", q8.reason);
 }
 
-/// A fuse and a net tie are DC shorts, so the net past them takes the driven net's range. A switch may as well be
-/// open, so it doesn't pull the net past it: that net is no better known than with nothing there.
 #[test]
 fn fuses_and_net_ties_pass_a_rail_through_but_switches_dont() {
     use gerberus::design::Net;
@@ -699,7 +642,6 @@ fn fuses_and_net_ties_pass_a_rail_through_but_switches_dont() {
     );
 }
 
-/// A net tie with three pins joins all three nets.
 #[test]
 fn a_three_pin_net_tie_joins_every_net() {
     use gerberus::design::{Component, Net, Pin, PinKind};

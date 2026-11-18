@@ -1,9 +1,3 @@
-//! The first ten schematic rules. Each compares a net's worst-case voltage (from [`crate::voltage`]) with a part's
-//! datasheet limits (from [`crate::limits`]), or checks that something drives a pin at all.
-//!
-//! Every check comes out PASS, FAIL or UNKNOWN. A FAIL cites the numbers it compared and their datasheet pages;
-//! an UNKNOWN says what was missing. Nothing unknown is ever counted as a pass.
-
 use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Write as _;
@@ -17,7 +11,6 @@ use crate::limits::{Bound, Class, Coverage, Library, Limit, Lookup, Part, Quanti
 use crate::policy::Policy;
 use crate::voltage::{Driver, Hold, Span, Voltages, resistance_range};
 
-/// The rules, in report order: name and what it checks.
 pub const RULES: [(&str, &str); 14] = [
     ("abs-max", "every pin stays inside its absolute maximum ratings"),
     (
@@ -100,20 +93,13 @@ impl fmt::Display for Severity {
 pub struct Finding {
     pub rule: &'static str,
     pub verdict: Verdict,
-    /// How bad a FAIL is. An UNKNOWN or PASS carries the severity its FAIL would have had.
     pub severity: Severity,
-    /// Reference designator, such as `D2`.
     pub reference: String,
-    /// What was compared: the pin, its net, the numbers and their datasheet pages.
     pub message: String,
-    /// Nets whose ranges the finding read, so a report can explain them.
     #[serde(skip)]
     pub nets: Vec<usize>,
-    /// The fault case the finding comes from, or none for normal operation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub case: Option<String>,
-    /// A short headline for the terminal report, when the message doesn't open with one. Not in the JSON, whose
-    /// `message` says it all.
     #[serde(skip)]
     pub headline: Option<String>,
 }
@@ -121,20 +107,15 @@ pub struct Finding {
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Report {
     pub findings: Vec<Finding>,
-    /// Findings a waiver in `waivers.toml` accepted, taken out of `findings` so nothing counts them.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub waived: Vec<crate::waivers::Waived>,
-    /// The file the waivers came from, for the report's note.
     #[serde(skip)]
     pub waivers_file: String,
-    /// Each fault case's net voltages, which its findings' `nets` index into.
     #[serde(skip)]
     pub cases: Vec<(String, Voltages)>,
 }
 
 impl Report {
-    /// Counts findings, leaving out summaries (`reverse-polarity`), whose FAILs are the fault case's own
-    /// findings, already counted.
     fn count(&self, verdict: Verdict, severity: Option<Severity>) -> usize {
         self.findings
             .iter()
@@ -143,7 +124,6 @@ impl Report {
             .count()
     }
 
-    /// FAILs that are errors: what makes a board not ready to order.
     pub fn errors(&self) -> usize {
         self.count(Verdict::Fail, Some(Severity::Error))
     }
@@ -165,17 +145,10 @@ impl Report {
     }
 }
 
-/// Rules whose findings sum up other findings, and so aren't counted again in a report's totals.
 pub const SUMMARY_RULES: [&str; 1] = ["reverse-polarity"];
 
-/// The rules a fault case runs: only damage. A fault is checked against absolute maximum ratings, TVS breakdown
-/// and capacitor ratings (without derating). Operating ranges of ICs don't apply while a fault lasts.
-/// Resistor power and the voltage ratings of other passives are checked too, but a FAIL there becomes UNKNOWN:
-/// a fault drives the two ends of a part from ranges that needn't move together, which can overstate the
-/// voltage across it.
 pub const FAULT_RULES: [&str; 3] = ["abs-max", "tvs-breakdown", "cap-voltage"];
 
-/// Runs every rule on a design, then the damage rules on each fault case in `inputs`.
 pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs, volts: &Voltages) -> Report {
     let mut r = Report::default();
     let cov = coverage(design, lib);
@@ -222,8 +195,6 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
     crate::thermal::junction(design, lib, policy, inputs, &th, &mut r.findings);
     crate::thermal::forward_current(design, lib, policy, &th, &mut r.findings);
 
-    // Fault cases, including each supply connected backwards. A finding that reads only nets the fault doesn't
-    // change says nothing new, so it is left out.
     let all = inputs.with_reversals();
     let reversed: Vec<(String, String)> = inputs
         .reversible()
@@ -241,7 +212,6 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
             r.findings.push(summary);
         }
         for mut f in fr.findings {
-            // The same finding, word for word, in normal operation: the fault changes nothing it read.
             let same = |n: &Finding| {
                 n.case.is_none()
                     && n.rule == f.rule
@@ -280,7 +250,6 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
     r
 }
 
-/// The rules that compare each part's limits with its nets. `fault` keeps only [`FAULT_RULES`].
 fn part_rules(
     design: &Design,
     lib: &Library,
@@ -349,7 +318,6 @@ struct Ctx<'a> {
 }
 
 impl Ctx<'_> {
-    /// The net a part-file pin name is on.
     fn net(&self, name: &str) -> Option<usize> {
         self.part
             .pins_named(name)
@@ -365,15 +333,10 @@ impl Ctx<'_> {
         &self.design.nets[net].name
     }
 
-    /// `V(a) − V(b)` at its worst. Two pins on one net are always 0 V apart.
     fn diff(&self, a: usize, b: usize) -> Span {
         self.diff_why(a, b).0
     }
 
-    /// `V(a) − V(b)` at its worst, and what narrowed it below the two ranges' extremes, for messages.
-    ///
-    /// Two things can: a `[[differential]]` in inputs.toml, and a net of passive parts (see
-    /// [`crate::voltage::NetVoltage::between`]), which at every moment sits between the nets around it.
     fn diff_why(&self, a: usize, b: usize) -> (Span, Vec<String>) {
         let mut notes = vec![];
         let s = self.diff_depth(a, b, 0, &mut notes);
@@ -449,7 +412,6 @@ impl Ctx<'_> {
         s
     }
 
-    /// Where a pin is and what it sees, for messages: `U1.VIN (+5V)`.
     fn at(&self, name: &str, net: usize) -> String {
         format!("{}.{name} ({})", self.reference, self.net_name(net))
     }
@@ -495,7 +457,6 @@ impl Ctx<'_> {
     }
 }
 
-/// Both bounds at once. An unknown end of one side leaves the other side's end.
 fn intersect(a: Span, b: Span) -> Span {
     let pick = |p: Option<f64>, q: Option<f64>, f: fn(f64, f64) -> f64| match (p, q) {
         (Some(p), Some(q)) => Some(f(p, q)),
@@ -507,7 +468,6 @@ fn intersect(a: Span, b: Span) -> Span {
     }
 }
 
-/// The result of comparing a voltage with one end of a range.
 enum End {
     Ok,
     Fail(String),
@@ -518,10 +478,6 @@ fn v(x: f64) -> String {
     format!("{} V", (x * 1000.0).round() / 1000.0)
 }
 
-/// Compares the voltage `seen` (the pin from the limit's `to`) with a range. `other` gives the voltage of
-/// another pin of the part, from the same `to`, for a bound like `{ pin = "VDD", plus = 0.3 }`; `same` says
-/// whether that pin is on the checked pin's net, so the two move together.
-/// `floor` says which ends of `seen` are only floors (low, high): a FAIL there becomes UNKNOWN.
 fn compare(seen: Span, floor: (bool, bool), range: &Range, other: &dyn Fn(&str) -> Option<Other>) -> Vec<End> {
     let Range::Known { min, max, .. } = range else {
         let Range::Unknown(reason) = range else { unreachable!() };
@@ -539,12 +495,9 @@ fn compare(seen: Span, floor: (bool, bool), range: &Range, other: &dyn Fn(&str) 
     ]
 }
 
-/// Another pin a bound is relative to: its voltage, and how the checked pin relates to it.
 struct Other {
     span: Span,
-    /// On the checked pin's net.
     same: bool,
-    /// The checked pin's net can never rise above it.
     below: bool,
 }
 
@@ -585,14 +538,12 @@ fn bound(seen: Option<f64>, b: &Bound, other: &dyn Fn(&str) -> Option<Other>, is
                 return End::Unknown(format!("the {word} is {what}, and {pin} isn't connected"));
             };
             if is_max && below && !same && *plus >= 0.0 && r.max.is_some_and(|hi| !beyond(cap(hi + plus))) {
-                // Everything that sets this net is bounded by the other pin's net, so it can't rise above it.
                 return match at_most {
                     Some(c) if beyond(*c) => End::Fail(format!("reaches {}, past the {word} of {}", v(x), v(*c))),
                     _ => End::Ok,
                 };
             }
             if same {
-                // The pins share a net, so V(pin) − V(other) is 0 and only `plus` and the cap matter.
                 let off = if is_max { *plus >= 0.0 } else { *plus <= 0.0 };
                 return match (off, at_most) {
                     (false, _) => End::Fail(format!("the {word} is {what}, and {pin} is on the same net")),
@@ -602,7 +553,6 @@ fn bound(seen: Option<f64>, b: &Bound, other: &dyn Fn(&str) -> Option<Other>, is
                     _ => End::Ok,
                 };
             }
-            // On different nets, the two may not move together: pass only if the worst pairing passes.
             let (Some(lo), Some(hi)) = (r.min, r.max) else {
                 return End::Unknown(format!("the {word} is {what}, and {pin}'s range is UNKNOWN"));
             };
@@ -631,7 +581,6 @@ fn bound(seen: Option<f64>, b: &Bound, other: &dyn Fn(&str) -> Option<Other>, is
     }
 }
 
-/// One verdict from several ends: any FAIL fails, else any UNKNOWN is unknown.
 fn verdict(ends: &[End]) -> (Verdict, String) {
     let fails: Vec<&str> = ends
         .iter()
@@ -656,19 +605,14 @@ fn verdict(ends: &[End]) -> (Verdict, String) {
     (Verdict::Pass, String::new())
 }
 
-/// What one limited pin (or set of pins) sees.
 struct Seen {
     what: String,
     span: Option<Span>,
-    /// Which ends are only floors (low, high).
     floor: (bool, bool),
     nets: Vec<usize>,
-    /// The limit's `to` net, for bounds relative to another pin.
     to: Option<usize>,
 }
 
-/// The voltage each limited pin sees, from the limit's `to` pin or, with no `to`, between each pair of its
-/// pins. Each entry: what it describes, the span, the nets it reads, and the `to` net for relative bounds.
 fn seen(ctx: &Ctx<'_>, limit: &Limit) -> Vec<Seen> {
     let mut out = vec![];
     if let Some(to) = &limit.to {
@@ -676,7 +620,6 @@ fn seen(ctx: &Ctx<'_>, limit: &Limit) -> Vec<Seen> {
         for p in &limit.pins {
             match (ctx.net(p), tn) {
                 (Some(pn), Some(tn)) => {
-                    // Signed: `bidirectional` only makes `breakdown` a magnitude.
                     let s = ctx.diff(pn, tn);
                     let floor = (ctx.volts.nets[pn].floor, ctx.volts.nets[tn].floor);
                     let what = if ctx.span(tn) == Span::exact(0.0) {
@@ -734,7 +677,6 @@ fn seen(ctx: &Ctx<'_>, limit: &Limit) -> Vec<Seen> {
     out
 }
 
-/// The size of a voltage of either sign.
 fn magnitude(s: Span) -> Span {
     match (s.min, s.max) {
         (Some(a), Some(b)) => {
@@ -777,7 +719,6 @@ fn voltage_rules(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report) 
         let other = |pin: &str| -> Option<Other> {
             let n = ctx.net(pin)?;
             let me = *nets.first()?;
-            // Tracking only holds when both are measured from a 0 V ground.
             let grounded = to.is_none_or(|t| ctx.span(t) == Span::exact(0.0));
             Some(Other {
                 span: to.map_or(ctx.span(n), |t| ctx.diff(n, t)),
@@ -787,8 +728,6 @@ fn voltage_rules(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report) 
         };
         let head = format!("{what}: {span}");
 
-        // abs-max. Passives and TVS diodes put their ratings in `recommended` and `breakdown`, so an unknown
-        // abs_max there is expected, not a gap.
         let skip_abs = matches!(limit.abs_max, Range::Unknown(_)) && (passive || class == Class::Tvs);
         if !skip_abs {
             let (vd, why) = verdict(&compare(span, floor, &limit.abs_max, &other));
@@ -820,7 +759,6 @@ fn voltage_rules(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report) 
     }
 }
 
-/// Whether the end of `s` its magnitude comes from is only a floor.
 fn magnitude_floor(s: Span, floor: (bool, bool)) -> bool {
     match (s.min, s.max) {
         (Some(lo), Some(hi)) => {
@@ -834,7 +772,6 @@ fn magnitude_floor(s: Span, floor: (bool, bool)) -> bool {
     }
 }
 
-/// A FAIL that rests on a floor isn't proven, so it becomes UNKNOWN.
 fn unless_floor(vd: Verdict, msg: String, on_floor: bool) -> (Verdict, String) {
     if vd == Verdict::Fail && on_floor {
         (
@@ -854,8 +791,6 @@ fn value_of(b: &Bound) -> Option<f64> {
 }
 
 fn tvs(ctx: &Ctx<'_>, limit: &Limit, span: Span, floor: (bool, bool), head: &str, nets: &[usize], r: &mut Report) {
-    // Breakdown: a rail that can sit at or above the lowest breakdown voltage drives current through the part
-    // continuously, and it burns. A bidirectional part breaks down either way, so its magnitude counts.
     if let Some(bd) = &limit.breakdown {
         let lowest = match bd {
             Range::Known { min, .. } => value_of(min),
@@ -896,8 +831,6 @@ fn tvs(ctx: &Ctx<'_>, limit: &Limit, span: Span, floor: (bool, bool), head: &str
         r.findings
             .push(ctx.finding("tvs-breakdown", vd, Severity::Error, msg, nets.to_vec()));
     }
-    // Stand-off: outside VRWM the leakage is no longer specified, and it is a sign the TVS is too small. Signed,
-    // like every recommended range.
     let (lo, hi) = match &limit.recommended {
         Range::Known { min, max, .. } => (value_of(min), value_of(max)),
         Range::Unknown(_) => (None, None),
@@ -946,7 +879,6 @@ fn tvs(ctx: &Ctx<'_>, limit: &Limit, span: Span, floor: (bool, bool), head: &str
         .push(ctx.finding("tvs-standoff", vd, Severity::Warning, msg, nets.to_vec()));
 }
 
-/// Capacitors: the signed voltage against the signed rating, then against the derating policy.
 #[expect(
     clippy::too_many_arguments,
     reason = "unrelated inputs; a one-use struct would only rename them"
@@ -971,7 +903,6 @@ fn cap_voltage(
         format!("{}, not checked against a datasheet", ctx.part.description)
     };
     let factor = policy.derate_for(ctx.part, limit).map(|d| (d.factor, d.reason.clone()));
-    // Each end: (seen, rating, which way is past it, is that end a floor).
     let ends = [(span.max, rmax, true, floor.1), (span.min, rmin, false, floor.0)];
     let mut worst: Option<(Verdict, Severity, String)> = None;
     let mut unknown = vec![];
@@ -1128,7 +1059,6 @@ fn resistor_power(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report)
         .push(ctx.finding("resistor-power", vd, severity, msg, vec![a, b]));
 }
 
-/// The smallest the resistor can be, from its tolerance and temperature drift, and where that comes from.
 fn smallest_resistance(ctx: &Ctx<'_>) -> Result<(f64, String), String> {
     let mut lib = Library::default();
     lib.parts
@@ -1136,14 +1066,12 @@ fn smallest_resistance(ctx: &Ctx<'_>) -> Result<(f64, String), String> {
     resistance_range(&lib, ctx.inputs, ctx.reference, ctx.c).map(|(lo, _, note)| (lo, note))
 }
 
-/// Input and power pins on nets nothing drives.
 fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Report) {
     for (reference, c) in &design.components {
         if c.dnp || c.lib_id.starts_with("Connector") || lib.part_for(c).is_some_and(|p| p.class == Class::Connector) {
             continue;
         }
         for pin in c.pins.values() {
-            // A stacked pin's pads are one pin: report it once, under its first number.
             if pin.no_connect || pin.stack.as_ref().is_some_and(|s| *s != pin.number) {
                 continue;
             }
@@ -1159,12 +1087,6 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
             } else {
                 format!("{} ({})", pin.number, pin.name)
             };
-            // A part with no part file may supply the net itself: a charge pump's output or an internal
-            // regulator's pin that its symbol marks as a power input (the MAX9722A's PVSS).
-            // Two or more of its own pins on the net (PVSS and SVSS tied) set this apart from a lone power pin
-            // left unconnected, which stays a FAIL. The part must also take power from a driven rail on another
-            // power pin: a part whose only supply net never reaches a source (a mistyped label, a VDDA island
-            // with a forgotten ferrite) still FAILs, however many of its pins and decoupling caps sit on it.
             let own_pins = design.nets[pin.net]
                 .pins
                 .iter()
@@ -1177,7 +1099,6 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                 q.kind == PinKind::PowerIn
                     && q.net != pin.net
                     && match volts.nets[q.net].driver {
-                        // A driven rail of unknown voltage (a board with no inputs.toml) may well be powered.
                         Driver::Strong | Driver::Pulled => volts.nets[q.net].span.max.is_none_or(|v| v > 0.0),
                         Driver::Weak => true,
                         Driver::Floating => false,
@@ -1194,10 +1115,6 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
                             .and_then(|c2| c2.pins.get(p2))
                             .is_some_and(|p2| p2.kind == PinKind::Passive)
                 });
-            // An input reached only through a capacitor from a signal is AC-coupled. So is one AC-grounded through
-            // a capacitor to a rail, when another input of the same part is AC-coupled (the other leg of a
-            // differential input). Many amplifiers and codecs bias such inputs themselves; without a part file,
-            // nothing says whether this one does. A lone input with only a decoupling capacitor stays a FAIL.
             let ac_coupled = lib.part_for(c).is_none_or(Part::unread)
                 && pin.kind == PinKind::Input
                 && design.only_capacitors_on(reference, pin.net)
@@ -1257,8 +1174,6 @@ fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r: &mut Repor
     }
 }
 
-/// Whether `net` (reached only through capacitors from `reference`) has a capacitor carrying a signal in: its
-/// far side is on a driven net that isn't a fixed 0 V rail.
 fn coupled_to_signal(design: &Design, volts: &Voltages, reference: &str, net: usize) -> bool {
     design.only_capacitors_on(reference, net)
         && design.others_on(reference, net).any(|(_, c2, p2)| {
@@ -1296,7 +1211,6 @@ fn regulator_headroom(design: &Design, volts: &Voltages, r: &mut Report) {
     }
 }
 
-/// What to do about a FAIL of each rule, for the report's `help` line.
 pub fn help(rule: &str) -> Option<&'static str> {
     Some(match rule {
         "abs-max" => "add a divider, clamp or series resistor, or choose a part rated higher",
@@ -1319,8 +1233,6 @@ pub fn help(rule: &str) -> Option<&'static str> {
     })
 }
 
-/// A finding laid out as a diagnostic, with `help` for a FAIL and, for `--verbose`, how each net it read got its
-/// range.
 pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Finding) -> Diagnostic {
     let level = match (f.verdict, f.severity) {
         (Verdict::Fail, Severity::Error) => Level::Error,
@@ -1367,12 +1279,10 @@ pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Findin
     d
 }
 
-/// The report as text: errors, then warnings, then (if `show` asks) unknowns and passes, then a summary.
 pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -> String {
     let mut out = String::new();
     let width = show.columns();
     let mut details = false;
-    // Errors, then warnings, then unknowns and passes: `check` sorts its findings so, but `stress` doesn't.
     let mut sorted: Vec<&Finding> = report.findings.iter().collect();
     sorted.sort_by_key(|f| (f.verdict, f.severity));
     for f in sorted {
@@ -1440,8 +1350,6 @@ mod tests {
         }
     }
 
-    /// `VDD + 0.3 V` with VDD at 3.0 to 3.6 V: 3.2 V always passes, 4.0 V always fails, 3.5 V depends on how
-    /// the two move.
     #[test]
     fn relative_bounds() {
         let vdd = other(Span::new(3.0, 3.6), false, false);
@@ -1449,20 +1357,16 @@ mod tests {
         assert_eq!(is(&bound(Some(3.2), &b, &vdd, true)), "ok");
         assert_eq!(is(&bound(Some(4.0), &b, &vdd, true)), "fail");
         assert_eq!(is(&bound(Some(3.5), &b, &vdd, true)), "unknown");
-        // Bounded by VDD itself: passes even at 3.5 V.
         let tracks = other(Span::new(3.0, 3.6), false, true);
         assert_eq!(is(&bound(Some(3.5), &b, &tracks, true)), "ok");
-        // `at_most` caps it: min(VDD + 4, 5.5) fails at 5.6 V even when bounded by VDD.
         let capped = pin_bound(4.0, Some(5.5));
         assert_eq!(is(&bound(Some(5.6), &capped, &tracks, true)), "fail");
-        // With VDD from 1.0 V the cap is between 5.0 and 5.5 V.
         let ft = other(Span::new(1.0, 3.6), false, false);
         assert_eq!(is(&bound(Some(5.6), &capped, &ft, true)), "fail");
         assert_eq!(is(&bound(Some(5.2), &capped, &ft, true)), "unknown");
         assert_eq!(is(&bound(Some(4.9), &capped, &ft, true)), "ok");
     }
 
-    /// On the same net, only `plus` matters: `VDD − 0.3 V` as a maximum can never hold.
     #[test]
     fn same_net() {
         let same = other(Span::new(3.0, 3.6), true, true);
@@ -1470,14 +1374,12 @@ mod tests {
         assert_eq!(is(&bound(Some(3.6), &pin_bound(-0.3, None), &same, true)), "fail");
     }
 
-    /// An unknown net against a limit the datasheet doesn't give is UNKNOWN, never a pass.
     #[test]
     fn unknown_against_unknown() {
         let none = |_: &str| None;
         assert_eq!(is(&bound(None, &Bound::Unknown("x".into()), &none, true)), "unknown");
     }
 
-    /// A FAIL on an end that is only a floor becomes UNKNOWN; the other end still fails.
     #[test]
     fn floors_soften_their_own_end() {
         let none = |_: &str| None;
@@ -1495,7 +1397,6 @@ mod tests {
         assert_eq!(verdict(&ends).0, Verdict::Unknown);
     }
 
-    /// Magnitude takes its floor from the end it comes from.
     #[test]
     fn magnitude_floors() {
         assert!(!magnitude_floor(Span::new(0.0, 3.3), (true, false)));

@@ -1,8 +1,3 @@
-//! Gerberus checks a PCB design for electrical bugs before it is ordered.
-
-// A malformed board file must give an error, not a crash: no `unwrap()` outside tests. `expect("why")` stays
-// for invariants the code itself guarantees. Tests may unwrap (clippy.toml). Set here, not in Cargo.toml, so
-// it skips the integration tests and examples.
 #![warn(clippy::unwrap_used)]
 
 pub mod altium;
@@ -36,8 +31,6 @@ pub mod update;
 pub mod voltage;
 pub mod waivers;
 
-/// Loads a design from any supported format, chosen by file extension: a KiCad `.kicad_sch`, or an Altium
-/// `.PrjPcb` project or lone `.SchDoc` sheet.
 pub fn load(path: &std::path::Path) -> Result<design::Design, String> {
     let ext = path
         .extension()

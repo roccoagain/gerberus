@@ -1,8 +1,3 @@
-//! Protection on a board's external connectors: ESD clamping, and what a supply connected backwards does.
-//!
-//! The external connector pins are the ones `inputs.toml` describes: every input and undriven pin. Nothing
-//! else is guessed to be external.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::design::{Design, PinKind};
@@ -12,26 +7,21 @@ use crate::policy::Policy;
 use crate::rules::{Finding, Severity, Verdict};
 use crate::voltage::Voltages;
 
-/// The part file of a fitted component, if it has one.
 fn part_of<'a>(design: &Design, lib: &'a Library, reference: &str) -> Option<&'a Part> {
     let c = design.components.get(reference)?;
     if c.dnp {
         return None;
     }
     match lib.lookup(c) {
-        // A file `part new` started and nobody has read in yet says nothing about clamping or surviving.
         Lookup::Datasheet(p) if !p.unread() => Some(p),
         _ => None,
     }
 }
 
-/// The datasheet name of a component's pin, from its part file.
 fn pin_name<'a>(part: &'a Part, number: &'a str) -> &'a str {
     part.pins.get(number).map_or(number, String::as_str)
 }
 
-/// The nets an external connector pin is on, with the pins that reach each, leaving out the inputs' reference
-/// (ground) nets.
 fn external_nets(design: &Design, inputs: &BoardInputs) -> BTreeMap<usize, Vec<String>> {
     let net = |r: &str, p: &str| design.components.get(r)?.pins.get(p).map(|p| p.net);
     let grounds: BTreeSet<usize> = inputs
@@ -60,7 +50,6 @@ fn external_nets(design: &Design, inputs: &BoardInputs) -> BTreeMap<usize, Vec<S
     out
 }
 
-/// An IC pin an external net reaches, directly or through one series resistor, inductor or diode.
 struct Reached<'a> {
     reference: String,
     pin: String,
@@ -68,7 +57,6 @@ struct Reached<'a> {
     through: Option<String>,
 }
 
-/// A net with a power pin on it: a supply rail or ground.
 fn is_rail(design: &Design, net: usize) -> bool {
     design.nets[net].pins.iter().any(|(r, p)| {
         design
@@ -79,14 +67,8 @@ fn is_rail(design: &Design, net: usize) -> bool {
     })
 }
 
-/// The TVS clamps and IC pins an external net reaches. Clamps are keyed by the series part they sit behind
-/// (`None` for the net itself): a clamp behind a series resistor or diode protects what is behind that part, not
-/// a pin on the connector's side of it.
 type Clamps = BTreeMap<Option<String>, Vec<String>>;
 
-/// A connector, test point, jumper or net tie: by its reference (`J3`, `P1`, `TP1`, `CN2`, `JP1`, `NT1`,
-/// `USB1`), its symbol library (`Connector:…`, as `undriven_pins` reads it), its part file's class, or because
-/// inputs.toml names it. It carries the discharge rather than taking it, so it needs no part file here.
 fn is_connector_like(design: &Design, lib: &Library, reference: &str, named: &BTreeSet<String>) -> bool {
     let letters: String = reference
         .chars()
@@ -103,8 +85,6 @@ fn is_connector_like(design: &Design, lib: &Library, reference: &str, named: &BT
         })
 }
 
-/// A two-pin resistor, capacitor, inductor or ferrite (by reference) with its far side on a rail or ground: a
-/// pull, decoupling or filter part. The discharge goes into the rail, not into one pin, so it needs no part file.
 fn to_rail(design: &Design, reference: &str, net: usize) -> bool {
     let letters: String = reference.chars().take_while(char::is_ascii_alphabetic).collect();
     let Some(c) = design.components.get(reference) else {
@@ -115,8 +95,6 @@ fn to_rail(design: &Design, reference: &str, net: usize) -> bool {
         && c.pins.values().any(|p| p.net != net && is_rail(design, p.net))
 }
 
-/// A fitted part with no part file and no class default on a net the discharge reaches (not a connector, test
-/// point or passive to a rail): it might be an IC or a clamp, so the rule can't pass the net.
 fn unmodelled(design: &Design, lib: &Library, reference: &str, net: usize, named: &BTreeSet<String>) -> Option<String> {
     let c = design.components.get(reference)?;
     if c.dnp || is_connector_like(design, lib, reference, named) || to_rail(design, reference, net) {
@@ -129,8 +107,6 @@ fn unmodelled(design: &Design, lib: &Library, reference: &str, net: usize, named
     }
 }
 
-/// A part with no part file that could be a clamp: not a two-pin resistor, capacitor, inductor, ferrite bead or
-/// fuse (by reference or symbol), and not a plug-in module (`A1`).
 fn could_clamp(design: &Design, reference: &str) -> bool {
     let letters: String = reference.chars().take_while(char::is_ascii_alphabetic).collect();
     let Some(c) = design.components.get(reference) else {
@@ -143,11 +119,8 @@ fn could_clamp(design: &Design, reference: &str) -> bool {
     !passive && letters != "A"
 }
 
-/// Parts with no part file, keyed like [`Clamps`] by the series part they sit behind.
 type Unknown = BTreeMap<Option<String>, Vec<String>>;
 
-/// What the discharge reaches from a net: clamps (by the series part they sit behind), ICs, clamps that break
-/// down too high, and parts with no part file.
 type Reach<'a> = (Clamps, Vec<Reached<'a>>, Vec<String>, Unknown);
 
 fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<String>) -> Reach<'a> {
@@ -172,8 +145,6 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<S
             };
             match part.class {
                 Class::Tvs => {
-                    // The breakdown maximum is what it is compared with; a part that gives only a minimum breakdown
-                    // or a clamping voltage (USB ESD arrays) still clamps, but can't be compared.
                     let breakdown = part
                         .limits
                         .iter()
@@ -199,7 +170,6 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<S
                                 )
                             )
                     });
-                    // A TVS whose breakdown isn't known can't be said to clamp anything.
                     if !rated {
                         unknown.entry(through.clone()).or_default().push(format!(
                             "{r} ({}) gives no breakdown voltage or clamping voltage",
@@ -230,8 +200,6 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<S
             continue;
         }
         let pull = class == Some(Class::Resistor);
-        // A pull-up or pull-down ends on a rail or ground, which every IC on the board shares: the discharge goes
-        // into that rail's decoupling, not into one pin, so the far side isn't followed.
         for p in c
             .pins
             .values()
@@ -240,8 +208,6 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<S
             visit(p.net, Some(r.clone()), &mut raw, &mut ics, &mut unknown);
         }
     }
-    // A TVS only protects the pins beside it when it breaks down before they do: an SMF26A (up to 32 V) on a
-    // 3.3 V logic pin lets the pin take the discharge first.
     let mut too_high = vec![];
     for (through, list) in raw {
         let weakest = ics
@@ -284,8 +250,6 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<S
     (clamps, ics, too_high, unknown)
 }
 
-/// The `esd` rule: every net an external connector pin is on is clamped by a TVS or ESD diode, or everything on
-/// it is rated to the policy's IEC 61000-4-2 level.
 pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs, r: &mut Vec<Finding>) {
     let external = external_nets(design, inputs);
     let named: BTreeSet<String> = external
@@ -297,15 +261,11 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
     for (net, pins) in external {
         let at = format!("{} ({})", pins.join(", "), design.nets[net].name);
         let (clamps, ics, too_high, unknown) = reached(design, lib, net, &named);
-        // A part with no part file behind a series part clamped on its far side is sheltered by that clamp, like
-        // an IC there.
         let unknown: Vec<(Option<String>, String)> = unknown
             .into_iter()
             .filter(|(t, _)| t.is_none() || !clamps.contains_key(t))
             .flat_map(|(t, u)| u.into_iter().map(move |u| (t.clone(), u)))
             .collect();
-        // Those that could be a clamp: not a two-pin resistor, capacitor, inductor, bead or fuse, and not a
-        // module (`A1`).
         let maybe_clamp: Vec<(Option<String>, String)> = unknown
             .iter()
             .filter(|(_, u)| could_clamp(design, u.split(' ').next().unwrap_or_default()))
@@ -337,7 +297,6 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             ));
             continue;
         }
-        // ICs behind a series part with a clamp on its far side are protected by that clamp.
         let (behind, ics): (Vec<Reached<'_>>, Vec<Reached<'_>>) = ics.into_iter().partition(|ic| {
             ic.through
                 .as_ref()
@@ -431,16 +390,12 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             }
         }
         let need = format!("{} V contact or {} V air ({})", level.contact, level.air, level.reason);
-        // An undescribed part that could be a clamp, beside every weak pin: on the connector's own net (it then
-        // clamps before any series part) or behind the same series part.
         let shielding: Vec<&str> = maybe_clamp
             .iter()
             .filter(|(t, _)| t.is_none() || weak_through.iter().all(|w| w == t))
             .map(|(_, u)| u.as_str())
             .collect();
         let (verdict, text) = if !weak.is_empty() && !shielding.is_empty() {
-            // A part with no part file may be the clamp (an ESD diode whose part number no file covers), so a
-            // weak pin can't fail the net.
             (
                 Verdict::Unknown,
                 format!(
@@ -475,8 +430,6 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
     }
 }
 
-/// A diode or TVS conducting forward straight across a reversed supply: both its ends are on nets an input
-/// or its reference holds, so nothing on the board limits the current.
 fn crowbars(design: &Design, lib: &Library, case: &BoardInputs, volts: &Voltages) -> Vec<String> {
     let net = |r: &str, p: &str| design.components.get(r)?.pins.get(p).map(|p| p.net);
     let held: BTreeSet<usize> = case
@@ -490,7 +443,6 @@ fn crowbars(design: &Design, lib: &Library, case: &BoardInputs, volts: &Voltages
         let Some(part) = part_of(design, lib, reference) else {
             continue;
         };
-        // (anode, cathode) pin names: a forward drive, or a unidirectional TVS's breakdown limit (K from A).
         let mut pairs: Vec<(&str, &str)> = part
             .drives
             .iter()
@@ -529,8 +481,6 @@ fn crowbars(design: &Design, lib: &Library, case: &BoardInputs, volts: &Voltages
     out
 }
 
-/// Diodes the reversed supply meets in series and that block it: anode on the input's net, cathode free to
-/// sit at 0 V.
 fn blockers(design: &Design, lib: &Library, input_net: usize) -> Vec<String> {
     let mut out = vec![];
     for (reference, c) in &design.components {
@@ -551,18 +501,12 @@ fn blockers(design: &Design, lib: &Library, input_net: usize) -> Vec<String> {
     out
 }
 
-/// What a finding checked: its rule, part and the pins before the numbers, such as `D1.K (+VDC) from D1.A
-/// (VBUS)`.
 fn subject(f: &Finding) -> (&str, &str, &str) {
     let what = f.message.split(": ").next().unwrap_or("");
     let what = what.split(" (").next().unwrap_or(what);
     (f.rule, f.reference.as_str(), what)
 }
 
-/// The `reverse-polarity` rule for one supply input connected backwards: `findings` are the damage rules'
-/// findings in that fault case, `normal` the findings of normal operation, and `volts` the case's net
-/// voltages. Only what the reversal makes worse counts: a check that already fails or can't be made in normal
-/// operation says nothing about the reversal.
 #[expect(
     clippy::too_many_arguments,
     reason = "unrelated inputs; a one-use struct would only rename them"
@@ -577,9 +521,6 @@ pub fn reverse_polarity(
     normal: &[Finding],
     volts: &Voltages,
 ) -> Finding {
-    // A finding is new to the reversed case unless normal operation has the same one: same rule, part, pin,
-    // range and reason. Matching on the part and pin alone would hide a pin that fails its maximum normally and
-    // its minimum when reversed.
     let prefix = format!("fault {case_name:?}: ");
     let same_as_normal = |f: &Finding| {
         let text = f.message.strip_prefix(&prefix).unwrap_or(&f.message);
@@ -599,8 +540,6 @@ pub fn reverse_polarity(
         .iter()
         .filter(|f| f.verdict == Verdict::Fail && f.severity == Severity::Error && !same_as_normal(f))
         .collect();
-    // An UNKNOWN counts only when the same pin passed in normal operation: a pin with no rated minimum is
-    // UNKNOWN either way, and listing it here would only repeat that.
     let passed_before = |f: &Finding| {
         normal
             .iter()

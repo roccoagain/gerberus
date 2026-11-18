@@ -1,5 +1,3 @@
-//! `gerberus mcp`: the JSON-RPC handshake, the tool list and a tool call.
-
 use std::path::Path;
 
 use gerberus::mcp::{handle, serve};
@@ -25,7 +23,6 @@ fn initialize_and_list_tools() {
     .unwrap();
     assert_eq!(r["result"]["protocolVersion"], "2025-03-26");
     assert_eq!(r["result"]["serverInfo"]["name"], "gerberus");
-    // A notification gets no answer.
     assert!(handle(exe(), &json!({"jsonrpc": "2.0", "method": "notifications/initialized"})).is_none());
     let r = handle(exe(), &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})).unwrap();
     let names: Vec<&str> = r["result"]["tools"]
@@ -94,13 +91,10 @@ fn serve_answers_line_by_line() {
 
 #[test]
 fn edge_cases_follow_json_rpc() {
-    // A batch is refused, not ignored.
     let r = handle(exe(), &json!([{"jsonrpc": "2.0", "id": 1, "method": "ping"}])).unwrap();
     assert_eq!(r["error"]["code"], -32600);
-    // An id with no method is an invalid request.
     let r = handle(exe(), &json!({"jsonrpc": "2.0", "id": 2})).unwrap();
     assert_eq!(r["error"]["code"], -32600);
-    // An unknown protocol version gets the newest this server speaks.
     let r = handle(
         exe(),
         &json!({"jsonrpc": "2.0", "id": 3, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}}),
@@ -109,7 +103,6 @@ fn edge_cases_follow_json_rpc() {
     assert_eq!(r["result"]["protocolVersion"], "2025-06-18");
 }
 
-/// A flag's value may start with '-' (a net named -12V); a positional may not.
 #[test]
 fn a_negative_rail_can_be_explained() {
     let r = handle(
