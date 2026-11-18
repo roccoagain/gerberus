@@ -234,10 +234,11 @@ fn call(exe: &Path, t: &Tool, args: &Value) -> Value {
         text.push_str(stderr.trim_end());
     }
     let code = out.status.code();
-    if code == Some(1) {
+    let check_failed = i32::from(crate::EXIT_CHECK_FAILED);
+    if code == Some(check_failed) {
         text.push_str("\n\n(exit status 1: a check failed with an error)");
     }
-    json!({"content": [{"type": "text", "text": text}], "isError": code.is_none_or(|c| c > 1)})
+    json!({"content": [{"type": "text", "text": text}], "isError": code.is_none_or(|c| c > check_failed)})
 }
 
 pub fn handle(exe: &Path, msg: &Value) -> Option<Value> {

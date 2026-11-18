@@ -55,7 +55,8 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: sudo apt-get update && sudo apt-get install -y ngspice
       - run: cargo fetch --locked
-      - run: cargo test --all-targets --locked --offline
+      - name: Test with the network blocked by a dead proxy
+        run: cargo test --all-targets --locked --offline
         env:
           HTTP_PROXY: http://127.0.0.1:9
           HTTPS_PROXY: http://127.0.0.1:9
@@ -96,7 +97,8 @@ jobs:
           ls "$MSYS2_ROOT"/ucrt64/bin/ngspice*
           cygpath -w "$MSYS2_ROOT/ucrt64/bin" >> "$GITHUB_PATH"
       - run: cargo fetch --locked
-      - run: cargo test --all-targets --locked --offline --no-fail-fast
+      - name: Test with the network blocked by a dead proxy
+        run: cargo test --all-targets --locked --offline --no-fail-fast
         env:
           HTTP_PROXY: http://127.0.0.1:9
           HTTPS_PROXY: http://127.0.0.1:9
@@ -145,7 +147,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ngspice
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo fetch --locked
-      - name: Measure line coverage
+      - name: Measure line coverage with the network blocked by a dead proxy
         env:
           HTTP_PROXY: http://127.0.0.1:9
           HTTPS_PROXY: http://127.0.0.1:9

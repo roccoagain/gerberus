@@ -185,15 +185,15 @@ fn run(args: &[String]) -> ExitCode {
         }
         _ => {
             eprintln!("{USAGE}");
-            return ExitCode::from(2);
+            return ExitCode::from(gerberus::EXIT_CANNOT_RUN);
         }
     };
     match result {
         Ok(true) => ExitCode::SUCCESS,
-        Ok(false) => ExitCode::from(1),
+        Ok(false) => ExitCode::from(gerberus::EXIT_CHECK_FAILED),
         Err(e) => {
             eprintln!("error: {e}");
-            ExitCode::from(2)
+            ExitCode::from(gerberus::EXIT_CANNOT_RUN)
         }
     }
 }
@@ -461,14 +461,14 @@ fn update() -> ExitCode {
                 .map_or_else(|| "gerberus".to_string(), |e| e.display().to_string()),
             gerberus::update::REPO
         );
-        return ExitCode::from(2);
+        return ExitCode::from(gerberus::EXIT_CANNOT_RUN);
     };
     let aside = match exe.as_deref().filter(|_| cfg!(windows)) {
         Some(exe) => match gerberus::update::set_aside(exe) {
             Ok(aside) => Some((exe, aside)),
             Err(e) => {
                 eprintln!("error: {e}");
-                return ExitCode::from(2);
+                return ExitCode::from(gerberus::EXIT_CANNOT_RUN);
             }
         },
         None => None,
@@ -477,11 +477,11 @@ fn update() -> ExitCode {
         Ok(s) if s.success() => (ExitCode::SUCCESS, true),
         Ok(s) => {
             eprintln!("error: {} exited with {s}", updater.display());
-            (ExitCode::from(1), false)
+            (ExitCode::from(gerberus::EXIT_CHECK_FAILED), false)
         }
         Err(e) => {
             eprintln!("error: {}: {e}", updater.display());
-            (ExitCode::from(2), false)
+            (ExitCode::from(gerberus::EXIT_CANNOT_RUN), false)
         }
     };
     if let Some((exe, aside)) = aside

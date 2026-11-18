@@ -195,6 +195,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
 }
 
 const CHANNEL_SETTLING_PASSES: usize = 4;
+const GATE_THRESHOLD_TAKEN_AS_ZERO_V_AT_ANY_TEMPERATURE: f64 = 0.0;
 
 fn settle_channels(design: &Design, lib: &Library, inputs: &BoardInputs, channels: &mut [Channel]) -> Voltages {
     let mut v = compute_with(design, lib, inputs, channels);
@@ -620,13 +621,13 @@ fn decide(design: &Design, v: &Voltages, ch: &Channel) -> (ChannelState, String)
     let cite = &ch.cite;
     let (off, on) = if n {
         (
-            hi <= 0.0,
+            hi <= GATE_THRESHOLD_TAKEN_AS_ZERO_V_AT_ANY_TEMPERATURE,
             ch.on
                 .is_some_and(|o| from.iter().map(|f| f.0).fold(f64::NEG_INFINITY, f64::max) >= o),
         )
     } else {
         (
-            lo >= 0.0,
+            lo >= GATE_THRESHOLD_TAKEN_AS_ZERO_V_AT_ANY_TEMPERATURE,
             ch.on
                 .is_some_and(|o| from.iter().map(|f| f.1).fold(f64::INFINITY, f64::min) <= o),
         )

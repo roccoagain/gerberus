@@ -2,8 +2,9 @@ use std::path::{Path, PathBuf};
 
 const TOOL_DIRECTIVES: [&str; 3] = ["# shellcheck ", "# zizmor:", "#!"];
 
-const CONFIG_FILES: [&str; 9] = [
+const CONFIG_FILES: [&str; 10] = [
     "Cargo.toml",
+    "rustfmt.toml",
     "clippy.toml",
     "deny.toml",
     "dist-workspace.toml",
@@ -54,19 +55,37 @@ fn skip_string(bytes: &[u8], open_quote: usize) -> usize {
     i + 1
 }
 
-fn skip_char_literal_or_lifetime(bytes: &[u8], quote: usize) -> usize {
+fn skip_char_literal_or_lifetime(text: &str, quote: usize) -> usize {
+    let bytes = text.as_bytes();
     if bytes.get(quote + 1) == Some(&b'\\') {
-        return quote + 2 + bytes[quote + 2..].iter().position(|&b| b == b'\'').unwrap() + 1;
+        return quote + 3 + bytes[quote + 3..].iter().position(|&b| b == b'\'').unwrap() + 1;
     }
-    let char_len = std::str::from_utf8(&bytes[quote + 1..])
-        .ok()
-        .and_then(|s| s.chars().next())
-        .map_or(1, char::len_utf8);
+    let char_len = text[quote + 1..].chars().next().map_or(1, char::len_utf8);
     if bytes.get(quote + 1 + char_len) == Some(&b'\'') {
         quote + 2 + char_len
     } else {
         quote + 1
     }
+}
+
+fn skip_block_comment(bytes: &[u8], start: usize) -> usize {
+    let mut depth = 0;
+    let mut i = start;
+    while i < bytes.len() {
+        if bytes[i..].starts_with(b"/*") {
+            depth += 1;
+            i += 2;
+        } else if bytes[i..].starts_with(b"*/") {
+            depth -= 1;
+            i += 2;
+            if depth == 0 {
+                return i;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    i
 }
 
 fn comment_lines_in_rust(text: &str) -> Vec<usize> {
@@ -77,9 +96,12 @@ fn comment_lines_in_rust(text: &str) -> Vec<usize> {
     while i < bytes.len() {
         let follows_identifier = i > 0 && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_');
         let rest = &bytes[i..];
-        if rest.starts_with(b"//") || rest.starts_with(b"/*") {
+        if rest.starts_with(b"//") {
             found.push(line_of(i));
             i += rest.iter().position(|&b| b == b'\n').unwrap_or(rest.len());
+        } else if rest.starts_with(b"/*") {
+            found.push(line_of(i));
+            i = skip_block_comment(bytes, i);
         } else if let Some(hashes) = starts_raw_string(rest).filter(|_| !follows_identifier) {
             i = skip_raw_string(bytes, i, hashes);
         } else if rest.starts_with(b"b\"") && !follows_identifier {
@@ -87,7 +109,7 @@ fn comment_lines_in_rust(text: &str) -> Vec<usize> {
         } else if bytes[i] == b'"' {
             i = skip_string(bytes, i);
         } else if bytes[i] == b'\'' {
-            i = skip_char_literal_or_lifetime(bytes, i);
+            i = skip_char_literal_or_lifetime(text, i);
         } else {
             i += 1;
         }
@@ -112,6 +134,7 @@ fn rust_code_has_no_comments() {
     let mut files = vec![root.join("build.rs")];
     rust_sources(&root.join("src"), &mut files);
     rust_sources(&root.join("tests"), &mut files);
+    rust_sources(&root.join("examples"), &mut files);
     let offenders: Vec<String> = files
         .iter()
         .flat_map(|path| {
@@ -152,4 +175,10 @@ fn tooling_config_has_no_comments() {
 fn detector_finds_comments_but_not_comment_markers_inside_literals() {
     let code = "let url = \"https://x\";\nlet raw = r#\"// not\"#;\nlet c = '/';\nfn f<'a>() {}\nlet x = 1; // yes\n/* yes */\n";
     assert_eq!(comment_lines_in_rust(code), [5, 6]);
+}
+
+#[test]
+fn detector_handles_escaped_quotes_and_multi_line_block_comments() {
+    let code = "let v = ['\\'','\"']; let s = \"// a\";\n/* a\n \" b /* c */ */\nlet y = 2;\n";
+    assert_eq!(comment_lines_in_rust(code), [2]);
 }

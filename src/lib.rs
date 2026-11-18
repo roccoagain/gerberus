@@ -1,5 +1,8 @@
 #![warn(clippy::unwrap_used)]
 
+pub const EXIT_CHECK_FAILED: u8 = 1;
+pub const EXIT_CANNOT_RUN: u8 = 2;
+
 pub mod altium;
 pub mod bom;
 pub mod bringup;
