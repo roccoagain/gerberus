@@ -1,9 +1,16 @@
+//! A small S-expression reader for KiCad files.
+//!
+//! KiCad files are a tree of lists. Each list starts with a bare word (its "head") and holds bare words,
+//! numbers, quoted strings and more lists. This reader keeps every value as text and lets the caller
+//! convert numbers, so no precision is lost on the way in.
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Sexp {
     List(Vec<Sexp>),
+    /// A bare word or number, such as `yes`, `passive` or `2.54`.
     Atom(String),
+    /// A quoted string, with escapes already resolved.
     Str(String),
 }
 
@@ -21,6 +28,7 @@ impl fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// Parses one top-level expression. Trailing whitespace is allowed; anything else after it is an error.
 pub fn parse(text: &str) -> Result<Sexp, ParseError> {
     let mut p = Parser {
         bytes: text.as_bytes(),
@@ -37,6 +45,8 @@ pub fn parse(text: &str) -> Result<Sexp, ParseError> {
     Ok(value)
 }
 
+/// Deepest nesting accepted. Real KiCad files stay under about 20 levels; the limit keeps a hostile file from
+/// overflowing the stack.
 pub const MAX_DEPTH: usize = 256;
 
 struct Parser<'a> {
@@ -87,7 +97,7 @@ impl Parser<'_> {
             return Err(self.error(&format!("lists are nested more than {MAX_DEPTH} deep")));
         }
         self.depth += 1;
-        self.skip_byte(b'(');
+        self.skip_byte(b'('); // '('
         let mut items = Vec::new();
         loop {
             self.skip_ws();
@@ -110,7 +120,7 @@ impl Parser<'_> {
 
     fn string(&mut self) -> Result<Sexp, ParseError> {
         let open_line = self.line;
-        self.skip_byte(b'"');
+        self.skip_byte(b'"'); // opening quote
         let mut out = Vec::new();
         loop {
             let Some(&b) = self.bytes.get(self.pos) else {
@@ -154,11 +164,13 @@ impl Parser<'_> {
             }
             self.pos += 1;
         }
+        // The input is a &str and we only split on ASCII bytes, so this slice is valid UTF-8.
         Sexp::Atom(String::from_utf8_lossy(&self.bytes[start..self.pos]).into_owned())
     }
 }
 
 impl Sexp {
+    /// The bare word at the start of a list, such as `symbol` in `(symbol ...)`.
     pub fn head(&self) -> Option<&str> {
         match self {
             Sexp::List(items) => match items.first() {
@@ -176,6 +188,7 @@ impl Sexp {
         }
     }
 
+    /// Text of an atom or string.
     pub fn text(&self) -> Option<&str> {
         match self {
             Sexp::Atom(s) | Sexp::Str(s) => Some(s),
@@ -183,6 +196,7 @@ impl Sexp {
         }
     }
 
+    /// The text of item `i` (item 0 is the head).
     pub fn arg(&self, i: usize) -> Option<&str> {
         self.items().get(i).and_then(Sexp::text)
     }
@@ -191,14 +205,17 @@ impl Sexp {
         self.arg(i).and_then(|s| s.parse().ok())
     }
 
+    /// The first child list whose head is `name`.
     pub fn child(&self, name: &str) -> Option<&Sexp> {
         self.items().iter().find(|c| c.head() == Some(name))
     }
 
+    /// Every child list whose head is `name`.
     pub fn children<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a Sexp> + 'a {
         self.items().iter().filter(move |c| c.head() == Some(name))
     }
 
+    /// Reads a `(name yes|no)` flag, or a bare `name` atom used by older files.
     pub fn flag(&self, name: &str) -> Option<bool> {
         if let Some(c) = self.child(name) {
             return Some(c.arg(1).is_none_or(|v| v == "yes"));

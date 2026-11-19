@@ -1,3 +1,4 @@
+//! Signal levels through an op-amp stage, simulated in ngspice.
 use std::path::Path;
 
 use gerberus::design::{Component, Design, Net, Pin, PinKind};
@@ -7,6 +8,9 @@ use gerberus::limits::Library;
 use gerberus::signal::{check, levels};
 use gerberus::voltage::compute;
 
+/// A non-inverting stage with a gain of 2 about a mid-rail VREF: J1's signal through C1 onto U1's +IN, which R1
+/// biases at VREF (R2/R3 from +5V, decoupled by C2). R4/R5 set the gain against VREF, so the output sits at
+/// VREF and swings twice the signal.
 fn stage() -> Design {
     let nets = ["GND", "+5V", "IN", "PLUS", "VREF", "OUT", "MINUS"];
     let mut d = Design {
@@ -128,6 +132,7 @@ fn clipping(f: &[gerberus::finding::Finding]) -> &gerberus::finding::Finding {
     f.iter().find(|f| f.rule == "clipping").expect("a clipping finding")
 }
 
+/// The output sits at VREF (2.5 V) and swings twice the signal in band.
 #[test]
 fn a_stage_with_room_passes() {
     let (d, f, l) = run(1.0);
@@ -141,6 +146,7 @@ fn a_stage_with_room_passes() {
     assert!(c.message.contains("p10"), "{}", c.message);
 }
 
+/// 1.245 V peak takes the output to within 10 mV of each rail, inside TLV9061-Q1's 20 mV swing (p10).
 #[test]
 fn a_stage_inside_its_swing_clips() {
     let (_, f, _) = run(1.245);
@@ -153,12 +159,14 @@ fn a_stage_inside_its_swing_clips() {
     );
 }
 
+/// Past the rails it clips whatever the swing figure, and the op-amp's inputs go past their recommended range.
 #[test]
 fn a_stage_past_its_rails_clips() {
     let (_, f, _) = run(1.5);
     let c = clipping(&f);
     assert_eq!(c.verdict, Verdict::Fail, "{}", c.message);
     assert!(c.message.contains("past a rail"), "{}", c.message);
+    // +IN swings 2.5 ± 1.5 V: inside V– − 0.1 to V+ + 0.1 (p8), so it passes.
     let plus = f
         .iter()
         .find(|f| f.rule == "signal-level" && f.message.starts_with("U1.+IN"))
@@ -166,6 +174,7 @@ fn a_stage_past_its_rails_clips() {
     assert_eq!(plus.verdict, Verdict::Pass, "{}", plus.message);
 }
 
+/// A signal big enough to take +IN past V+ + 0.5 V breaks the absolute maximum, an error.
 #[test]
 fn a_signal_past_an_absolute_maximum_is_an_error() {
     let (_, f, _) = run(3.2);
@@ -177,6 +186,7 @@ fn a_signal_past_an_absolute_maximum_is_an_error() {
     assert_eq!(plus.severity, gerberus::finding::Severity::Error, "{}", plus.message);
 }
 
+/// No [[signal]] in inputs.toml says what to add.
 #[test]
 fn no_signals_says_what_to_add() {
     let d = stage();
@@ -192,6 +202,7 @@ fn net(d: &Design, name: &str) -> usize {
     d.nets.iter().position(|n| n.name == name).unwrap()
 }
 
+/// Moves `r.pin` to the net `to`.
 fn rewire(d: &mut Design, r: &str, pin: &str, to: &str) {
     let to = net(d, to);
     let p = d.components.get_mut(r).unwrap().pins.get_mut(pin).unwrap();
@@ -208,6 +219,7 @@ fn run_on(d: &Design, i: &BoardInputs) -> (Vec<gerberus::finding::Finding>, gerb
     (check(d, &lib, &l), l)
 }
 
+/// A supply anywhere in 4.5 to 5.5 V moves VREF, and the output with it, by every mix of its ends.
 #[test]
 fn a_rail_range_moves_the_bias() {
     let d = stage();
@@ -217,10 +229,13 @@ fn a_rail_range_moves_the_bias() {
     let (_, l) = run_on(&d, &i);
     let (lo, hi) = l.dc(net(&d, "OUT"), net(&d, "GND")).unwrap();
     assert!((lo - 2.25).abs() < 1e-3 && (hi - 2.75).abs() < 1e-3, "{lo} {hi}");
+    // From +5V it is −2.75 to −2.25 V, not the −3.25 to −1.75 V that taking the two nets apart would give.
     let (lo, hi) = l.dc(net(&d, "OUT"), net(&d, "+5V")).unwrap();
     assert!((lo + 2.75).abs() < 1e-3 && (hi + 2.25).abs() < 1e-3, "{lo} {hi}");
 }
 
+/// +IN pulled to ground (0 V, but only through R1) must not be taken as ground: the output then sits at −2.5 V,
+/// past V–, and clips.
 #[test]
 fn a_net_pulled_to_zero_is_not_ground() {
     let mut d = stage();
@@ -231,6 +246,7 @@ fn a_net_pulled_to_zero_is_not_ground() {
     assert_eq!(c.verdict, Verdict::Fail, "{}", c.message);
 }
 
+/// With R1 gone only the capacitor reaches +IN, so its bias isn't set: UNKNOWN, not a pass.
 #[test]
 fn an_unbiased_input_is_unknown() {
     let mut d = stage();
@@ -244,9 +260,11 @@ fn an_unbiased_input_is_unknown() {
     assert_eq!(c.verdict, Verdict::Unknown, "{}", c.message);
 }
 
+/// An AC-coupled source leaves the pin's bias to the board: J1.1 then sits at whatever the board sets.
 #[test]
 fn an_ac_coupled_source_leaves_the_bias_to_the_board() {
     let mut d = stage();
+    // Feed the signal straight onto +IN, which R1 biases at VREF.
     rewire(&mut d, "J1", "1", "PLUS");
     let mut i = inputs(1.0);
     i.inputs.retain(|x| x.name != "sig");
@@ -255,12 +273,14 @@ fn an_ac_coupled_source_leaves_the_bias_to_the_board() {
     let (lo, hi) = l.dc(net(&d, "PLUS"), net(&d, "GND")).unwrap();
     assert!((lo - 2.5).abs() < 1e-3 && (hi - 2.5).abs() < 1e-3, "{lo} {hi}");
     assert_eq!(clipping(&f).verdict, Verdict::Pass, "{}", clipping(&f).message);
+    // DC-coupled, the source holds +IN at ground's DC instead.
     i.signals[0].ac_coupled = false;
     let (_, l) = run_on(&d, &i);
     let (lo, _) = l.dc(net(&d, "PLUS"), net(&d, "GND")).unwrap();
     assert!(lo.abs() < 1e-3, "{lo}");
 }
 
+/// A part the simulation leaves open on the signal's path is an UNKNOWN `signal-path` finding.
 #[test]
 fn an_open_part_on_the_path_is_reported() {
     let mut d = stage();
@@ -318,6 +338,8 @@ fn add(d: &mut Design, r: &str, lib_id: &str, value: &str, pins: &[(&str, PinKin
     d.components.insert(r.into(), c);
 }
 
+/// A DC-coupled signal sits inside its pin's [[input]] range: a 5 V input with a 0.1 V peak puts +IN at 4.9 to
+/// 5.1 V, past V+ + 0.1 V at the top, not around 0 V.
 #[test]
 fn a_dc_coupled_signal_sits_at_its_input() {
     let mut d = stage();
@@ -333,12 +355,14 @@ fn a_dc_coupled_signal_sits_at_its_input() {
         .find(|f| f.rule == "signal-level" && f.message.starts_with("U1.+IN"))
         .unwrap();
     assert_eq!(plus.verdict, Verdict::Fail, "{}", plus.message);
+    // An input narrower than the swing can't hold it.
     i.inputs[1].min = 5.2;
     let lib = Library::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("parts")).unwrap();
     let v = compute(&d, &lib, &i);
     assert!(levels(&d, &lib, &i, &v).unwrap_err().contains("narrower"));
 }
 
+/// Two DC-coupled signals can't both hold one pin: a clear error, not an ngspice one.
 #[test]
 fn two_dc_signals_on_one_pin_are_an_error() {
     let d = stage();
@@ -351,6 +375,8 @@ fn two_dc_signals_on_one_pin_are_an_error() {
     assert!(levels(&d, &lib, &i, &v).unwrap_err().contains("ac_coupled"));
 }
 
+/// An unused op-amp with its output tied to ground drives nothing and is left out, rather than shorting the
+/// simulation.
 #[test]
 fn an_op_amp_tied_off_is_left_out() {
     let mut d = stage();
@@ -361,6 +387,8 @@ fn an_op_amp_tied_off_is_left_out() {
     assert!(l.skipped.iter().any(|s| s.reference == "U1"), "{:?}", l.skipped);
 }
 
+/// A part left open with an output on a net the signal reaches could drive it: the levels there are UNKNOWN,
+/// pass or fail. One whose pins on it are inputs only loads it with nothing, so the levels stand.
 #[test]
 fn an_open_part_driving_a_net_makes_it_unknown() {
     let mut d = stage();
@@ -391,6 +419,7 @@ fn an_open_part_driving_a_net_makes_it_unknown() {
     assert_eq!(clipping(&f).verdict, Verdict::Pass, "{}", clipping(&f).message);
 }
 
+/// A resonance between the sweep's points is still found: an LC at Q ≈ 100 peaks near its Q.
 #[test]
 fn a_sharp_resonance_is_found() {
     let mut d = stage();

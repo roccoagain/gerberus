@@ -1,3 +1,11 @@
+//! Signal integrity for USB 2.0 high-speed pairs: layout rules read straight off the board, and a channel
+//! simulation that turns the layout into an eye diagram checked against the USB eye mask.
+//!
+//! Each pair is traced from its PHY's pads to its connector's. The layout rules then check impedance (from a
+//! 2D field solver run on each cross-section of the routing), skew, vias, stubs, reference planes, length and
+//! the capacitance of parts on the lines. The simulation builds a transmission-line model of each line from
+//! the same sections, vias, stubs and part capacitance, drives it with a 480 Mb/s PRBS7 pattern at the
+//! fastest edges USB allows, and checks the differential eye at the connector against Template 1.
 pub mod channel;
 pub mod eye;
 pub mod geometry;
@@ -19,6 +27,7 @@ use crate::finding::{Severity, Verdict};
 use crate::kicad::pcb::{Layout, PlacedFootprint};
 use crate::limits::Library;
 
+/// Where each USB 2.0 limit comes from.
 mod cite {
     pub const SPRAAR7: &str = "TI SPRAAR7J High-Speed Interface Layout Guidelines, Table A-1, PDF page 16";
     pub const TUSB1210: &str = "TI TUSB1210 datasheet SLLSE09J, Table 10-1, PDF pages 60-61";
@@ -26,19 +35,34 @@ mod cite {
     pub const USB_DRIVER: &str = "USB 2.0 specification, Table 7-8, PDF page 208";
 }
 
+/// USB 2.0 high-speed limits.
 mod usb2 {
+    /// Differential impedance, Ω (SPRAAR7: 90 Ω ± 10 %).
     pub const Z_MIN: f64 = 81.0;
     pub const Z_MAX: f64 = 99.0;
+    /// Length mismatch within the pair, mm (SPRAAR7: 50 mil).
     pub const SKEW: f64 = 1.27;
+    /// Vias on each line (SPRAAR7: 4).
     pub const VIAS: usize = 4;
+    /// Stub length, mm (TUSB1210 item 2.13: less than 200 mil).
     pub const STUB: f64 = 5.08;
+    /// Total length, mm (SPRAAR7: 12000 mil).
     pub const LENGTH: f64 = 304.8;
+    /// Distance from a plane split, mm (TUSB1210 item 2.15: 25 mil).
     pub const PLANE_EDGE: f64 = 0.635;
+    /// External capacitance on each line, pF (TUSB1210 item 1.06).
     pub const CAPACITANCE: f64 = 4.0;
+    /// Unit interval at 480 Mb/s, s.
     pub const UI: f64 = 1.0 / 480e6;
+    /// Fastest 10–90 % edge a driver may have (Table 7-8 THSR/THSF minimum), s.
     pub const RISE: f64 = 500e-12;
+    /// Driver output resistance, which also terminates the line (Table 7-8 ZHSDRV, 40.5–49.5 Ω), Ω.
     pub const TERMINATION: f64 = 45.0;
+    /// Nominal high-speed swing (VHSOH 400 mV), V.
     pub const SWING: f64 = 0.4;
+    /// An impedance excursion shorter than this is left to the simulation rather than failed on its own,
+    /// mm: about 20 ps on FR4, a twenty-fifth of the fastest USB edge, too short to reflect on its own.
+    /// Pairs always open up for a moment at pads and package escapes.
     pub const ESCAPE: f64 = 3.0;
 }
 
@@ -67,15 +91,18 @@ pub struct Finding {
     pub rule: &'static str,
     pub verdict: Verdict,
     pub severity: Severity,
+    /// The pair's name, such as `USB1`.
     pub pair: String,
     pub message: String,
 }
 
+/// A pair's routing and simulation results.
 #[derive(Debug, Clone, Serialize)]
 pub struct PairReport {
     pub name: String,
     pub p: String,
     pub n: String,
+    /// `REF.PAD` at each end.
     pub from: String,
     pub to: String,
     pub length_p: f64,
@@ -86,6 +113,7 @@ pub struct PairReport {
     pub sections: Vec<Section>,
     #[serde(skip)]
     pub eye: Option<Eye>,
+    /// Differential impedance seen from the driver, `(seconds, ohms)`, for D+ and D−.
     #[serde(skip)]
     pub tdr: Vec<Vec<(f64, f64)>>,
     pub eye_height_mv: Option<f64>,
@@ -97,7 +125,9 @@ pub struct PairReport {
 pub struct Report {
     pub pairs: Vec<PairReport>,
     pub findings: Vec<Finding>,
+    /// Things the board file didn't say, filled with defaults.
     pub assumptions: Vec<String>,
+    /// Differential pairs found that aren't USB, which no rules cover yet.
     pub skipped: Vec<String>,
 }
 
@@ -110,6 +140,7 @@ impl Report {
     }
 }
 
+/// A pair of nets: the name they share and their positive and negative members.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PairNets {
     pub name: String,
@@ -117,6 +148,7 @@ pub struct PairNets {
     pub n: String,
 }
 
+/// Pairs of nets whose names differ only in a `D+`/`D−`, `DP`/`DM`, `_P`/`_N` or `+`/`−` ending.
 pub fn find_pairs(layout: &Layout) -> Vec<PairNets> {
     let nets: BTreeSet<&str> = layout
         .tracks
@@ -162,6 +194,8 @@ pub fn find_pairs(layout: &Layout) -> Vec<PairNets> {
     out
 }
 
+/// Whether a pair is USB 2.0 data: a `D+`/`DP` ending, or `USB` in a `_P`/`+` pair's name that doesn't mark it
+/// as a SuperSpeed lane (`SS`, `TX`, `RX`), which runs at other speeds under other limits.
 fn is_usb(p: &PairNets) -> bool {
     let up = p.p.to_ascii_uppercase();
     if up.ends_with("D+") || up.ends_with("DP") {
@@ -171,6 +205,7 @@ fn is_usb(p: &PairNets) -> bool {
     name.contains("USB") && !["SS", "TX", "RX"].iter().any(|w| name.contains(w))
 }
 
+/// Whether a footprint is a connector: a `J` or `P` reference, or a connector library footprint.
 fn is_connector(f: &PlacedFootprint) -> bool {
     let r = f.reference.as_str();
     let numbered = |prefix: &str| {
@@ -180,12 +215,16 @@ fn is_connector(f: &PlacedFootprint) -> bool {
     numbered("J") || numbered("P") || f.lib_id.starts_with("Connector")
 }
 
+/// Pad capacitance on a line from the part library: per part, the capacitance its pin adds.
 struct Loads<'a> {
     layout: &'a Layout,
     lib: &'a Library,
 }
 
 impl Loads<'_> {
+    /// Capacitance in pF of the pads in `pads` (each part counted once per pin name), with the parts that
+    /// have no figure. The pair's own driver and connector are left out: their capacitance is part of the
+    /// USB budget the templates already cover.
     fn of(&self, pads: &[(String, String)], ends: &[&str]) -> (f64, Vec<String>, Vec<String>) {
         let mut seen = BTreeSet::new();
         let (mut total, mut unknown, mut used) = (0.0, Vec::new(), Vec::new());
@@ -229,6 +268,7 @@ impl Loads<'_> {
     }
 }
 
+/// Builds the channel model of one line.
 fn model(
     route: &Route,
     partner: &Route,
@@ -255,6 +295,7 @@ fn model(
                         loss_tangent: s.loss_tangent,
                     });
                 }
+                // Copper with no plane anywhere: model it over the far side of the board.
                 for b in bare {
                     let z = 2.0 * 60.0 / 1.5f64.sqrt() * (8.0 * board / b.width).ln().max(1.0) / 2.0;
                     line.elements.push(Element::Line {
@@ -273,6 +314,10 @@ fn model(
                 diameter,
                 ..
             } => {
+                // Howard Johnson's via models (High-Speed Digital Design, 1993, section 7.4): capacitance
+                // C = 1.41 εr T D1 / (D2 − D1) pF and inductance L = 5.08 h (ln(4h/d) + 1) nH, lengths in
+                // inches; T is the board thickness, D1 the pad, D2 the plane clearance hole, h the length the
+                // current travels and d the drill.
                 let inch = 25.4;
                 let d1 = diameter / inch;
                 let d2 = (diameter + 2.0 * clearance) / inch;
@@ -323,6 +368,7 @@ fn fmt_pt(p: (f64, f64)) -> String {
     format!("({:.2}, {:.2})", p.0, p.1)
 }
 
+/// Runs every USB 2.0 rule and the eye simulation on each USB pair of the board.
 pub fn check(layout: &Layout, lib: &Library) -> Report {
     let mut report = Report {
         assumptions: layout.assumptions.clone(),
@@ -354,6 +400,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
                 message,
             });
         };
+        // When the pair reaches a connector that looks like a USB one, only those count as the far end.
         let on_net: Vec<&PlacedFootprint> = layout
             .footprints
             .iter()
@@ -410,8 +457,10 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
             }
         }
 
+        // Impedance.
         let (sp, bare_p) = an.sections(&rp, Some(&rn));
         let (sn, bare_n) = an.sections(&rn, Some(&rp));
+        // Runs of consecutive sections outside the band, as (length, the section farthest out, net).
         let mut runs: Vec<(f64, Section, String)> = Vec::new();
         for (secs, net) in [(&sp, &rp.net), (&sn, &rn.net)] {
             let mut run: Vec<&Section> = Vec::new();
@@ -486,6 +535,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
             ),
         }
 
+        // Skew.
         let (lp, ln) = (rp.length(), rn.length());
         let skew = (lp - ln).abs();
         push(
@@ -506,6 +556,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
             ),
         );
 
+        // Vias.
         let (vp, vn) = (rp.vias(), rn.vias());
         let verdict = if vp.max(vn) > usb2::VIAS {
             Verdict::Fail
@@ -536,6 +587,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
             );
         }
 
+        // Stubs.
         let mut any_stub = false;
         for r in [&rp, &rn] {
             for s in r.stubs() {
@@ -596,6 +648,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
             );
         }
 
+        // Reference planes.
         let mut gaps = Vec::new();
         let mut edge = None::<(f64, String)>;
         for (secs, bare, net) in [(&sp, &bare_p, &rp.net), (&sn, &bare_n, &rn.net)] {
@@ -679,6 +732,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
             );
         }
 
+        // Length.
         let longest = lp.max(ln);
         push(
             "usb-length",
@@ -695,7 +749,9 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
             ),
         );
 
+        // Capacitance.
         for r in [&rp, &rn] {
+            // Parts hanging off the line and parts the line runs through.
             let mut pads: Vec<(String, String)> = r.stubs().flat_map(|s| s.pads.clone()).collect();
             pads.extend(r.steps.iter().filter_map(|s| match s {
                 Step::Pad { reference, number } => Some((reference.clone(), number.clone())),
@@ -727,6 +783,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
             );
         }
 
+        // Simulation.
         let (mp, unk_p) = model(&rp, &rn, &mut an, &loads, &ends);
         let (mn, unk_n) = model(&rn, &rp, &mut an, &loads, &ends);
         let term = Ends {
@@ -812,6 +869,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
     report
 }
 
+/// The report as text: each pair, then its errors and warnings, and its unknowns and passes when `show` asks.
 pub fn render(report: &Report, show: &Show) -> String {
     let mut out = String::new();
     let style = show.style;
@@ -853,6 +911,7 @@ pub fn render(report: &Report, show: &Show) -> String {
         );
         section(&mut out, &header, &p.name, &[p.p.as_str(), p.n.as_str()]);
     }
+    // Pairs that couldn't be traced have findings but no report.
     let untraced: BTreeSet<&str> = report
         .findings
         .iter()
@@ -886,6 +945,7 @@ pub fn render(report: &Report, show: &Show) -> String {
     out
 }
 
+/// One finding as a diagnostic; `nets` are the pair's nets, which messages open with.
 fn diagnostic(f: &Finding, nets: &[&str]) -> Diagnostic {
     let level = match (f.verdict, f.severity) {
         (Verdict::Fail, Severity::Error) => Level::Error,

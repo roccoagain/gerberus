@@ -1,3 +1,4 @@
+//! Rail loads, part dissipation, junction temperature and LED current on the test boards.
 use std::path::{Path, PathBuf};
 
 use gerberus::design::Design;
@@ -59,12 +60,15 @@ fn at(min: f64, max: f64) -> BoardTemperature {
     }
 }
 
+/// +3V3 on the CAN encoder: every supply current from the part files, plus the LED chain.
 #[test]
 fn rail_load_adds_up_supply_currents() {
     let (d, inputs) = board("can-encoder");
     let (th, _) = analyse(&d, &inputs);
     let rail = &th.loads[net(&d, "+3V3")];
     assert!(rail.missing.is_empty(), "{:?}", rail.missing);
+    // U2 24.6 mA + 344 µA, U3 28 mA, U4's VIO 300 µA, Y1 4 mA, the LED's 3.366 V / 977 Ω, and R5's pull-up
+    // to /SPI_CS when that is driven low.
     let led = 3.366 / 977.0;
     let pull = rail.parts.iter().find(|p| p.starts_with("R5 ")).expect("R5 counted");
     assert!(pull.contains("to /SPI_CS"), "{pull}");
@@ -75,6 +79,7 @@ fn rail_load_adds_up_supply_currents() {
         rail.amps,
         rail.parts
     );
+    // The LED's current comes from U2, which drives it.
     assert!(
         rail.parts
             .iter()
@@ -84,6 +89,7 @@ fn rail_load_adds_up_supply_currents() {
     );
 }
 
+/// The LDO passes its output current to its input and dissipates (VIN max − VOUT min) × I plus its own supply.
 #[test]
 fn ldo_dissipation() {
     let (d, inputs) = board("can-encoder");
@@ -104,6 +110,8 @@ fn ldo_dissipation() {
     assert!(u5.missing.is_empty(), "{:?}", u5.missing);
 }
 
+/// An LDO whose supply can sag below what holds its output still dissipates most at the top of its supply,
+/// where the output is held, not with its output at the 0 V floor.
 #[test]
 fn ldo_dissipation_uses_the_held_output_at_the_top_of_its_supply() {
     let (d, inputs) = board("sniffer");
@@ -114,6 +122,7 @@ fn ldo_dissipation_uses_the_held_output_at_the_top_of_its_supply() {
     assert!(u1.how.contains("dropout"), "{}", u1.how);
 }
 
+/// A buck converter needs an efficiency, which these datasheets only give as typical curves.
 #[test]
 fn switcher_without_efficiency_is_unknown() {
     let (d, inputs) = board("can-encoder");
@@ -122,12 +131,14 @@ fn switcher_without_efficiency_is_unknown() {
     let f = finding(&r, "junction-temperature", "U1");
     assert_eq!(f.verdict, Verdict::Unknown);
     assert!(f.message.contains("gives no efficiency"), "{}", f.message);
+    // So the current through the input diode is unknown too, rather than "at least 0".
     let f = finding(&r, "forward-current", "D1");
     assert_eq!(f.verdict, Verdict::Unknown);
     assert!(f.message.contains("is unknown"), "{}", f.message);
     assert!(!th.loads[net(&d, "+VDC")].missing.is_empty());
 }
 
+/// Below the current an LED's VF minimum is rated at, VF can be lower, so the current is bounded with VF = 0.
 #[test]
 fn led_current_below_its_vf_test_point_counts_vf_as_zero() {
     let (d, inputs) = board("sniffer");
@@ -144,6 +155,8 @@ fn led_current_below_its_vf_test_point_counts_vf_as_zero() {
     }
 }
 
+/// Without a board temperature the part's own rated ambient is used. A part that would overheat there is
+/// UNKNOWN, with the ambient it is safe up to, not a FAIL.
 #[test]
 fn rated_ambient_is_used_without_a_board_temperature() {
     let (d, inputs) = board("can-encoder-rev1");
@@ -154,6 +167,7 @@ fn rated_ambient_is_used_without_a_board_temperature() {
     for want in ["rated 125 °C ambient", "157 °C", "only safe up to 118 °C ambient"] {
         assert!(f.message.contains(want), "missing {want:?}: {}", f.message);
     }
+    // U2 passes its maximum but is inside the policy margin; without a board temperature that is UNKNOWN.
     let f = finding(&r, "junction-temperature", "U2");
     assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
     for want in [
@@ -165,9 +179,11 @@ fn rated_ambient_is_used_without_a_board_temperature() {
     }
 }
 
+/// With a board temperature: past TJ max is an error, inside the policy's margin a warning, else a pass.
 #[test]
 fn board_temperature_sets_the_verdict() {
     let (d, mut inputs) = board("can-encoder-rev1");
+    // U4 (TCAN330) dissipates 207.5 mW at θJA 154.4 °C/W: about 32 °C of rise, against TJ max 150 °C.
     let u4 = |inputs: &BoardInputs| finding(&analyse(&d, inputs).1, "junction-temperature", "U4").clone();
     inputs.temperature = Some(at(-20.0, 125.0));
     let f = u4(&inputs);
@@ -229,6 +245,7 @@ fn new_net(d: &mut Design, name: &str) -> usize {
     d.nets.len() - 1
 }
 
+/// Moves a component's pin to another net.
 fn move_pin(d: &mut Design, reference: &str, number: &str, to: usize) {
     let from = d.components[reference].pins[number].net;
     d.nets[from].pins.retain(|(r, p)| !(r == reference && p == number));
@@ -283,6 +300,7 @@ fn pin_of(d: &Design, reference: &str, name: &str) -> String {
     part.pins_named(name).into_iter().next().unwrap().to_string()
 }
 
+/// An LED whose cathode isn't on ground isn't worked out: its rail is a lower bound and its current UNKNOWN.
 #[test]
 fn an_led_off_ground_is_unknown_not_dropped() {
     let (mut d, inputs) = board("can-encoder");
@@ -295,6 +313,7 @@ fn an_led_off_ground_is_unknown_not_dropped() {
     assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
 }
 
+/// An inductor in front of the LDO passes its load on, as a diode would.
 #[test]
 fn current_passes_through_an_inductor() {
     let (mut d, inputs) = board("can-encoder");
@@ -319,6 +338,7 @@ fn current_passes_through_an_inductor() {
     );
 }
 
+/// A diode that is never forward biased (from +3V3 back to VBUS, held at 7 V or more) carries nothing.
 #[test]
 fn a_reverse_biased_diode_carries_nothing() {
     let (mut d, inputs) = board("can-encoder");
@@ -337,6 +357,7 @@ fn a_reverse_biased_diode_carries_nothing() {
     assert!(r.by_rule("forward-current").all(|f| f.reference != "D9"));
 }
 
+/// A diode across a regulator, from its output back to its input, loops the rails: nothing about it passes.
 #[test]
 fn a_diode_looping_the_rails_does_not_pass() {
     let (mut d, inputs) = board("can-encoder");
@@ -357,6 +378,8 @@ fn a_diode_looping_the_rails_does_not_pass() {
     );
 }
 
+/// An IC with no supply current in its part file, whose symbol draws its power pins as passive, isn't a
+/// 0 mW pass: its dissipation and its rail are unknown.
 #[test]
 fn an_ic_with_no_supply_current_is_unknown() {
     let (mut d, mut inputs) = board("can-encoder");

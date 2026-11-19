@@ -1,3 +1,10 @@
+//! Part families: one file that covers a whole series of resistors or capacitors by decoding the part number,
+//! such as Yageo's `RC0805FR-0710KL` (size 0805, ±1 %, paper reel, 7 inch, 10 kΩ).
+//!
+//! A family file names the part number's fields and what each code means, then gives the series datasheet's
+//! rating rows, each for the codes and values it applies to. For a part number it decodes, it writes the part
+//! file a person would have written for that one part, with every value cited to the series datasheet, and
+//! loads it the same way. See `parts/README.md` for the format.
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
@@ -8,22 +15,31 @@ use crate::limits::{Class, Datasheet, Part};
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Family {
+    /// The series name, such as `Yageo RC_L`.
     pub family: String,
     pub manufacturer: String,
+    /// What every part in it is, such as `thick-film chip resistor`.
     pub description: String,
     pub class: Class,
+    /// The part number with `{field}` for each coded field, such as `RC{size}{tolerance}{packing}-{reel}{value}L`.
     pub mpn: String,
     pub datasheet: Datasheet,
     pub field: BTreeMap<String, Field>,
+    /// Ratings by size and code: power, working voltage, rated voltage, temperature.
     #[serde(default)]
     pub rating: Vec<Rating>,
+    /// Resistors: temperature coefficient rows.
     #[serde(default)]
     pub tcr: Vec<TcrRow>,
+    /// The values the series is made in, by code. When there are any, a part number outside all of them is
+    /// not rated: the datasheet says nothing about it.
     #[serde(default)]
     pub range: Vec<RangeRow>,
+    /// Resistors: the page that gives the rated voltage as sqrt(P x R), capped by the maximum working voltage.
     pub rcwv_page: Option<u32>,
 }
 
+/// Values the series is made in: resistances (`ohms`) for the codes in `when`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RangeRow {
@@ -33,14 +49,20 @@ pub struct RangeRow {
     pub page: u32,
 }
 
+/// One coded field of the part number.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Field {
+    /// The page that explains the code.
     pub page: u32,
+    /// The codes it can take: a list, or each code with the number it stands for (a tolerance's fraction).
     #[serde(default)]
     pub codes: Codes,
+    /// With a list of codes: the number some of them stand for. A code with none (a capacitor tolerance given
+    /// in picofarads, not as a fraction) gives the part no value for it.
     #[serde(default)]
     pub values: BTreeMap<String, f64>,
+    /// For the value field: how it is written.
     pub kind: Option<ValueKind>,
 }
 
@@ -76,13 +98,21 @@ impl Codes {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ValueKind {
+    /// Digits with `R`, `K` or `M` as the decimal point: `97R6` = 97.6 Ω, `4K7` = 4.7 kΩ, `1M` = 1 MΩ.
     Resistance,
+    /// Four characters: three significant digits, then the power of ten as a digit 0 to 6 or a letter for a
+    /// negative one (J = 10^-1, K = 10^-2, L = 10^-3, M = 10^-4, N = 10^-5, P = 10^-6): `1001` = 1 kΩ, `0103` =
+    /// 10 kΩ, `100J` = 10 Ω, `0000` = a 0 Ω jumper.
     ResistanceDigits,
+    /// Two digits and a power of ten in picofarads, with `R` as a decimal point below 10 pF: `104` = 100 nF,
+    /// `1R5` = 1.5 pF.
     CapacitancePf,
 }
 
+/// The codes a row applies to, by field name. A field left out matches any code.
 type When = BTreeMap<String, Vec<String>>;
 
+/// A range of resistance, in ohms. `min`/`max` include the end, `above`/`below` don't.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Ohms {
@@ -114,9 +144,13 @@ pub struct Rating {
     #[serde(default)]
     pub when: When,
     pub ohms: Option<Ohms>,
+    /// Resistors: rated power at the datasheet's rated ambient, in watts.
     pub power: Option<f64>,
+    /// Resistors: the most voltage the size may have across it, whatever its power allows, in volts.
     pub max_working_voltage: Option<f64>,
+    /// Capacitors: rated voltage, in volts.
     pub voltage: Option<f64>,
+    /// Operating temperature range, in °C.
     pub temperature: Option<MinMax>,
     pub page: u32,
     pub note: Option<String>,
@@ -128,14 +162,17 @@ pub struct TcrRow {
     #[serde(default)]
     pub when: When,
     pub ohms: Option<Ohms>,
+    /// The largest magnitude, in ppm/°C (600 for −200 to +600).
     pub ppm: f64,
     pub page: u32,
     pub note: Option<String>,
 }
 
+/// A part number split into its fields.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Decoded {
     pub codes: BTreeMap<String, String>,
+    /// The value field, in ohms or farads.
     pub value: Option<f64>,
 }
 
@@ -162,6 +199,8 @@ impl Family {
         out
     }
 
+    /// Problems with the file itself, so a broken family fails when it loads rather than when a part number
+    /// happens to match it.
     pub fn problems(&self) -> Vec<String> {
         let mut out = vec![];
         let pieces = self.pieces();
@@ -227,6 +266,8 @@ impl Family {
         out
     }
 
+    /// Splits `mpn` into this family's fields, or `None` when it isn't one of its part numbers. A part number
+    /// that splits more than one way is an error: which reading is right isn't known.
     pub fn decode(&self, mpn: &str) -> Option<Result<Decoded, String>> {
         let pieces = self.pieces();
         let mut found = vec![];
@@ -255,6 +296,7 @@ impl Family {
         Some(Ok(Decoded { codes, value }))
     }
 
+    /// Every way `rest` splits into `pieces`, up to two (enough to tell it is ambiguous).
     fn matches(
         &self,
         pieces: &[Piece<'_>],
@@ -306,10 +348,13 @@ impl Family {
             && ohms.is_none_or(|o| d.value.is_some_and(|v| o.contains(v)))
     }
 
+    /// The part file this family gives `mpn`, as TOML text: what a person would write for that one part, with
+    /// each value cited to the series datasheet. Errors say why a matching part number can't be rated.
     pub fn part_text(&self, mpn: &str) -> Option<Result<String, String>> {
         Some(self.decode(mpn)?.and_then(|d| self.render(mpn, &d)))
     }
 
+    /// The part this family gives `mpn`, or `None` when the part number isn't one of its.
     pub fn part(&self, mpn: &str) -> Option<Result<Part, String>> {
         let text = match self.part_text(mpn)? {
             Ok(t) => t,
@@ -328,6 +373,7 @@ impl Family {
             .map(|(k, v)| format!("{k} {v}"))
             .collect::<Vec<_>>()
             .join(", ");
+        // Each rating comes from the one row that covers this part number and gives it.
         let pick = |what: &str, has: &dyn Fn(&Rating) -> bool| -> Result<Option<&Rating>, String> {
             let rows: Vec<&Rating> = self
                 .rating
@@ -346,6 +392,7 @@ impl Family {
             }
         };
         let missing = |what: &str| format!("{} family: no row gives {mpn} ({codes_text}) its {what}", self.family);
+        // A jumper isn't in a resistance range table, but it isn't missing from the datasheet either.
         if self.class == Class::Resistor && d.value.is_some_and(|v| v <= 0.0) {
             return Err(format!(
                 "{} family: {mpn} is a 0 Ω jumper, which has a current rating, not a power one",
@@ -537,10 +584,12 @@ fn datasheet_section(t: &mut String, ds: &Datasheet) {
     );
 }
 
+/// A TOML string.
 fn q(s: &str) -> String {
     toml::Value::String(s.to_string()).to_string()
 }
 
+/// Rounded to the millivolt toward zero, so a rating is never made larger than the datasheet's.
 fn toward_zero(v: f64) -> f64 {
     (v * 1000.0).trunc() / 1000.0
 }
@@ -571,6 +620,7 @@ fn fmt_farads(f: f64) -> String {
     format!("{} {unit}", round(v))
 }
 
+/// Reads a coded value: ohms for [`ValueKind::Resistance`] and [`ValueKind::ResistanceDigits`], farads for [`ValueKind::CapacitancePf`].
 pub fn parse_value(kind: ValueKind, s: &str) -> Option<f64> {
     match kind {
         ValueKind::Resistance => {
@@ -613,6 +663,7 @@ pub fn parse_value(kind: ValueKind, s: &str) -> Option<f64> {
             Some(round_to_picohm(sig * 10f64.powi(exp)))
         }
         ValueKind::CapacitancePf => {
+            // Three characters: three digits, or two digits and an `R` (not last) as the decimal point.
             let digits = s.chars().filter(char::is_ascii_digit).count();
             let rs = s.matches('R').count();
             if s.len() != 3 || digits + rs != 3 || rs > 1 || s.ends_with('R') {
@@ -629,9 +680,12 @@ pub fn parse_value(kind: ValueKind, s: &str) -> Option<f64> {
     }
 }
 
+// Below 10 pF, tolerance codes are in picofarads, not a fraction of the value.
 const SMALLEST_CAPACITANCE_WITH_FRACTIONAL_TOLERANCE: f64 = 10e-12;
+// 10^0 to 10^7 pF; 8 and 9 are multipliers below 1 in the EIA code, which these series don't use.
 const LARGEST_EIA_CAPACITANCE_EXPONENT: i32 = 7;
 
+// Rounded to a picohm, so 10^-1 steps don't leave 4.7000000001.
 fn round_to_picohm(ohms: f64) -> f64 {
     (ohms * 1e12).round() / 1e12
 }

@@ -1,10 +1,15 @@
+//! Runs ngspice in batch mode and reads its measurements back.
 use std::collections::BTreeMap;
 use std::io::{Read as _, Write as _};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+/// Longest one run may take. The sweeps here finish in well under a second each, so a run this long is
+/// stuck (a GUI build of ngspice waiting for a window, say), and an error beats hanging forever.
 const TIMEOUT: Duration = Duration::from_secs(120);
 
+/// Starts ngspice in batch mode. On Windows `ngspice.exe` is the GUI build, which opens a window instead of
+/// reading standard input; the console build is `ngspice_con.exe`, so that is tried first.
 fn spawn() -> Result<Child, String> {
     let names: &[&str] = if cfg!(windows) {
         &["ngspice_con", "ngspice"]
@@ -30,7 +35,9 @@ fn spawn() -> Result<Child, String> {
     ))
 }
 
+/// Waits for ngspice to exit and returns its standard output and error, killing it after `TIMEOUT`.
 fn wait(mut child: Child) -> Result<(Vec<u8>, Vec<u8>), String> {
+    // Both pipes are drained on their own threads, so a chatty run can't fill one and block.
     let drain = |pipe: Option<Box<dyn std::io::Read + Send>>| {
         std::thread::spawn(move || {
             let mut buf = Vec::new();
@@ -59,6 +66,7 @@ fn wait(mut child: Child) -> Result<(Vec<u8>, Vec<u8>), String> {
     Ok((join(out), join(err)))
 }
 
+/// One pair's measurements in one run.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PairResult {
     pub max: f64,
@@ -66,12 +74,14 @@ pub struct PairResult {
     pub end: f64,
 }
 
+/// Every `.meas` result of one run, by name.
 #[derive(Debug, Clone, Default)]
 pub struct Measured {
     values: BTreeMap<String, f64>,
 }
 
 impl Measured {
+    /// Reads the `name = value` lines ngspice prints for `.meas` results.
     pub fn parse(output: &str) -> Measured {
         let mut values = BTreeMap::new();
         for line in output.lines() {
@@ -93,6 +103,7 @@ impl Measured {
         self.values.get(name).copied()
     }
 
+    /// Pair `i`'s peak, trough and final value.
     pub fn pair(&self, i: usize) -> Option<PairResult> {
         Some(PairResult {
             max: self.get(&format!("p{i}max"))?,
@@ -102,6 +113,7 @@ impl Measured {
     }
 }
 
+/// Runs one netlist through `ngspice -b`, fed on its standard input.
 pub fn simulate(netlist: &str) -> Result<Measured, String> {
     let mut child = spawn()?;
     child
@@ -114,6 +126,8 @@ pub fn simulate(netlist: &str) -> Result<Measured, String> {
     let text = String::from_utf8_lossy(&out.0);
     let err = String::from_utf8_lossy(&out.1);
     let measured = Measured::parse(&text);
+    // A run that stops part way (a timestep too small) still prints the measurements it had; none of them
+    // can be trusted.
     let aborted = text.contains("simulation(s) aborted") || err.contains("simulation(s) aborted");
     if measured.values.is_empty() || aborted {
         let why: Vec<&str> = text

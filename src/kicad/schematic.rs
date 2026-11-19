@@ -1,7 +1,9 @@
+//! Reads one `.kicad_sch` file into plain structs. Connectivity is worked out in `netlist.rs`.
 use std::collections::HashMap;
 
 use crate::sexpr::Sexp;
 
+/// A point in schematic internal units (1 = 0.1 µm), so that coordinates compare exactly.
 pub type Pt = (i64, i64);
 
 pub fn to_iu(mm: f64) -> i64 {
@@ -14,13 +16,17 @@ pub struct SchematicFile {
     pub lib_symbols: HashMap<String, LibSymbol>,
     pub symbols: Vec<SymbolInstance>,
     pub wires: Vec<(Pt, Pt)>,
+    /// Bus segments. KiCad saves bus-to-bus entries as bus segments too.
     pub buses: Vec<(Pt, Pt)>,
+    /// Wire-to-bus entries, from `at` to `at + size`.
     pub bus_entries: Vec<(Pt, Pt)>,
+    /// `(bus_alias "NAME" (members ...))` items. KiCad 10 keep aliases in the project file instead.
     pub bus_aliases: Vec<(String, Vec<String>)>,
     pub junctions: Vec<Pt>,
     pub no_connects: Vec<Pt>,
     pub labels: Vec<Label>,
     pub sheets: Vec<Sheet>,
+    /// Items found that this reader does not support yet, such as directive labels.
     pub unsupported: Vec<String>,
 }
 
@@ -30,11 +36,14 @@ pub struct LibSymbol {
     pub power: Option<PowerScope>,
     pub extends: Option<String>,
     pub pins: Vec<LibPin>,
+    /// KiCad 10: pins that share a number are joined inside the part.
     pub duplicate_pins_are_jumpers: bool,
+    /// KiCad 10: groups of pin numbers joined inside the part, such as a closed solder jumper.
     pub jumper_pin_groups: Vec<Vec<String>>,
 }
 
 impl LibSymbol {
+    /// Number of units, such as 2 for a dual op-amp. Pins shared by every unit count as unit 0.
     pub fn unit_count(&self) -> u32 {
         self.pins.iter().map(|p| p.unit).max().unwrap_or(0).max(1)
     }
@@ -48,13 +57,17 @@ pub enum PowerScope {
 
 #[derive(Debug, Clone)]
 pub struct LibPin {
+    /// 0 means the pin belongs to every unit.
     pub unit: u32,
+    /// 0 means the pin belongs to every body style.
     pub body_style: u32,
     pub number: String,
     pub name: String,
     pub kind: String,
     pub hidden: bool,
+    /// Connection point in library coordinates, in mm, Y up as written in the file.
     pub at: (f64, f64),
+    /// For one number of a stacked pin, the stack's first number.
     pub stack: Option<String>,
 }
 
@@ -71,6 +84,7 @@ pub struct SymbolInstance {
     pub in_bom: bool,
     pub on_board: bool,
     pub fields: Vec<(String, String)>,
+    /// `(sheet instance path, reference, unit)` for each place this symbol is used.
     pub instances: Vec<(String, String, u32)>,
 }
 
@@ -79,6 +93,7 @@ impl SymbolInstance {
         self.fields.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
     }
 
+    /// The reference and unit used on the sheet instance at `path`.
     pub fn reference_at(&self, path: &str) -> (String, u32) {
         match self.instances.iter().find(|(p, _, _)| p == path) {
             Some((_, r, u)) => (r.clone(), *u),
@@ -86,6 +101,10 @@ impl SymbolInstance {
         }
     }
 
+    /// Converts a library pin position to a schematic point.
+    ///
+    /// Matches KiCad (`SCH_SYMBOL::SetOrientation`): flip Y, rotate counter-clockwise, mirror on screen, then
+    /// move to the symbol's position.
     pub fn place(&self, lib: (f64, f64)) -> Pt {
         let (x, y) = (lib.0, -lib.1);
         let (mut x, mut y) = match self.rotation.rem_euclid(360) {
@@ -255,6 +274,7 @@ fn read_lib_symbol(s: &Sexp) -> LibSymbol {
     });
     let mut pins = Vec::new();
     for unit in s.children("symbol") {
+        // Unit symbols are named `<name>_<unit>_<body style>`.
         let uname = unit.arg(1).unwrap_or_default();
         let mut parts = uname.rsplitn(3, '_');
         let body_style = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0);
@@ -262,6 +282,7 @@ fn read_lib_symbol(s: &Sexp) -> LibSymbol {
         for p in unit.children("pin") {
             let Some((x, y, _)) = at_of(p) else { continue };
             let number = p.child("number").and_then(|n| n.arg(1)).unwrap_or_default();
+            // A KiCad 10 stacked pin (`[3,9,10,13]`, `[1-4]`) is one pin per number at the same point.
             let numbers = stacked_numbers(number);
             let stack = (numbers.len() > 1).then(|| numbers[0].clone());
             for number in numbers {
@@ -337,6 +358,8 @@ fn read_symbol(s: &Sexp) -> SymbolInstance {
     }
 }
 
+/// The pad numbers of a pin: KiCad 10 writes a stacked pin as `[3,9,10,13]` or `[1-4]` (ranges of plain
+/// numbers, or of numbers with the same letter prefix, `[A1-A3]`). Anything else is one number, as written.
 pub fn stacked_numbers(number: &str) -> Vec<String> {
     let Some(inner) = number.strip_prefix('[').and_then(|n| n.strip_suffix(']')) else {
         return vec![number.to_string()];
@@ -375,13 +398,19 @@ mod tests {
 
     #[test]
     fn places_pins_like_kicad() {
+        // Device:R pin 2 is at (0, -3.81) in the library, which is below the body on screen.
         assert_eq!(sym(0, None).place((0.0, -3.81)), (to_iu(100.0), to_iu(53.81)));
+        // Rotated 90° counter-clockwise, "below" becomes "right".
         assert_eq!(sym(90, None).place((0.0, -3.81)), (to_iu(103.81), to_iu(50.0)));
         assert_eq!(sym(180, None).place((0.0, -3.81)), (to_iu(100.0), to_iu(46.19)));
         assert_eq!(sym(270, None).place((0.0, -3.81)), (to_iu(96.19), to_iu(50.0)));
+        // Mirror Y swaps left and right; mirror X swaps up and down.
         assert_eq!(sym(0, Some('y')).place((5.08, 0.0)), (to_iu(94.92), to_iu(50.0)));
         assert_eq!(sym(0, Some('x')).place((0.0, -3.81)), (to_iu(100.0), to_iu(46.19)));
+        // KiCad rotates first, then mirrors on screen. With (at 100 50 90) (mirror y) KiCad's transform is
+        // (0, -1, -1, 0), which puts a library pin at (5.08, 0) at (100, 44.92).
         assert_eq!(sym(90, Some('y')).place((5.08, 0.0)), (to_iu(100.0), to_iu(44.92)));
+        // (at 100 50 90) (mirror x) gives the transform (0, 1, 1, 0).
         assert_eq!(sym(90, Some('x')).place((0.0, -3.81)), (to_iu(103.81), to_iu(50.0)));
         assert_eq!(sym(270, Some('y')).place((5.08, 0.0)), (to_iu(100.0), to_iu(55.08)));
     }
@@ -393,6 +422,7 @@ mod tests {
         assert_eq!(stacked_numbers("[15, 16]"), ["15", "16"]);
         assert_eq!(stacked_numbers("[1-4]"), ["1", "2", "3", "4"]);
         assert_eq!(stacked_numbers("[A1-A3,B2]"), ["A1", "A2", "A3", "B2"]);
+        // Mismatched prefixes and backwards ranges are kept as written.
         assert_eq!(stacked_numbers("[A1-B3]"), ["A1-B3"]);
         assert_eq!(stacked_numbers("[4-1]"), ["4-1"]);
         assert_eq!(stacked_numbers("[]"), ["[]"]);

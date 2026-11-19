@@ -1,3 +1,7 @@
+//! Gerberus checks a PCB design for electrical bugs before it is ordered.
+// A malformed board file must give an error, not a crash: no `unwrap()` outside tests. `expect("why")` stays
+// for invariants the code itself guarantees. Tests may unwrap (clippy.toml). Set here, not in Cargo.toml, so
+// it skips the integration tests and examples.
 #![warn(clippy::unwrap_used)]
 
 pub const EXIT_CHECK_FAILED: u8 = 1;

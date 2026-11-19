@@ -1,10 +1,13 @@
+//! `gerberus diff`: parts, connections and findings between two revisions.
 use gerberus::design::{Component, Design, Net, Pin, PinKind};
 use gerberus::diff::{diff, render};
 use gerberus::finding::{Finding, Severity, Verdict};
 use gerberus::rules::Report;
 
+/// `(reference, value, [(pin, net)])`.
 type PartSpec<'a> = (&'a str, &'a str, &'a [(&'a str, &'a str)]);
 
+/// A design from its parts.
 fn design(parts: &[PartSpec<'_>]) -> Design {
     let mut d = Design::default();
     for &(r, value, pins) in parts {
@@ -79,6 +82,7 @@ fn parts_added_removed_and_changed() {
     assert_eq!(d.parts[0].what, ["value: 10k → 4k7"]);
 }
 
+/// R2.2 moves from B to C: B is split, and C joins pins that were on B and C. Renaming a net changes nothing.
 #[test]
 fn a_moved_pin_splits_one_net_and_joins_another() {
     let old = design(&[
@@ -104,6 +108,7 @@ fn a_moved_pin_splits_one_net_and_joins_another() {
     );
 }
 
+/// A finding is matched by its rule, part and pin, so changed numbers in its message are the same finding.
 #[test]
 fn findings_new_fixed_and_unchanged() {
     let d0 = design(&[]);
@@ -143,6 +148,8 @@ fn nothing_changed() {
     assert_eq!(render(&d), "No changes to parts, connections or findings.\n");
 }
 
+/// A fault case's messages open with the case's name; the pin later in the message still tells two findings apart,
+/// and a second FAIL under one key is a new error.
 #[test]
 fn a_second_fail_in_a_fault_case_is_new() {
     let d0 = design(&[]);
@@ -166,6 +173,7 @@ fn a_second_fail_in_a_fault_case_is_new() {
     assert_eq!(d.new_errors(), 1, "{:?}", d.findings);
 }
 
+/// A FAIL a new waiver accepts isn't "fixed" without saying so.
 #[test]
 fn a_new_waiver_shows() {
     let d0 = design(&[]);

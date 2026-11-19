@@ -1,3 +1,11 @@
+//! A bring-up plan: the order to power a new board in, the current limit to set, and the voltage to expect on
+//! each rail, all from what `voltages` and `loads` already work out.
+//!
+//! Nothing here is new data. Each supply input is a step: set the bench supply inside its range, with a
+//! current limit just above what the board's parts can draw from it, when that is known. Then each rail fed
+//! from it, in the order the power flows (a regulator after its supply), with the range to expect and where to
+//! probe it: a test point on the net when there is one, else a connector pin, else a pin of the part that sets
+//! it.
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::Write as _;
 
@@ -7,43 +15,60 @@ use crate::limits::Library;
 use crate::thermal::Thermal;
 use crate::voltage::{Driver, Hold, Span, Voltages, is_connector};
 
+/// One supply input and the rails it powers, in order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stage {
+    /// The input's name in inputs.toml.
     pub input: String,
+    /// The net it powers, and its pin.
     pub net: usize,
     pub connect_pin: String,
+    /// `J1.1 (+) to J1.2 (−)`.
     pub connect: String,
     pub min: f64,
     pub max: f64,
+    /// What the board's parts draw from it, and whether that is everything.
     pub draw: Option<(f64, bool)>,
+    /// Parts whose current isn't known, so the draw is only a lower bound.
     pub not_counted: Vec<String>,
     pub rails: Vec<Rail>,
 }
 
+/// One rail to measure.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rail {
     pub net: usize,
     pub span: Span,
+    /// Where to put the meter's probe.
     pub probe: String,
+    /// The nets it is fed from.
     pub from: Vec<usize>,
+    /// A regulator that may not hold it, and why.
     pub warning: Option<String>,
 }
 
+/// The plan for a design: one stage per supply input, and the rails nothing reached.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Plan {
     pub stages: Vec<Stage>,
+    /// Ground, to clip the meter's other lead to.
     pub ground: Option<String>,
+    /// Inputs left out of the plan, and why.
     pub skipped: Vec<String>,
 }
 
+/// Works out the plan. `th` is the design's loads (`thermal::compute`).
 pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, th: &Thermal) -> Plan {
     let net_of = |r: &str, p: &str| design.components.get(r)?.pins.get(p).map(|p| p.net);
+    // Ground: the net the supplies are measured from.
     let ground = inputs
         .inputs
         .iter()
         .filter(|i| i.fault.is_none())
         .find_map(|i| net_of(&i.to.reference, &i.to.pin))
         .map(|n| probe(design, lib, n));
+    // Rails: nets something holds (an input, a regulator, a diode or bead from one) that power a part or are a
+    // regulator's output.
     let regulated: BTreeSet<usize> = v
         .regulators
         .iter()
@@ -77,6 +102,7 @@ pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, 
             ));
             continue;
         };
+        // A supply never reaches 0 V: positive (min above 0) or negative (max below 0).
         if !(i.min > 0.0 || max < 0.0) {
             if i.min < 0.0 || max > 0.0 {
                 skipped.push(format!(
@@ -86,9 +112,12 @@ pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, 
             }
             continue;
         }
+        // Rails fed from this input, breadth first along what each rail's range was worked out from.
         let mut rails = vec![];
         let mut queue = VecDeque::from([pn]);
         let mut local = BTreeSet::from([pn]);
+        // Every net fed from it is followed (a fuse or diode before the first regulator, say), but only rails are
+        // listed.
         while let Some(n) = queue.pop_front() {
             for m in 0..design.nets.len() {
                 if local.contains(&m) || seen.contains(&m) || v.nets[m].driver != Driver::Strong {
@@ -148,6 +177,7 @@ pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, 
     }
 }
 
+/// Where to probe a net: a test point, else a connector pin, else the first part pin on it.
 fn probe(design: &Design, lib: &Library, net: usize) -> String {
     let pins = &design.nets[net].pins;
     let tp = pins.iter().find(|(r, _)| {
@@ -176,6 +206,7 @@ fn amps(a: f64) -> String {
     }
 }
 
+/// The plan as a numbered checklist.
 pub fn render(design: &Design, p: &Plan) -> String {
     let mut out = String::new();
     let name = |n: usize| design.nets[n].name.as_str();
@@ -277,6 +308,7 @@ pub fn render(design: &Design, p: &Plan) -> String {
     out
 }
 
+/// The rails `plan` found, by net name, for tests.
 pub fn rails_by_name<'a>(design: &'a Design, p: &Plan) -> BTreeMap<&'a str, Span> {
     p.stages
         .iter()

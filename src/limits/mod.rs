@@ -1,3 +1,8 @@
+//! Part limits: the voltage, current and power ranges each part's pins may see, taken from its datasheet.
+//!
+//! One TOML file per part number lives in `parts/`. Every known value cites the datasheet page it came from.
+//! A value the datasheet does not give is written as `{ unknown = "reason" }` instead of being guessed, so a
+//! checker can report `UNKNOWN` with that reason. See `parts/README.md` for the file format.
 pub mod family;
 
 use std::collections::BTreeMap;
@@ -7,50 +12,82 @@ use serde::Deserialize;
 
 use crate::design::Component;
 
+/// The reason every unread value carries, which `doctor` looks for.
 pub const NOT_READ: &str = "not read from the datasheet yet";
 
+/// One part number's datasheet limits.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Part {
     pub mpn: String,
     pub manufacturer: String,
     pub description: String,
+    /// What kind of part this is. A derating policy picks parts by class.
     pub class: Class,
+    /// Missing only when no datasheet could be found; every limit must then be unknown.
     pub datasheet: Option<Datasheet>,
+    /// For resistors, capacitors and inductors: how far the real value may be from the marked one, as a
+    /// fraction (0.01 for 1 %).
     pub tolerance: Option<Tolerance>,
+    /// For resistors: how much the value drifts with temperature, in ppm per °C.
     pub tcr: Option<Tcr>,
+    /// The ambient temperature range the part is rated to operate in, in °C.
     pub temperature: Option<Temperature>,
+    /// Pin number (as printed in the datasheet and used by the footprint) to datasheet pin name. Several
+    /// numbers may share a name, such as two `GND` pads. Limits name pins, never numbers, so other packages
+    /// of the same die only need their own pin map (see `variants`).
     pub pins: BTreeMap<String, String>,
+    /// Other part numbers covered by the same datasheet limits, such as other packages or reel sizes. Each
+    /// gives its own pin map, or reuses `pins` when it has none.
     #[serde(default, rename = "variant")]
     pub variants: Vec<Variant>,
     #[serde(default, rename = "limit")]
     pub limits: Vec<Limit>,
+    /// What the part holds its pins at when it is working: a regulator's output or feedback voltage, a
+    /// diode's forward drop. A checker uses these to work out the voltage on the nets the part drives.
     #[serde(default, rename = "drive")]
     pub drives: Vec<Drive>,
+    /// Capacitance a pin adds to the net it is on, such as an ESD diode's line capacitance. Signal-integrity
+    /// checks load high-speed lines with it.
     #[serde(default)]
     pub capacitance: Vec<Capacitance>,
+    /// Electrostatic discharge ratings, per group of pins.
     #[serde(default)]
     pub esd: Vec<Esd>,
+    /// Junction-to-ambient thermal resistance of this package, in °C/W.
     pub theta_ja: Option<Rated>,
+    /// The hottest the junction may get, in °C: the recommended or operating junction limit where the datasheet
+    /// gives one, else the absolute maximum.
     pub tj_max: Option<Rated>,
+    /// Worst-case operating current into supply pins, per group of pins.
     #[serde(default)]
     pub supply: Vec<SupplyCurrent>,
+    /// A switching regulator's lowest efficiency over the loads and supplies the note gives, as a fraction.
+    /// Without it, a checker can't work out what the regulator draws from its input or dissipates.
     pub efficiency: Option<Rated>,
+    /// The amplifiers in the part, for `gerberus signal`.
     #[serde(default, rename = "opamp")]
     pub opamps: Vec<OpAmp>,
 }
 
+/// One operational amplifier in a part: its pins, and how close to its supply rails its output gets.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OpAmp {
+    /// The non-inverting input.
     pub plus: String,
+    /// The inverting input.
     pub minus: String,
     pub out: String,
+    /// The positive and negative supply pins.
     pub vpos: String,
     pub vneg: String,
+    /// The most the output stays away from either rail, in volts, at the load in the note: the MAX of the
+    /// datasheet's output swing from rail.
     pub swing: Option<Rated>,
 }
 
+/// One datasheet number with its page.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rated {
@@ -59,6 +96,11 @@ pub struct Rated {
     pub note: Option<String>,
 }
 
+/// The most current a part draws into a group of supply pins, averaged over the time it takes to heat up, in
+/// amps: the MAX column of its supply-current row at the conditions in `current`'s note (a brief peak, such as
+/// a sensor's measurement pulse, doesn't count). A regulator's entry on its input is its own ground (quiescent)
+/// current; what it passes to its output comes from what the output supplies. The entry's pins are all on one
+/// rail.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SupplyCurrent {
@@ -67,6 +109,7 @@ pub struct SupplyCurrent {
 }
 
 impl SupplyCurrent {
+    /// The maximum, when it is a number.
     pub fn max(&self) -> Option<f64> {
         match &self.current {
             Range::Known {
@@ -77,12 +120,18 @@ impl SupplyCurrent {
     }
 }
 
+/// How an ESD rating was tested. A component-level rating (HBM, CDM) only covers handling in a controlled
+/// factory; a pin someone plugs a cable into needs a system-level rating (IEC 61000-4-2) or a clamp.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum EsdModel {
+    /// Human-body model (JEDEC JS-001).
     Hbm,
+    /// Charged-device model (JEDEC JS-002).
     Cdm,
+    /// IEC 61000-4-2 contact discharge.
     IecContact,
+    /// IEC 61000-4-2 air-gap discharge.
     IecAir,
 }
 
@@ -97,9 +146,11 @@ impl EsdModel {
     }
 }
 
+/// An ESD rating: the pins survive discharges of ± `volts` in this model.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Esd {
+    /// Datasheet pin names. Empty means every pin.
     #[serde(default)]
     pub pins: Vec<String>,
     pub model: EsdModel,
@@ -108,6 +159,7 @@ pub struct Esd {
     pub note: Option<String>,
 }
 
+/// The capacitance from `pins` to `to`, in pF, as the datasheet gives it.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Capacitance {
@@ -115,11 +167,13 @@ pub struct Capacitance {
     pub to: String,
     pub typ: Option<f64>,
     pub max: Option<f64>,
+    /// 1-based page of the datasheet PDF.
     pub page: u32,
     pub note: Option<String>,
 }
 
 impl Capacitance {
+    /// The value to design against: the maximum when the datasheet gives one, else the typical.
     pub fn worst(&self) -> Option<f64> {
         self.max.or(self.typ)
     }
@@ -150,6 +204,9 @@ pub struct Temperature {
     pub note: Option<String>,
 }
 
+/// How far above the output a regulator's supply must be for `range` to hold: `supply × duty − volts ≥
+/// output`. An LDO gives the `volts` its output is specified at (`VIN = VOUT + 1 V`); a buck converter gives
+/// its maximum duty cycle.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Headroom {
@@ -165,22 +222,34 @@ fn one() -> f64 {
     1.0
 }
 
+/// A voltage the part itself sets between two of its pins while operating.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Drive {
     pub kind: DriveKind,
     pub pin: String,
     pub to: String,
+    /// The pin that powers it (`VIN` of a regulator). The drive only holds while this pin is inside its
+    /// recommended range.
     pub supply: Option<String>,
+    /// A regulator's feedback pin: the output net is the far end of the resistor divider on it.
     #[serde(default)]
     pub feedback: bool,
+    /// For a regulator: the supply it needs above its output. Without it, a checker can't assume the output
+    /// is held at `range`.
     pub headroom: Option<Headroom>,
+    /// For a forward drive: the current in amps that `range` was measured at. Below it the forward
+    /// voltage falls under `range`'s minimum, so a checker can't count on that minimum there.
     pub current: Option<f64>,
+    /// For a MOSFET channel: the gate pin. `range` is then the gate threshold VGS(th), `V(gate) - V(to)`.
     pub gate: Option<String>,
+    /// For a MOSFET channel: the gate-source voltage RDS(on) is specified at, past which the channel is fully on.
     pub on: Option<OnAt>,
+    /// `V(pin) - V(to)` in volts, with its page. Conditions (load current, temperature) go in the note.
     pub range: Range,
 }
 
+/// The gate-source voltage a MOSFET's RDS(on) is given at.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OnAt {
@@ -192,10 +261,18 @@ pub struct OnAt {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DriveKind {
+    /// A regulator holds `pin` at this voltage from `to`: a fixed output, or a feedback pin that sets the
+    /// output through a divider.
     Regulates,
+    /// A diode conducting from `pin` (anode) to `to` (cathode) drops this much.
     Forward,
+    /// A switch node: `pin` swings across `range`, which may be relative to the supply (`{ pin = "VIN" }`).
     Switches,
+    /// An input the part biases itself through internal resistors, such as an amplifier's AC-coupled input:
+    /// `pin` sits within `range` (which may be relative to the supply) with nothing else driving it.
     Biases,
+    /// A MOSFET channel between `pin` (drain) and `to` (source), switched by `gate`: `range` is the gate
+    /// threshold VGS(th), and `on` the VGS its RDS(on) is given at.
     Channel,
 }
 
@@ -224,6 +301,7 @@ pub enum Class {
 #[serde(deny_unknown_fields)]
 pub struct Datasheet {
     pub title: String,
+    /// Document number and revision, so a page number can be checked against the right edition.
     pub document: String,
     pub url: String,
 }
@@ -231,27 +309,42 @@ pub struct Datasheet {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Quantity {
+    /// Volts on `pins` measured from `to`.
     #[default]
     Voltage,
+    /// Amps flowing into the part at `pins` (out of it at `to`, for a two-terminal part).
     Current,
+    /// Watts dissipated in the part between `pins` and `to`.
     Power,
 }
 
+/// The limits on one quantity for a group of pins.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Limit {
     #[serde(default)]
     pub quantity: Quantity,
+    /// Datasheet pin names the limit applies to, each on its own.
     pub pins: Vec<String>,
+    /// The reference pin name. When absent, a voltage limit holds between any two of `pins` (a connector's
+    /// contact rating) and a current limit holds for each pin on its own.
     pub to: Option<String>,
+    /// For protection parts: the breakdown range applies in both polarities.
     #[serde(default)]
     pub bidirectional: bool,
+    /// Beyond this range the part may be damaged.
     pub abs_max: Range,
+    /// The range the datasheet says to operate in.
     pub recommended: Range,
+    /// For TVS, Zener and ESD parts: the voltage at which the part starts to conduct. A rail that can sit
+    /// above `breakdown.min` will drive current through the part continuously.
     pub breakdown: Option<Range>,
+    /// For TVS and ESD parts: the clamping voltage at a pulse current, which sets how hard the part holds a
+    /// rail once past breakdown.
     pub clamp: Option<Clamp>,
 }
 
+/// A protection part's clamping voltage `volts` at the peak pulse current `current`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Clamp {
@@ -261,6 +354,7 @@ pub struct Clamp {
     pub note: Option<String>,
 }
 
+/// A min/max pair, or a reason why the datasheet doesn't give one.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(try_from = "RawRange")]
 pub enum Range {
@@ -268,15 +362,22 @@ pub enum Range {
     Known {
         min: Bound,
         max: Bound,
+        /// 1-based page of the datasheet PDF the values are on.
         page: Option<u32>,
         note: Option<String>,
+        /// How a value the page doesn't print was worked out from what it does print, such as
+        /// `"3.3 V ± 2 % accuracy"` for an LDO's output range. `gerberus datasheet verify` checks the numbers
+        /// in it instead of the value itself.
         derived: Option<String>,
     },
 }
 
+/// One end of a range.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Bound {
     Value(f64),
+    /// Relative to another pin of the same part: `V(pin) + plus`, capped at `at_most` when given. `V(pin)`
+    /// is measured from the same reference as the limit (its `to` pin). `at_most` only makes sense on `max`.
     Pin {
         pin: String,
         plus: f64,
@@ -384,6 +485,8 @@ impl Bound {
         !matches!(self, Bound::Unknown(_))
     }
 
+    /// The bound in volts, given a way to look up another pin's voltage. `None` when the bound is unknown
+    /// or the other pin's voltage is.
     pub fn resolve(&self, pin_voltage: impl Fn(&str) -> Option<f64>) -> Option<f64> {
         match self {
             Bound::Value(v) => Some(*v),
@@ -397,6 +500,7 @@ impl Bound {
 }
 
 impl Range {
+    /// Whether any bound is known, so the range needs a datasheet page.
     fn has_values(&self) -> bool {
         match self {
             Range::Unknown(_) => false,
@@ -404,6 +508,7 @@ impl Range {
         }
     }
 
+    /// Both ends as plain numbers, when they are.
     pub fn values(&self) -> Option<(f64, f64)> {
         match self {
             Range::Known {
@@ -422,6 +527,7 @@ impl Part {
         toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
     }
 
+    /// Pin numbers that carry a datasheet pin name.
     pub fn pins_named(&self, name: &str) -> Vec<&str> {
         self.pins
             .iter()
@@ -430,6 +536,8 @@ impl Part {
             .collect()
     }
 
+    /// The limits of one quantity that list a pin name in `pins`. Limits where it is only the reference
+    /// (`to`) are in [`Part::limits_involving`].
     pub fn limits_for(&self, quantity: Quantity, name: &str) -> impl Iterator<Item = &Limit> {
         let name = name.to_string();
         self.limits
@@ -437,6 +545,7 @@ impl Part {
             .filter(move |l| l.quantity == quantity && l.pins.contains(&name))
     }
 
+    /// The limits of one quantity that name a pin in `pins` or as `to`.
     pub fn limits_involving(&self, quantity: Quantity, name: &str) -> impl Iterator<Item = &Limit> {
         let name = name.to_string();
         self.limits
@@ -444,6 +553,7 @@ impl Part {
             .filter(move |l| l.quantity == quantity && (l.pins.contains(&name) || l.to.as_ref() == Some(&name)))
     }
 
+    /// The ESD ratings that cover a datasheet pin name.
     pub fn esd_for(&self, name: &str) -> impl Iterator<Item = &Esd> {
         let name = name.to_string();
         self.esd
@@ -451,6 +561,8 @@ impl Part {
             .filter(move |e| e.pins.is_empty() || e.pins.contains(&name))
     }
 
+    /// Values `gerberus part new` left for someone to read from the datasheet are still there. Checkers treat
+    /// such a file like a missing one wherever a missing file gives the benefit of the doubt.
     pub fn unread(&self) -> bool {
         let unread = |r: &Range| matches!(r, Range::Unknown(why) if why == NOT_READ);
         self.limits
@@ -459,6 +571,8 @@ impl Part {
             || self.drives.iter().any(|d| unread(&d.range))
     }
 
+    /// Pin names no voltage limit mentions, apart from `NC` and `DNC`. A checker must report these as
+    /// UNKNOWN; the coverage report lists them.
     pub fn uncovered_pins(&self) -> Vec<&str> {
         let mut out: Vec<&str> = self
             .pins
@@ -472,6 +586,7 @@ impl Part {
         out
     }
 
+    /// Every pin name a limit refers to, in `pins`, `to` or a relative bound.
     fn used_pin_names(&self) -> Vec<&str> {
         let mut out = Vec::new();
         for l in &self.limits {
@@ -506,6 +621,7 @@ impl Part {
         out
     }
 
+    /// Everything wrong with the file that the parser can't catch. Empty when the file is sound.
     pub fn problems(&self) -> Vec<String> {
         let mut out = Vec::new();
         let names: Vec<&str> = self.pins.values().map(String::as_str).collect();
@@ -683,6 +799,8 @@ impl Part {
             {
                 out.push(at(&format!("recommended max {vrwm} is not below breakdown min {vbr}")));
             }
+            // Ends are compared where both are plain numbers. With pin-relative ends a checker must use the
+            // tighter of `abs_max` and `recommended` at the voltages it works out.
             if let (
                 Range::Known {
                     min: amin, max: amax, ..
@@ -789,26 +907,34 @@ impl Part {
     }
 }
 
+/// The shared library's part files, as (file name, contents), generated by `build.rs`.
 const BUILTIN_PARTS: &[(&str, &str)] = include!(concat!(env!("OUT_DIR"), "/builtin_parts.rs"));
 
+/// The text of a built-in part file, from the path [`Library::builtin`] gave it.
 pub fn builtin_text(path: &Path) -> Option<&'static str> {
     let name = path.to_str()?.strip_prefix("parts/")?.strip_suffix(" (built in)")?;
     BUILTIN_PARTS.iter().find(|(n, _)| *n == name).map(|(_, t)| *t)
 }
 
+/// Every part file in one or more directories, keyed by part number (variants included).
 #[derive(Debug, Clone, Default)]
 pub struct Library {
     pub parts: BTreeMap<String, Part>,
+    /// Where each part came from, for error messages.
     pub files: BTreeMap<String, PathBuf>,
+    /// Part families, in the order they were loaded, with their files. A later one wins.
     pub families: Vec<(PathBuf, family::Family)>,
+    /// Part numbers a family matched but couldn't rate, and why.
     pub family_errors: BTreeMap<String, String>,
 }
 
+/// One file of a part folder: a single part, or a family of them.
 enum Entry {
     Part(Box<Part>),
     Family(Box<family::Family>),
 }
 
+/// Reads one part folder file. A file with a top-level `family` key is a family.
 fn parse_entry(path: &Path, text: &str) -> Result<Entry, String> {
     let at = |e: String| format!("{}: {e}", path.display());
     let table: toml::Table = toml::from_str(text).map_err(|e| at(e.to_string()))?;
@@ -826,20 +952,29 @@ fn parse_entry(path: &Path, text: &str) -> Result<Entry, String> {
     }
 }
 
+/// Where a component's limits come from.
 #[derive(Debug, Clone)]
 pub enum Lookup<'a> {
+    /// A part file, from a datasheet.
     Datasheet(&'a Part),
+    /// No part file, but the part's class gives a generic limit, such as a capacitor's rated voltage from its
+    /// schematic `Voltage` field. Not checked against a datasheet.
     ClassDefault(Box<Part>),
+    /// Nothing to check against. Checkers must report the part's pins as unchecked, not as passing.
     Unchecked(String),
 }
 
 impl Library {
+    /// Loads every `*.toml` file in `dir`. Fails on the first file that doesn't parse, or on two files with
+    /// the same part number.
     pub fn load_dir(dir: &Path) -> Result<Library, String> {
         let mut lib = Library::default();
         lib.add_dir(dir)?;
         Ok(lib)
     }
 
+    /// Loads several directories in order. A later directory's file replaces an earlier one with the same
+    /// part number, so a board's own `parts/` folder can override the shared library.
     pub fn load_dirs(dirs: &[&Path]) -> Result<Library, String> {
         let mut lib = Library::default();
         for dir in dirs {
@@ -848,6 +983,8 @@ impl Library {
         Ok(lib)
     }
 
+    /// The shared library in `parts/` at the root of this repository, built into the binary so a released
+    /// `gerberus` needs no checkout. Each part's file shows as `parts/<file> (built in)`.
     pub fn builtin() -> Result<Library, String> {
         let mut lib = Library::default();
         let parts = BUILTIN_PARTS.iter().map(|(name, text)| {
@@ -859,6 +996,7 @@ impl Library {
         Ok(lib)
     }
 
+    /// Adds every `*.toml` file in `dir`, replacing parts already loaded with the same part number.
     pub fn add_dir(&mut self, dir: &Path) -> Result<(), String> {
         let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
             .map_err(|e| format!("{}: {e}", dir.display()))?
@@ -874,6 +1012,8 @@ impl Library {
         }))
     }
 
+    /// Adds parts from one source (a directory, or the built-in library), failing on two with the same part
+    /// number within it.
     fn add_parts(&mut self, parts: impl Iterator<Item = (PathBuf, Result<Entry, String>)>) -> Result<(), String> {
         let mut here: BTreeMap<String, PathBuf> = BTreeMap::new();
         for (path, entry) in parts {
@@ -900,6 +1040,9 @@ impl Library {
         Ok(())
     }
 
+    /// Gives every part number in `design` that has no part file the part its family decodes it to, if one
+    /// does. A part file always wins over a family; of two families, the one loaded later wins. Part numbers
+    /// a family matches but can't rate are kept in `family_errors`, and show as the reason they're unchecked.
     pub fn expand_families(&mut self, design: &crate::design::Design) {
         for c in design.components.values() {
             let mpn = component_mpn(c);
@@ -931,10 +1074,12 @@ impl Library {
         }
     }
 
+    /// The part file a schematic component uses: its `MPN` field, or its value when it has no `MPN`.
     pub fn part_for(&self, c: &Component) -> Option<&Part> {
         self.parts.get(component_mpn(c))
     }
 
+    /// Where a component's limits come from: its part file, a class default, or nowhere.
     pub fn lookup(&self, c: &Component) -> Lookup<'_> {
         if let Some(p) = self.part_for(c) {
             return Lookup::Datasheet(p);
@@ -951,6 +1096,7 @@ impl Library {
 }
 
 impl Part {
+    /// This part and each variant as parts of their own, keyed by part number.
     fn expand(&self) -> Vec<(String, Part)> {
         let mut base = self.clone();
         base.variants.clear();
@@ -967,6 +1113,7 @@ impl Part {
     }
 }
 
+/// The part number a component names: its `MPN` field, or its value when it has no `MPN`.
 pub fn component_mpn(c: &Component) -> &str {
     match c.fields.get("MPN").map(|s| s.trim()) {
         Some(m) if !m.is_empty() => m,
@@ -974,6 +1121,9 @@ pub fn component_mpn(c: &Component) -> &str {
     }
 }
 
+/// A generic limit from the part's class, for a two-pin capacitor whose rated voltage is in its `Voltage`
+/// field or its value (`100nF 50V`). Other classes have no default: a resistor's power or an inductor's
+/// current can't be read off the schematic reliably.
 pub fn class_default(c: &Component) -> Option<Part> {
     let is_cap = c.lib_id.starts_with("Device:C") || c.lib_id.starts_with("Device:CP");
     if !is_cap || c.pins.len() != 2 {
@@ -1030,6 +1180,7 @@ pub fn class_default(c: &Component) -> Option<Part> {
     })
 }
 
+/// `50V`, `6.3V`, `6V3` or `50 V` as volts.
 fn parse_volts(s: &str) -> Option<f64> {
     let s = s.trim();
     let s = s
@@ -1044,15 +1195,23 @@ fn parse_volts(s: &str) -> Option<f64> {
     (v.is_finite() && v > 0.0).then_some(v)
 }
 
+/// How one placed component is covered by limits.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Coverage {
     Datasheet,
     ClassDefault,
-    Unchecked { reason: String },
+    Unchecked {
+        reason: String,
+    },
+    /// Not fitted, not on the board or not in the BOM.
     NotFitted,
+    /// A part with no electrical limits to check, such as a test point.
     NonElectrical,
 }
 
+/// A test point with no part file: a bare pad, so there is nothing to check it against. Found by its symbol
+/// (`Connector:TestPoint`), or by a `TP` reference on a one-pin part. A net tie (`Device:NetTie*`, `NT1`) is
+/// copper joining two nets, which the voltage engine follows, so it has nothing to check either.
 pub fn is_non_electrical(reference: &str, c: &Component) -> bool {
     let letters: String = reference
         .chars()
@@ -1065,6 +1224,7 @@ pub fn is_non_electrical(reference: &str, c: &Component) -> bool {
     test_point || net_tie
 }
 
+/// How every component of a design is covered, keyed by reference.
 pub fn coverage(design: &crate::design::Design, lib: &Library) -> BTreeMap<String, Coverage> {
     design
         .components

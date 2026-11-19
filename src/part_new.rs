@@ -1,9 +1,16 @@
+//! `gerberus part new`: a part file to fill in, started from a schematic symbol.
+//!
+//! The file loads as it is written: the symbol gives the part number, the pin map, the class and the datasheet
+//! link, and every limit is `{ unknown = "..." }` with [`NOT_READ`] as its reason until someone reads the
+//! datasheet. `check` reports those pins UNKNOWN with that reason, and `doctor` lists the file as one to fill in.
 use std::fmt::Write as _;
 
 use crate::design::{Component, Design};
 use crate::limits::NOT_READ;
 use crate::limits::component_mpn;
 
+/// A part file for the part `which` names: a reference designator, or a part number one of the parts carries.
+/// Returns the part number and the file's text.
 pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, String), String> {
     let c = design
         .components
@@ -54,6 +61,7 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
         String::new()
     };
 
+    // Pin number to name, from the symbol. A pin with no name goes by its number.
     let mut pins: Vec<(String, String)> = c
         .pins
         .values()
@@ -62,7 +70,10 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
             (p.number.clone(), name)
         })
         .collect();
+    // 1, 2, ... 10, not 1, 10, 2; BGA balls by letter, then number.
     pins.sort_by_key(|(n, _)| natural(n));
+    // The ground pin, by its name; failing that, a power pin on this instance's ground net, which the comment
+    // then says, since another instance may wire it differently.
     let named_ground = pins.iter().find(|(_, n)| is_ground_name(n)).map(|(_, n)| n.clone());
     let net_ground = || {
         pins.iter()
@@ -256,6 +267,7 @@ pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, S
     Ok((mpn, out))
 }
 
+/// A pin number as a sort key: its letters, then its number.
 fn natural(n: &str) -> (String, u64, String) {
     let letters: String = n.chars().take_while(|c| !c.is_ascii_digit()).collect();
     let rest = &n[letters.len()..];
@@ -263,6 +275,7 @@ fn natural(n: &str) -> (String, u64, String) {
     (letters, digits.parse().unwrap_or(0), rest[digits.len()..].to_string())
 }
 
+/// The class and whether it was guessed from the reference or symbol (`false`: `ic` only as the fallback).
 fn class_of(c: &Component) -> (&'static str, bool) {
     let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
     let lib = c.lib_id.to_ascii_lowercase();
@@ -290,15 +303,18 @@ fn class_of(c: &Component) -> (&'static str, bool) {
     (class, true)
 }
 
+/// A ground pin or net name: GND…, VSS…, AGND, DGND, PGND, SGND or 0V.
 pub fn is_ground_name(n: &str) -> bool {
     let n = n.to_ascii_uppercase();
     n.starts_with("GND") || n.starts_with("VSS") || matches!(n.as_str(), "AGND" | "DGND" | "PGND" | "SGND" | "0V")
 }
 
+/// A TOML string.
 fn quote(s: &str) -> String {
     toml::Value::String(s.to_string()).to_string()
 }
 
+/// A TOML key: bare when it can be.
 fn key(s: &str) -> String {
     if !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
         s.to_string()

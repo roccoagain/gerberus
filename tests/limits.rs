@@ -1,3 +1,4 @@
+//! Checks the part-limits library in `parts/` and the board inputs files against the test boards.
 use std::path::{Path, PathBuf};
 
 use gerberus::design::{Component, Pin, PinKind};
@@ -34,6 +35,7 @@ fn every_part_file_is_sound() {
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
+/// Every part placed on the three boards has a limits file, and the file knows every pin the board uses.
 #[test]
 fn every_board_part_has_limits() {
     let lib = library();
@@ -58,11 +60,14 @@ fn every_board_part_has_limits() {
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
+/// Footprint-only parts (test pads, solder jumpers) are not bought, so they have no datasheet. Rev 1's JP1
+/// is in its BOM by mistake, so the test goes by the missing part number as well.
 fn is_bought(c: &Component) -> bool {
     let has_mpn = c.fields.get("MPN").is_some_and(|m| !m.trim().is_empty());
     has_mpn && !c.dnp && c.in_bom && c.on_board
 }
 
+/// The parts left out of the check above are the ones that really aren't bought.
 #[test]
 fn only_footprint_parts_are_skipped() {
     let mut skipped = Vec::new();
@@ -97,6 +102,7 @@ fn board_inputs_match_their_designs() {
     }
 }
 
+/// A TVS's breakdown minimum and stand-off voltage, from its cathode-to-anode limit.
 fn tvs_numbers(lib: &Library, mpn: &str) -> (f64, f64) {
     let part = &lib.parts[mpn];
     let limit = part.limits_for(Quantity::Voltage, "K").next().unwrap();
@@ -128,6 +134,10 @@ fn vbus_max(dir: &str) -> f64 {
         .unwrap()
 }
 
+/// Rev 1's known bug is visible in the data: its TVS (D2, SMAJ18A) starts conducting below the bus maximum.
+/// D2 sits behind the reverse-polarity Schottky D1, so it sees VBUS less D1's forward drop. Even the largest
+/// drop the B5819W file gives doesn't close the gap. The rule that walks from J1 through D1 to D2 comes later;
+/// this only checks the numbers support it.
 #[test]
 fn rev1_tvs_conducts_on_the_bus() {
     let lib = library();
@@ -151,6 +161,7 @@ fn rev1_tvs_conducts_on_the_bus() {
     assert!(bus - vf_max > vrwm);
 }
 
+/// Rev 2's fix holds up in the same data: the SMF26A's stand-off covers the bus.
 #[test]
 fn rev2_tvs_stays_off_on_the_bus() {
     let lib = library();
@@ -173,7 +184,7 @@ fn relative_bounds_resolve() {
     let Range::Known { max, .. } = &io.recommended else {
         panic!()
     };
-    assert_eq!(max.resolve(vdd), Some(5.5));
+    assert_eq!(max.resolve(vdd), Some(5.5)); // min(3.3 + 3.6, 5.5)
     let Range::Known { max, .. } = &io.abs_max else {
         panic!()
     };
@@ -187,10 +198,15 @@ const HEAD: &str =
 #[test]
 fn rejects_malformed_files() {
     let bad = [
+        // A range with only one end.
         "abs_max = { max = 5, page = 1 }\nrecommended = { unknown = \"none\" }",
+        // An unknown with no reason.
         "abs_max = { unknown = \"\" }\nrecommended = { unknown = \"none\" }",
+        // An unknown mixed with values.
         "abs_max = { unknown = \"x\", min = 0, max = 1 }\nrecommended = { unknown = \"none\" }",
+        // A misspelt field.
         "abs_max = { min = 0, max = 5, pgae = 1 }\nrecommended = { unknown = \"none\" }",
+        // A bound that is neither a number, a pin nor an unknown.
         "abs_max = { min = 0, max = { plus = 1 }, page = 1 }\nrecommended = { unknown = \"none\" }",
     ];
     for limit in bad {
@@ -221,6 +237,7 @@ fn reports_unsound_files() {
     assert!(problems.contains("reaches outside abs_max"), "{problems}");
 }
 
+/// Each capacitor's schematic `Voltage` field agrees with its datasheet rating.
 #[test]
 fn capacitor_voltage_fields_match_datasheets() {
     let lib = library();
@@ -285,11 +302,13 @@ fn capacitors_without_a_file_get_a_class_default() {
     }
 }
 
+/// A part with no limits shows as unchecked instead of passing silently.
 #[test]
 fn coverage_reports_unchecked_parts() {
     let lib = library();
     let design = kicad::load(&root("tests/fixtures/can-encoder-rev1/can-encoder.kicad_sch")).unwrap();
     let cov = coverage(&design, &lib);
+    // JP1 is a solder jumper with no part number that rev 1 left in its BOM.
     assert!(matches!(cov["JP1"], Coverage::Unchecked { .. }), "{:?}", cov["JP1"]);
     assert_eq!(cov["J3"], Coverage::NotFitted);
     assert_eq!(cov["D2"], Coverage::Datasheet);
@@ -301,6 +320,8 @@ fn coverage_reports_unchecked_parts() {
     assert_eq!(unchecked, ["JP1"]);
 }
 
+/// Test points are bare pads: nothing to check, so they aren't counted as unchecked. Net ties join two nets,
+/// which nothing follows yet, so they stay unchecked.
 #[test]
 fn test_points_have_nothing_to_check() {
     use gerberus::limits::is_non_electrical;
@@ -326,7 +347,9 @@ fn test_points_have_nothing_to_check() {
     };
     assert!(is_non_electrical("TP1", &part("Seed3:TP_HP_DET", 1)));
     assert!(is_non_electrical("X3", &part("Connector:TestPoint_Probe", 1)));
+    // A `TP` reference on a part with more pins isn't taken on trust.
     assert!(!is_non_electrical("TP2", &part("Custom:Thing", 3)));
+    // A net tie is copper the voltage engine follows: nothing to check.
     assert!(is_non_electrical("NT1", &part("Device:NetTie_2", 2)));
     assert!(!is_non_electrical("JP1", &part("Jumper:SolderJumper_2_Open", 2)));
 }
@@ -338,6 +361,7 @@ fn scratch_dir(name: &str) -> PathBuf {
     d
 }
 
+/// A board's own parts folder overrides the shared library, and a variant reuses the limits by pin name.
 #[test]
 fn board_files_override_and_variants_share_limits() {
     let board = scratch_dir("override");
@@ -356,6 +380,7 @@ fn board_files_override_and_variants_share_limits() {
     assert_eq!(lib.parts["SMAJ18A-ALT"].pins_named("K"), ["2"]);
     assert_eq!(lib.parts["SMAJ18A-ALT"].limits.len(), lib.parts["SMAJ18A"].limits.len());
     assert!(lib.parts["SMAJ18A"].problems().is_empty());
+    // Two files for one part number in the same folder is an error.
     std::fs::copy(board.join("SMAJ18A.toml"), board.join("copy.toml")).unwrap();
     assert!(Library::load_dirs(&[&board]).is_err());
     std::fs::remove_dir_all(&board).unwrap();
@@ -398,6 +423,7 @@ fn derating_policy_is_separate_from_limits() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// The regulators say what they hold their outputs at, so a checker can start the rails from them.
 #[test]
 fn regulators_and_diodes_describe_what_they_drive() {
     let lib = library();
@@ -416,6 +442,7 @@ fn regulators_and_diodes_describe_what_they_drive() {
     }
 }
 
+/// Every pin a part has is either limited or reported as uncovered, and the gaps are the known ones.
 #[test]
 fn uncovered_pins_are_the_known_gaps() {
     let lib = library();
@@ -425,6 +452,7 @@ fn uncovered_pins_are_the_known_gaps() {
             gaps.push(format!("{mpn}.{pin}"));
         }
     }
+    // Inductors and ferrite beads have only a current limit; ground and reference pins appear as `to`.
     assert_eq!(
         gaps,
         [
@@ -512,6 +540,7 @@ source = "s"
     }
 }
 
+/// A typo inside `max = { ... }` is an error, not a silently dropped `plus`.
 #[test]
 fn follow_rejects_unknown_keys() {
     let text = "board = \"x\"\n[[input]]\nname = \"P\"\npin = \"J3.2\"\nto = \"J3.1\"\nmin = 0\n\
@@ -519,9 +548,11 @@ fn follow_rejects_unknown_keys() {
     assert!(toml::from_str::<BoardInputs>(text).is_err());
 }
 
+/// Regulators and switch nodes name the pin that powers them, and only a switch node's range may follow it.
 #[test]
 fn drives_name_their_supply() {
     let parse = |extra: &str| -> String {
+        // Top-level keys go before the tables.
         let (top, tail) = if extra.starts_with('[') {
             ("", extra)
         } else {
@@ -562,6 +593,7 @@ fn drives_name_their_supply() {
     assert!(p.contains("tolerance"), "{p}");
 }
 
+/// Resistors carry the tolerance their part number encodes, for divider math.
 #[test]
 fn resistors_give_their_tolerance() {
     let lib = library();
@@ -581,6 +613,8 @@ fn resistors_give_their_tolerance() {
     assert!(missing.is_empty(), "no tolerance: {missing:?}");
 }
 
+/// A released binary has no `parts/` or `policy.toml` beside it, so it uses the copies built into it. They must
+/// be the files in this repository.
 #[test]
 fn built_in_library_and_policy_match_the_files() {
     let built_in = Library::builtin().unwrap();
@@ -598,6 +632,7 @@ fn built_in_library_and_policy_match_the_files() {
     assert_eq!(format!("{policy:?}"), format!("{:?}", Policy::builtin().unwrap()));
 }
 
+/// A board's own part file replaces the built-in one with the same part number.
 #[test]
 fn a_folder_overrides_the_built_in_library() {
     let dir = std::env::temp_dir().join(format!("gerberus-override-{}", std::process::id()));

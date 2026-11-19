@@ -1,3 +1,10 @@
+//! What each rail supplies, what each part dissipates, and how hot its junction gets.
+//!
+//! Currents come from the part files: every IC's worst-case supply current (`[[supply]]`), every LED's current
+//! through its series resistor, and every resistor from a rail straight to ground. A regulator passes its
+//! output's current on to its input (a buck converter scaled by its efficiency, when its part file gives
+//! one), and so does a diode in series with a rail. Nothing is guessed: a part on a rail with no supply
+//! current makes that rail's total unknown, and everything fed from it.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::design::{Component, Design, PinKind};
@@ -7,10 +14,14 @@ use crate::limits::{Bound, Class, DriveKind, Library, Lookup, Part, Range};
 use crate::policy::Policy;
 use crate::voltage::{Driver, Hold, Voltages, resistance_range};
 
+/// The current a net supplies, worst case.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Load {
+    /// Amps, the sum of everything that could be worked out.
     pub amps: f64,
+    /// What makes up `amps`, for the report: `U2 24.6 mA (p50)`.
     pub parts: Vec<String>,
+    /// Parts on the net whose current isn't known. Non-empty means `amps` is only a lower bound.
     pub missing: Vec<String>,
 }
 
@@ -31,14 +42,18 @@ impl Load {
     }
 }
 
+/// What one part dissipates.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Dissipation {
     pub reference: String,
+    /// Watts, when they could be worked out (a lower bound when `missing` isn't empty).
     pub watts: Option<f64>,
+    /// How, for the report.
     pub how: String,
     pub missing: Vec<String>,
 }
 
+/// A number to four significant figures, without trailing zeros.
 fn sig(x: f64) -> String {
     if x == 0.0 {
         return "0".into();
@@ -108,6 +123,7 @@ fn is_ground(volts: &Voltages, net: usize) -> bool {
     volts.nets[net].span.min == Some(0.0) && volts.nets[net].span.max == Some(0.0)
 }
 
+/// A forward drive's (anode, cathode, Vf range) for a diode or LED.
 fn forward(part: &Part) -> Option<(&str, &str, &Range)> {
     part.drives
         .iter()
@@ -115,19 +131,24 @@ fn forward(part: &Part) -> Option<(&str, &str, &Range)> {
         .map(|d| (d.pin.as_str(), d.to.as_str(), &d.range))
 }
 
+/// A regulator's own drive and whether it switches (a buck converter has a duty-cycle headroom below 1).
 fn regulator_drive<'a>(part: &'a Part, pin: &str) -> Option<&'a crate::limits::Drive> {
     part.drives
         .iter()
         .find(|d| d.kind == DriveKind::Regulates && d.pin == pin)
 }
 
+/// Currents and dissipation for a whole design.
 #[derive(Debug, Clone, Default)]
 pub struct Thermal {
+    /// What each net supplies, indexed like [`Design::nets`].
     pub loads: Vec<Load>,
     pub parts: BTreeMap<String, Dissipation>,
+    /// Current through each series diode and LED, for its current rating.
     pub forward: BTreeMap<String, (Load, String)>,
 }
 
+/// A supply pin by its name, for symbols that draw their power pins as passive.
 fn looks_like_supply(name: &str) -> bool {
     let u = name.to_ascii_uppercase();
     [
@@ -137,6 +158,7 @@ fn looks_like_supply(name: &str) -> bool {
     .any(|p| u.starts_with(p))
 }
 
+/// A two-pin part current flows straight through: an inductor or ferrite, a fuse, a jumper.
 fn is_series_link(lib: &Library, c: &Component) -> bool {
     let class = part_of(lib, c).map(|p| p.class);
     if matches!(class, Some(Class::Led | Class::Diode | Class::Tvs | Class::Capacitor)) {
@@ -157,6 +179,7 @@ fn is_resistor(lib: &Library, c: &Component) -> bool {
         && (c.lib_id.starts_with("Device:R") || part_of(lib, c).is_some_and(|p| p.class == Class::Resistor))
 }
 
+/// Adds a regulator channel's dissipation to the part's total; a dual regulator has one per output.
 fn add_dissipation(map: &mut BTreeMap<String, Dissipation>, d: Dissipation) {
     match map.get_mut(&d.reference) {
         Some(e) => {
@@ -170,15 +193,18 @@ fn add_dissipation(map: &mut BTreeMap<String, Dissipation>, d: Dissipation) {
     }
 }
 
+/// Works out every rail's load and every part's dissipation.
 pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Voltages) -> Thermal {
     let n = design.nets.len();
     let mut base = vec![Load::default(); n];
     let mut own: BTreeMap<String, Dissipation> = BTreeMap::new();
     let mut forward_through: BTreeMap<String, (Load, String)> = BTreeMap::new();
+    // Resistors in an LED chain: their current is the LED's.
     let mut in_chain: BTreeSet<String> = BTreeSet::new();
     let vmax = |net: usize| volts.nets[net].span.max;
     let regulators: BTreeSet<&str> = volts.regulators.iter().map(|r| r.reference.as_str()).collect();
 
+    // The rails an IC's supply entries are on, for current it sources from its outputs.
     let supply_rails = |c: &Component, part: &Part| -> Vec<usize> {
         let mut rails: Vec<usize> = part
             .supply
@@ -224,6 +250,8 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
                         None => missing.push(format!("{} has no known voltage", design.nets[net].name)),
                     }
                 }
+                // Power pins with no supply current in the part file, including ones the symbol draws as
+                // passive.
                 let mut unknown_rails = BTreeSet::new();
                 for (num, p) in &c.pins {
                     let name = part.pins.get(num).map_or(num.as_str(), String::as_str);
@@ -255,6 +283,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
                     );
                 }
             }
+            // A connector's power pin (a debug probe's VTref) only senses the rail.
             (None, _)
                 if !c.dnp
                     && !c.lib_id.starts_with("Connector")
@@ -272,6 +301,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
         }
     }
 
+    // LEDs: a resistor from a supply or an IC output to the anode, and the cathode on ground.
     let mut sourced: Vec<(String, f64, Vec<usize>, String)> = vec![];
     for (reference, c) in &design.components {
         let Some(part) = part_of(lib, c) else { continue };
@@ -305,7 +335,9 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
         let (an, vf, r, rc, far) = match chain {
             Ok(x) => x,
             Err(why) => {
+                // Not worked out: every net it touches, and its own rating, are unknown.
                 let text = format!("its current isn't worked out: {why}");
+                // Every net it touches, directly or through one resistor, and the rails of any IC output there.
                 let mut nets: BTreeSet<usize> = BTreeSet::new();
                 for p in c.pins.values() {
                     nets.insert(p.net);
@@ -361,6 +393,8 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
         let _ = an;
         in_chain.insert(r.clone());
         let (vf_min, vf_max) = range_ends(vf);
+        // VF's minimum is a figure at one current and 25 °C: lower at less current, and lower again when hot.
+        // The only safe bound on the current is VF ≥ 0.
         let tested = part
             .drives
             .iter()
@@ -388,6 +422,8 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
             (Err(e), _) => (None, e),
             (_, None) => (None, format!("{} has no known voltage", design.nets[far].name)),
         };
+        // An IC output driving the LED sources its current from that IC's supply. Which supply pin feeds the
+        // output isn't in the part file, so every one of them is charged.
         let driver = design.nets[far].pins.iter().find_map(|(dr, dp)| {
             let dc = design.components.get(dr)?;
             let dpart = part_of(lib, dc)?;
@@ -435,6 +471,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
         );
         forward_through.insert(reference.clone(), (load, text));
     }
+    // The driving IC dissipates what its output drops, at most the whole rail voltage times the current.
     for (d, i, rails, names) in sourced {
         let Some(e) = own.get_mut(&d) else { continue };
         match rails.iter().map(|&r| vmax(r)).collect::<Option<Vec<f64>>>() {
@@ -449,6 +486,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
         }
     }
 
+    // Totals: a net's own draws plus everything fed from it through a regulator, diode, resistor or link.
     let ctx = Ctx {
         design,
         lib,
@@ -496,10 +534,13 @@ struct State {
     regs: BTreeMap<String, Dissipation>,
     forward: BTreeMap<String, (Load, String)>,
     own: BTreeMap<String, Dissipation>,
+    /// The nets being totalled, so a loop back through a link isn't followed.
     stack: Vec<usize>,
 }
 
 impl Ctx<'_> {
+    /// `other` takes its current from `net` through a passive part: nothing drives it strongly, no IC output
+    /// is on it, and its voltage comes from `net`.
     fn fed_from(&self, other: usize, net: usize) -> bool {
         let nv = &self.volts.nets[other];
         nv.driver != Driver::Strong
@@ -518,6 +559,7 @@ impl Ctx<'_> {
             })
     }
 
+    /// `net` is held at `volts` or above by its own source: a regulator that holds it, or a board input.
     fn held_at_or_above(&self, net: usize, volts: f64) -> bool {
         if self.volts.nets[net].span.min.is_some_and(|m| m >= volts) {
             return true;
@@ -552,6 +594,7 @@ impl Ctx<'_> {
             return load;
         }
         st.stack.push(net);
+        // Regulators fed from this net.
         for reg in volts.regulators.iter().filter(|r| r.supply == net && r.sets_output) {
             let Some(c) = design.components.get(&reg.reference) else {
                 continue;
@@ -567,6 +610,8 @@ impl Ctx<'_> {
             let vin = volts.nets[net].span;
             let vout = volts.nets[reg.output].span;
             let head = regulator_drive(part, &reg.pin).and_then(|d| d.headroom.as_ref());
+            // A buck converter: a duty-cycle headroom, or a pin other than its input and output on a net with an
+            // inductor (its switch node).
             let switches = head.is_some_and(|h| h.duty < 1.0)
                 || c.pins
                     .values()
@@ -579,6 +624,8 @@ impl Ctx<'_> {
                             })
                         })
                     });
+            // Linear only when the part file gives a dropout headroom and the output stays below the supply's top;
+            // anything else (a boost, a charge pump) isn't worked out.
             let linear = !switches && head.is_some() && vout.max.zip(vin.max).is_some_and(|(o, i)| o <= i);
             if switches {
                 let eff = part.efficiency.as_ref().map(|e| e.value);
@@ -622,11 +669,15 @@ impl Ctx<'_> {
                 }
             } else if linear {
                 load.take(&out, &format!("{label} output"));
+                // Its own supply current counts once, not once per output.
                 let iq: f64 = if st.regs.contains_key(&reg.reference) {
                     0.0
                 } else {
                     part.supply.iter().filter_map(crate::limits::SupplyCurrent::max).sum()
                 };
+                // The drop is largest at the top of the supply. When the output isn't held over the whole supply
+                // range but is at its top, use the held output there: below the supply it needs, a linear
+                // regulator is in dropout and drops less than it does while regulating.
                 let vo_low = match (reg.held_at, vin.max) {
                     (Some(h), Some(vi)) if h.needs.is_some_and(|n| vi >= n) && vout.min.is_none_or(|m| m < h.min) => {
                         Some(h.min)
@@ -690,6 +741,7 @@ impl Ctx<'_> {
                 );
             }
         }
+        // Diodes in series: anode on this net, cathode on a net they feed, and able to conduct.
         for (reference, c) in &design.components {
             let Some(part) = part_of(lib, c) else { continue };
             if part.class != Class::Diode {
@@ -702,6 +754,8 @@ impl Ctx<'_> {
             if an != net || kn == net || is_ground(volts, kn) || is_ground(volts, an) || st.stack.contains(&kn) {
                 continue;
             }
+            // Never forward biased: the anode stays at or below the cathode (a reverse-protection or clamp diode).
+            // The cathode's own source counts here, not the range the diode itself adds to it.
             let amax = volts.nets[an].span.max;
             if amax.is_some_and(|a| self.held_at_or_above(kn, a)) {
                 continue;
@@ -725,6 +779,7 @@ impl Ctx<'_> {
                 continue;
             }
             let fed = self.total(kn, st);
+            // Only a rail that something draws from: a clamp or flyback diode carries no steady current.
             if fed.parts.is_empty() && fed.missing.is_empty() {
                 continue;
             }
@@ -749,6 +804,8 @@ impl Ctx<'_> {
                 (fed.clone(), format!("{} into {}", ma(fed.amps), design.nets[kn].name)),
             );
         }
+        // Resistors, inductors, ferrites, fuses and jumpers: a net fed through one passes its load on; a resistor
+        // between two driven nets carries at most their difference over its resistance.
         for (reference, c) in &design.components {
             if c.dnp || c.pins.len() != 2 || self.in_chain.contains(reference) {
                 continue;
@@ -763,6 +820,8 @@ impl Ctx<'_> {
                 (false, true) => nets[0],
                 _ => continue,
             };
+            // A net past a DC short (bead, fuse, net tie) takes this net's range, so it counts as driven, but
+            // everything on it still draws through the short.
             let through_short =
                 crate::voltage::short_kind(c).is_some() && volts.nets[other].why.iter().any(|w| w.from.contains(&net));
             if !is_ground(volts, other) && !st.stack.contains(&other) {
@@ -775,6 +834,7 @@ impl Ctx<'_> {
                 } else if volts.nets[other].driver != Driver::Strong
                     && volts.nets[other].why.iter().all(|w| w.from.is_empty())
                 {
+                    // A net whose voltage gerberus couldn't trace may still draw through this part.
                     let fed = self.total(other, st);
                     if !fed.parts.is_empty() || !fed.missing.is_empty() {
                         load.missing.push(format!(
@@ -813,6 +873,8 @@ impl Ctx<'_> {
     }
 }
 
+/// The `junction-temperature` rule: each part's junction, at the hottest ambient, stays below its maximum, and
+/// `policy.toml`'s margin below it.
 pub fn junction(
     design: &Design,
     lib: &Library,
@@ -837,6 +899,7 @@ pub fn junction(
             headline: None,
         };
         let doc = part.datasheet.as_ref().map_or("", |d| d.document.as_str());
+        // Nothing known at all reads better as "unknown" than as "at least 0 mW".
         let watts = d.watts.filter(|&w| w > 0.0 || d.missing.is_empty());
         let Some(watts) = watts else {
             r.push(finding(
@@ -901,6 +964,7 @@ pub fn junction(
         };
         let cite = format!("{} {doc} p{}", part.mpn, max.page);
         let margin = policy.junction.as_ref();
+        // At the part's own rated ambient rather than the board's, a failure only says how warm the board may get.
         let up_to = max.value - watts * theta.value;
         let (verdict, severity, end) = if tj > max.value && !board {
             (
@@ -937,6 +1001,7 @@ pub fn junction(
                 format!(", below its {} °C maximum ({cite})", max.value),
             )
         };
+        // Without a board temperature the margin can't be judged either: UNKNOWN, with the ambient it holds to.
         let (verdict, end) = match margin {
             Some(m) if !board && verdict == Verdict::Pass && tj > max.value - m.margin => (
                 Verdict::Unknown,
@@ -972,6 +1037,8 @@ pub fn junction(
     }
 }
 
+/// The `forward-current` rule: the current through each series diode and LED stays inside its rating, and
+/// inside `policy.toml`'s derating of it.
 pub fn forward_current(design: &Design, lib: &Library, policy: &Policy, th: &Thermal, r: &mut Vec<Finding>) {
     for (reference, (load, how)) in &th.forward {
         let Some(c) = design.components.get(reference) else {
@@ -1002,6 +1069,7 @@ pub fn forward_current(design: &Design, lib: &Library, policy: &Policy, th: &The
             ));
             continue;
         };
+        // The rating: the recommended maximum when there is one, else the absolute maximum.
         let doc = part.datasheet.as_ref().map_or("", |d| d.document.as_str());
         let rating = [&limit.recommended, &limit.abs_max]
             .into_iter()
@@ -1040,6 +1108,7 @@ pub fn forward_current(design: &Design, lib: &Library, policy: &Policy, th: &The
             continue;
         }
         let lower = if load.known() { "" } else { " at least" };
+        // An LED chain's description already starts with its current.
         let text = if how.starts_with(&ma(amps)) {
             how.clone()
         } else {

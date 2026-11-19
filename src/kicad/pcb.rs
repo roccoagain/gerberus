@@ -1,3 +1,7 @@
+//! Reads pad-to-net assignments from a `.kicad_pcb` file.
+//!
+//! Layout checks will need much more of the board later. For now this lets tests compare the schematic
+//! netlist with the one KiCad wrote into the board.
 use std::path::Path;
 
 use crate::sexpr::{self, Sexp};
@@ -6,25 +10,34 @@ use crate::sexpr::{self, Sexp};
 pub struct PadNet {
     pub reference: String,
     pub pad: String,
+    /// `None` for pads with no net, such as mounting pads.
     pub net: Option<String>,
 }
 
+/// One footprint placed on the board.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Footprint {
     pub reference: String,
+    /// Library footprint, such as `Package_SO:SOIC-8_3.9x4.9mm_P1.27mm`.
     pub lib_id: String,
+    /// KiCad's "not in schematic" attribute: a footprint added on the board only, such as a test point or logo.
     pub board_only: bool,
+    /// Pads with a number, in file order. Unnumbered pads (holes, paste-only shapes) are left out. A number
+    /// can repeat, such as an exposed pad split into several shapes.
     pub pads: Vec<Pad>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pad {
     pub number: String,
+    /// `smd`, `thru_hole`, `np_thru_hole` or `connect`.
     pub kind: String,
+    /// `None` for pads with no net, such as mounting pads.
     pub net: Option<String>,
 }
 
 impl Footprint {
+    /// Each pad number once, sorted.
     pub fn pad_numbers(&self) -> Vec<&str> {
         let mut out: Vec<&str> = self.pads.iter().map(|p| p.number.as_str()).collect();
         out.sort_unstable();
@@ -33,6 +46,7 @@ impl Footprint {
     }
 }
 
+/// Every footprint on the board, in file order.
 pub fn load_footprints(path: &Path) -> Result<Vec<Footprint>, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let tree = sexpr::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -92,23 +106,32 @@ pub fn load_pad_nets(path: &Path) -> Result<Vec<PadNet>, String> {
     Ok(out)
 }
 
+/// KiCad 10 writes `(net "name")`; older versions write `(net 3 "name")`.
 fn pad_net(pad: &Sexp) -> Option<String> {
     let net = pad.child("net")?;
     let name = if net.items().len() >= 3 { net.arg(2) } else { net.arg(1) };
     name.filter(|n| !n.is_empty()).map(str::to_string)
 }
 
+/// A point on the board, in mm, with y pointing down as in KiCad.
 pub type Point = (f64, f64);
 
+/// The copper of a board, for layout and signal-integrity checks.
 #[derive(Debug, Clone, Default)]
 pub struct Layout {
+    /// The board's layers from top to bottom: copper, dielectrics and solder mask.
     pub stackup: Vec<StackLayer>,
+    /// Straight track pieces. Arcs are split into short straight pieces.
     pub tracks: Vec<Track>,
     pub vias: Vec<Via>,
+    /// Filled copper zones (planes and pours), as KiCad last filled them.
     pub zones: Vec<Zone>,
     pub footprints: Vec<PlacedFootprint>,
+    /// Values the board file doesn't give, filled with defaults. Results that depend on them say so.
     pub assumptions: Vec<String>,
+    /// The board has no stackup, so `stackup` is a default (35 µm copper on every layer).
     pub stackup_assumed: bool,
+    /// Every net with a zone, filled or not: an unfilled zone has no polygons in `zones`.
     pub zone_nets: Vec<String>,
 }
 
@@ -140,6 +163,7 @@ pub struct Via {
     pub at: Point,
     pub diameter: f64,
     pub drill: f64,
+    /// The two copper layers the via joins; it also touches every layer between them.
     pub layers: (String, String),
 }
 
@@ -147,8 +171,12 @@ pub struct Via {
 pub struct Zone {
     pub net: String,
     pub layer: String,
+    /// Filled outlines. KiCad joins each hole to its outline with a zero-width slit, so the even-odd rule
+    /// gives the copper.
     pub polygons: Vec<Vec<Point>>,
+    /// Gap the zone keeps to copper of other nets, mm.
     pub clearance: f64,
+    /// Narrowest copper the fill keeps, mm: thinner slivers (between two clearance holes, say) are dropped.
     pub min_thickness: f64,
 }
 
@@ -165,16 +193,23 @@ pub struct PlacedFootprint {
 pub struct PlacedPad {
     pub number: String,
     pub net: Option<String>,
+    /// Centre on the board.
     pub at: Point,
+    /// Width and height before rotation.
     pub size: (f64, f64),
+    /// Rotation on the board, degrees counter-clockwise as KiCad shows it.
     pub rotation: f64,
+    /// Copper layers the pad is on.
     pub layers: Vec<String>,
 }
 
 impl PlacedPad {
+    /// Whether `p` lies on the pad, treating it as its bounding rectangle grown by `margin`.
     pub fn contains(&self, p: Point, margin: f64) -> bool {
         let (dx, dy) = (p.0 - self.at.0, p.1 - self.at.1);
         let a = self.rotation.to_radians();
+        // Undo the pad's rotation (KiCad's y axis points down, so a counter-clockwise turn on screen is
+        // clockwise in these coordinates).
         let (c, s) = (a.cos(), a.sin());
         let lx = dx * c - dy * s;
         let ly = dx * s + dy * c;
@@ -183,6 +218,7 @@ impl PlacedPad {
 }
 
 impl Layout {
+    /// Copper layer names, top to bottom.
     pub fn copper_layers(&self) -> Vec<&str> {
         self.stackup
             .iter()
@@ -193,6 +229,7 @@ impl Layout {
             .collect()
     }
 
+    /// Total board thickness, mm.
     pub fn thickness(&self) -> f64 {
         self.stackup
             .iter()
@@ -209,6 +246,8 @@ pub fn dist(a: Point, b: Point) -> f64 {
     (a.0 - b.0).hypot(a.1 - b.1)
 }
 
+/// Reads the copper of a `.kicad_pcb`: stackup, tracks, vias, filled zones and placed pads. Takes KiCad 6 to
+/// 10 files.
 pub fn load_layout(path: &Path) -> Result<Layout, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let tree = sexpr::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -218,6 +257,7 @@ pub fn load_layout(path: &Path) -> Result<Layout, String> {
     Ok(parse_layout(&tree))
 }
 
+/// Older files number their nets and refer to them by number; KiCad 10 uses the names.
 struct NetNames(std::collections::BTreeMap<String, String>);
 
 impl NetNames {
@@ -249,6 +289,7 @@ fn parse_layout(tree: &Sexp) -> Layout {
             .collect(),
     );
 
+    // Copper layers from the layer table, in KiCad's top-to-bottom order.
     let mut copper: Vec<String> = tree
         .child("layers")
         .map(|l| {
@@ -439,8 +480,12 @@ fn parse_layout(tree: &Sexp) -> Layout {
                 Some(PlacedPad {
                     number: number.to_string(),
                     net: pad_net(pad),
+                    // KiCad turns the footprint counter-clockwise on screen: with y down that is
+                    // x' = x cos + y sin, y' = −x sin + y cos.
                     at: (fx + px * c + py * s, fy - px * s + py * c),
                     size,
+                    // Files store the pad's angle on the board, footprint rotation included, and leave it out
+                    // when it is 0.
                     rotation: at.arg_f64(3).unwrap_or(0.0),
                     layers,
                 })
@@ -457,6 +502,7 @@ fn parse_layout(tree: &Sexp) -> Layout {
     out
 }
 
+/// `*.Cu` and `F&B.Cu` in a pad's layer list stand for several copper layers.
 fn expand_copper(name: &str, copper: &[String]) -> Vec<String> {
     match name {
         "*.Cu" => copper.to_vec(),
@@ -488,6 +534,8 @@ fn read_stackup(s: &Sexp) -> Vec<StackLayer> {
                 er: er.unwrap_or(3.3),
             });
         } else if kind == "core" || kind == "prepreg" || name.starts_with("dielectric") {
+            // A dielectric of several plies lists each one's thickness, εr and loss tangent in turn, the later
+            // ones after an `addsublayer` keyword. Each becomes a layer of its own.
             let all = |key: &str| -> Vec<Option<f64>> { l.children(key).map(|t| t.arg_f64(1)).collect() };
             let (mut thicknesses, ers, tans) = (all("thickness"), all("epsilon_r"), all("loss_tangent"));
             if thicknesses.is_empty() {
@@ -526,6 +574,7 @@ fn default_stackup(copper: &[String], thickness: f64) -> Vec<StackLayer> {
     out
 }
 
+/// The circle through `a`, `m` and `b`, as straight pieces of at most 10 degrees.
 fn flatten_arc(a: Point, m: Point, b: Point) -> Vec<Point> {
     let d = 2.0 * (a.0 * (m.1 - b.1) + m.0 * (b.1 - a.1) + b.0 * (a.1 - m.1));
     if d.abs() < 1e-12 {
@@ -538,6 +587,7 @@ fn flatten_arc(a: Point, m: Point, b: Point) -> Vec<Point> {
     let ang = |p: Point| (p.1 - cy).atan2(p.0 - cx);
     let (t0, tm, t1) = (ang(a), ang(m), ang(b));
     let tau = std::f64::consts::TAU;
+    // Sweep from a to b the way that passes m.
     let ccw = |from: f64, to: f64| (to - from).rem_euclid(tau);
     let sweep = if ccw(t0, tm) <= ccw(t0, t1) {
         ccw(t0, t1)

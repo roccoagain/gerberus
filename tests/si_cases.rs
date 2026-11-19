@@ -1,3 +1,4 @@
+//! Small layouts built in code, one per way a real board can trip up the USB checks.
 use std::path::Path;
 
 use gerberus::diag::Show;
@@ -9,6 +10,7 @@ use gerberus::si::{self, Report};
 const YP: f64 = 0.0;
 const YN: f64 = 0.37;
 
+/// Two layers with a GND plane under everything.
 fn base() -> Layout {
     Layout {
         stackup: vec![
@@ -76,6 +78,7 @@ fn track(net: &str, a: Point, b: Point) -> Track {
     }
 }
 
+/// A 40 mm pair from U1 (a PHY) to J1 (a USB connector), with `d_plus` drawn instead of the straight D+.
 fn board(d_plus: Vec<Track>) -> Layout {
     let mut l = base();
     if d_plus.is_empty() {
@@ -126,6 +129,7 @@ fn a_clean_pair_passes() {
 
 #[test]
 fn an_unrouted_second_connector_pad_is_reported_not_a_panic() {
+    // USB-C puts D+ on A6 and B6; only A6 is routed.
     let mut l = board(vec![]);
     l.footprints[1].pads.push(pad("B6", "USB_D+", (45.0, YP), 0.3));
     let r = check(&l);
@@ -136,6 +140,7 @@ fn an_unrouted_second_connector_pad_is_reported_not_a_panic() {
 
 #[test]
 fn a_part_the_line_runs_through_loads_it() {
+    // D+ is broken at x = 20 and both ends land inside pad 4 of a 155 pF TVS.
     let mut l = board(vec![
         track("USB_D+", (0.0, YP), (19.7, YP)),
         track("USB_D+", (20.3, YP), (40.0, YP)),
@@ -203,6 +208,7 @@ fn a_header_tapped_near_the_phy_is_a_stub_not_the_far_end() {
     ));
     let r = check(&l);
     assert_eq!(r.pairs[0].to, "J1.A6", "{}", si::render(&r, &Show::everything()));
+    // The 3 mm tap is reported as a stub (a warning: under TUSB1210's 200 mil, but TI's guide allows none).
     let stub = r
         .findings
         .iter()

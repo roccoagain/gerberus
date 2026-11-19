@@ -1,3 +1,7 @@
+//! Small hand-written schematics, one per KiCad connectivity or naming rule.
+//!
+//! Each rule follows KiCad 10's source (`connection_graph.cpp`, `sch_pin.cpp`, `sch_symbol.cpp`). None of these
+//! cases appear in the real boards under `tests/fixtures`, so they are pinned down here.
 use std::path::PathBuf;
 
 use gerberus::design::Design;
@@ -49,6 +53,7 @@ fn sym(lib: &str, reference: &str, x: f64, y: f64) -> String {
 }
 
 fn sym_unit(lib: &str, reference: &str, x: f64, y: f64, unit: u32) -> String {
+    // A power symbol's value is its net name.
     let value = lib.strip_prefix("power:").unwrap_or(reference);
     format!(
         r#"(symbol (lib_id "{lib}") (at {x} {y} 0) (unit {unit}) (uuid "{reference}-{x}-{y}")
@@ -84,6 +89,8 @@ fn net<'a>(d: &'a Design, r: &str, p: &str) -> &'a gerberus::design::Net {
     d.pin_net(r, p).unwrap_or_else(|| panic!("{r}.{p} has no net"))
 }
 
+/// A hidden power-input pin on a part stays a pin of the part and joins the global net named after it. When a
+/// power symbol sits on the same net, KiCad names the net after the power symbol even if the pin's name sorts first.
 #[test]
 fn hidden_power_pins_stay_on_the_part() {
     let d = load(&[sym("Test:IC", "U1", 50.0, 50.0), sym("power:VDD", "#PWR1", 50.0, 44.92)]);
@@ -93,6 +100,7 @@ fn hidden_power_pins_stay_on_the_part() {
     assert!(d.components["U1"].pins.contains_key("8"));
 }
 
+/// KiCad joins a local label and a hierarchical label with the same name on one sheet.
 #[test]
 fn local_and_hierarchical_labels_join_by_name() {
     let d = load(&[
@@ -105,6 +113,7 @@ fn local_and_hierarchical_labels_join_by_name() {
     assert_eq!(d.nets.iter().filter(|n| n.name == "/X").count(), 1);
 }
 
+/// A pin touching the middle of a wire is not connected unless a junction sits there.
 #[test]
 fn mid_wire_needs_a_junction() {
     let parts = [
@@ -122,6 +131,10 @@ fn mid_wire_needs_a_junction() {
     assert_eq!(net(&d, "R1", "1").pins, net(&d, "R2", "1").pins);
 }
 
+/// A label on the middle of a single wire names it (unless a pin or flag sits at its point), and on the crossing
+/// of two wires it joins both. Checked
+/// against `kicad-cli sch export netlist` (KiCad 10.0.8); the audio board rev 2 from B1narySolutions/amp-hardware
+/// puts its ESD diodes' labels mid-wire this way.
 #[test]
 fn labels_join_every_wire_they_sit_on() {
     let one = [
@@ -132,6 +145,7 @@ fn labels_join_every_wire_they_sit_on() {
     let d = load(&one);
     assert_eq!(net(&d, "R1", "1").name, "/L");
 
+    // With a pin at the label's point, KiCad gives the label to the pin and leaves the wire alone.
     let pin_there = [
         sym("Device:R", "R1", 80.0, 50.0),
         sym("Device:R", "R2", 60.0, 42.38),
@@ -142,6 +156,7 @@ fn labels_join_every_wire_they_sit_on() {
     assert_eq!(net(&d, "R2", "2").name, "/L");
     assert_eq!(net(&d, "R1", "1").name, "unconnected-(R1-Pad1)");
 
+    // So does a no-connect flag.
     let flagged = [
         sym("Device:R", "R1", 80.0, 50.0),
         wire((40.0, 46.19), (80.0, 46.19)),
@@ -163,6 +178,8 @@ fn labels_join_every_wire_they_sit_on() {
     assert_eq!(net(&d, "R2", "1").name, "/L");
 }
 
+/// KiCad 10 stacks pads under one pin as `[3,9-10]`: every pad is on the pin's net, and the net is named after
+/// the pin once, without a `-Pad` suffix (checked against `kicad-cli` on the amp board from amp-hardware).
 #[test]
 fn stacked_pins_put_every_pad_on_the_net() {
     let d = load(&[sym("Test:STACK", "U1", 50.0, 50.0), sym("Device:R", "R1", 50.0, 58.89)]);
@@ -171,12 +188,17 @@ fn stacked_pins_put_every_pad_on_the_net() {
     }
     assert_eq!(net(&d, "R1", "1").name, "Net-(U1-GND)");
 
+    // Left open, the stack is still one pin: KiCad names the net after its first number.
     let d = load(&[sym("Test:STACK", "U1", 50.0, 50.0)]);
     assert_eq!(net(&d, "U1", "9").name, "unconnected-(U1-GND-Pad3)");
+    // So with the name repeated on another pin: the pad is the stack's first, not the lowest string (checked with
+    // kicad-cli 10).
     let d = load(&[sym("Test:STACK2", "U1", 50.0, 50.0)]);
     assert_eq!(net(&d, "U1", "10").name, "unconnected-(U1-GND-Pad3)");
 }
 
+/// Names KiCad builds from pins: `-Pad<n>` for repeated pin names, the pad form when a pin is named after its
+/// number, and the unit letter for multi-unit parts.
 #[test]
 fn generated_names_follow_kicad() {
     let d = load(&[
@@ -194,6 +216,7 @@ fn generated_names_follow_kicad() {
     assert_eq!(net(&d, "U2", "7").name, "unconnected-(U2B-OUT-Pad7)");
 }
 
+/// KiCad 10 jumper symbols join pins inside the part.
 #[test]
 fn jumper_pins_join() {
     let d = load(&[
@@ -210,6 +233,7 @@ fn jumper_pins_join() {
     assert_eq!(net(&d, "JP1", "2").pins, net(&d, "JP1", "3").pins);
 }
 
+/// Unannotated or repeated references are reported, since their pins get merged.
 #[test]
 fn duplicate_references_warn() {
     let d = load(&[sym("Device:R", "R?", 50.0, 50.0), sym("Device:R", "R?", 70.0, 50.0)]);
@@ -232,6 +256,7 @@ fn duplicate_references_warn() {
     );
 }
 
+/// A local label and a global power symbol with the same name on one sheet are one net, named after the power.
 #[test]
 fn local_label_joins_power_symbol_by_name() {
     let d = load(&[
@@ -244,6 +269,8 @@ fn local_label_joins_power_symbol_by_name() {
     assert_eq!(net(&d, "R1", "1").pins, net(&d, "R2", "1").pins);
 }
 
+/// The power-symbol preference only applies inside one group. Across groups KiCad compares names, so a hidden
+/// `AVDD` pin elsewhere renames the whole net `AVDD`.
 #[test]
 fn power_symbol_preference_stays_within_one_group() {
     let d = load(&[
@@ -259,6 +286,7 @@ fn power_symbol_preference_stays_within_one_group() {
     );
 }
 
+/// Two jumpered pins that share a number are two pins to KiCad, so the net is not `unconnected-`.
 #[test]
 fn jumpered_pins_alone_are_not_unconnected() {
     let d = load(&[sym("Test:JP", "JP1", 50.0, 50.0)]);

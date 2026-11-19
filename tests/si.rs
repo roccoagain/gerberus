@@ -1,3 +1,11 @@
+//! Checks the USB 2.0 signal-integrity analysis against a test board with one well-routed port and one badly
+//! routed one.
+//!
+//! The board is `usb-si-testbed` from the hardware repository. Port 1 (`USB1_D±`) is routed the way TI's
+//! guidelines ask: 0.22 mm traces 0.15 mm apart over an unbroken ground plane (about 90 Ω), matched lengths, no
+//! vias and low-capacitance ESD diodes on the line. Port 2 (`USB2_D±`) breaks almost every rule: narrow traces
+//! far apart (about 135 Ω), a 10 mm detour on D−, vias on D+, test-point and TVS stubs, a 155 pF TVS array, a
+//! slot in the ground plane and a crossing over a split power plane.
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -12,6 +20,7 @@ fn fixture(rel: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(rel)
 }
 
+/// The analysis takes seconds in a debug build, so the tests share one run.
 fn report() -> &'static Report {
     static REPORT: OnceLock<Report> = OnceLock::new();
     REPORT.get_or_init(run)
@@ -53,9 +62,11 @@ fn the_good_port_passes_and_the_bad_port_fails_every_rule_it_breaks() {
         r.pairs.iter().map(|p| &p.name).collect::<Vec<_>>()
     );
 
+    // Port 1: nothing fails, and the eye clears the mask.
     assert!(failures(r, "USB1").is_empty(), "{}", si::render(r, &Show::default()));
     let good = &r.pairs[0];
     assert_eq!(good.name, "USB1");
+    // The long coupled runs sit on 90 Ω; the short pieces where the pair fans out to pads don't count.
     let runs: Vec<f64> = good
         .sections
         .iter()
@@ -70,6 +81,7 @@ fn the_good_port_passes_and_the_bad_port_fails_every_rule_it_breaks() {
     assert!(eye.passes(), "{eye:?}");
     assert!(eye.height > 0.35, "{}", eye.height);
 
+    // Port 2: each defect built into the board is caught by its rule.
     let bad = failures(r, "USB2");
     for rule in [
         "usb-impedance",
@@ -105,6 +117,7 @@ fn the_good_port_passes_and_the_bad_port_fails_every_rule_it_breaks() {
 #[test]
 fn the_tdr_reads_each_ports_impedance() {
     let r = report();
+    // Average the first 100 ps after launch, inside the trace for both ports.
     let early = |pair: usize| {
         let line = &r.pairs[pair].tdr[0];
         let pts: Vec<f64> = line

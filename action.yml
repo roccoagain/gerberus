@@ -32,6 +32,7 @@ runs:
       shell: bash
       env:
         VERSION: ${{ inputs.version }}
+      # The PATH entry is the installer's fixed bin directory, not an input.
       run: | # zizmor: ignore[github-env]
         if [ "$VERSION" = latest ]; then
           url=https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.sh
@@ -66,6 +67,7 @@ runs:
         DESIGN: ${{ inputs.design }}
         BASE: ${{ github.event.pull_request.base.sha }}
       run: |
+        # Fetch only the base commit. A shallow checkout (the default) stays shallow; a full one isn't made shallow.
         if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
           git fetch --no-tags --depth=1 origin "$BASE"
         else

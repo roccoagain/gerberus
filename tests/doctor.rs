@@ -1,3 +1,4 @@
+//! `gerberus doctor`: each UNKNOWN result traced back to the part file, input or limit it waits on.
 use std::path::{Path, PathBuf};
 
 use gerberus::design::Design;
@@ -38,6 +39,7 @@ fn can_encoder() -> (Design, BoardInputs) {
     )
 }
 
+/// With no inputs.toml, writing one is the first thing to do, and it names every connector pin it would cover.
 #[test]
 fn missing_inputs_come_first() {
     let (design, _) = can_encoder();
@@ -51,9 +53,11 @@ fn missing_inputs_come_first() {
     assert!(first.pins.contains(&"J1.1".to_string()), "{:?}", first.pins);
     assert!(first.unknown > 100, "{}", first.unknown);
     assert_eq!(d.items.iter().filter(|i| i.rule == "inputs").count(), 1);
+    // Most of the board's unknowns wait on it.
     assert!(d.settled * 2 > d.unknown, "{} of {}", d.settled, d.unknown);
 }
 
+/// A part with no part file is a thing to add, with every reference that uses it and its datasheet link.
 #[test]
 fn missing_part_file_is_listed_with_its_references() {
     let (design, inputs) = can_encoder();
@@ -76,6 +80,7 @@ fn missing_part_file_is_listed_with_its_references() {
             .to_string()
     );
     assert!(item.unknown >= 1);
+    // It names the file to save the datasheet as.
     let pdf = Path::new("board")
         .join("datasheets")
         .join("TCAN1044AVDDFRQ1.pdf")
@@ -87,10 +92,13 @@ fn missing_part_file_is_listed_with_its_references() {
         "{}",
         item.title
     );
+    // With inputs.toml there, connectors it describes aren't listed.
     assert!(d.items.iter().all(|i| i.rule != "inputs"), "{:?}", d.items);
+    // Ranked: most unknown results first.
     assert!(d.items.windows(2).all(|w| w[0].unknown >= w[1].unknown));
 }
 
+/// The kitchen sink: a built-in part file with pins it gives no limit for.
 #[test]
 fn kitchen_sink_gaps_in_part_files() {
     let dir = root("tests/fixtures/kitchen-sink");
@@ -101,6 +109,8 @@ fn kitchen_sink_gaps_in_part_files() {
     let pins = d.items.iter().find(|i| i.rule == "pin-limits").expect("pin limits");
     assert_eq!(pins.references, ["L1"]);
     assert_eq!(pins.pins, ["1", "2"]);
+    // U1.1 is TPS560430's bootstrap pin, which gerberus can't model: no [[drive]] kind describes it, so it isn't
+    // listed, and neither is any transistor.
     assert!(d.items.iter().all(|i| i.rule != "drive"), "{:?}", d.items);
     assert!(
         d.items.iter().all(|i| i.references.iter().all(|r| !r.starts_with('Q'))),
@@ -115,6 +125,7 @@ fn kitchen_sink_gaps_in_part_files() {
     assert!(text.contains("wait on things doctor doesn't trace yet"), "{text}");
 }
 
+/// A board whose every unknown waits on nothing a user can add says so.
 #[test]
 fn nothing_to_add() {
     let dir = root("tests/fixtures/sniffer");
@@ -126,6 +137,7 @@ fn nothing_to_add() {
     assert!(render(&d, &Show::everything()).starts_with("ok: nothing to add"));
 }
 
+/// With no inputs.toml, writing one is always listed, even when no unknown traces to a connector pin.
 #[test]
 fn missing_inputs_are_always_listed() {
     let design = kicad::load(&root("tests/fixtures/hier/root.kicad_sch")).unwrap();
@@ -137,6 +149,7 @@ fn missing_inputs_are_always_listed() {
     assert!(!render(&d, &Show::everything()).contains("check knows every range"));
 }
 
+/// The command: JSON on stdout, exit 0, and no "no inputs.toml" note on stderr, since the list has it.
 #[test]
 fn command_prints_json() {
     let dir = std::env::temp_dir().join(format!("gerberus-doctor-{}", std::process::id()));

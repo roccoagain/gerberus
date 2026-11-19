@@ -1,3 +1,4 @@
+/// Reads a resistor value such as `47k`, `4k7`, `120`, `2R2` or `1M` as ohms.
 pub fn parse_ohms(value: &str) -> Option<f64> {
     let s: String = value
         .trim()
@@ -34,14 +35,18 @@ pub fn parse_ohms(value: &str) -> Option<f64> {
     (v.is_finite() && v >= 0.0).then_some(v * mult)
 }
 
+/// Reads a capacitance such as `100nF`, `2u2`, `4.7µF 16V` or `10p` as farads.
 pub fn parse_farads(value: &str) -> Option<f64> {
     parse_si(value, 'F')
 }
 
+/// Reads an inductance such as `6.8uH`, `4u7` or `100n` as henries.
 pub fn parse_henries(value: &str) -> Option<f64> {
     parse_si(value, 'H')
 }
 
+/// A number with an SI prefix, as a value field writes it: the first word that holds a number, with the
+/// prefix either after it (`100n`, `100nF`) or in place of the decimal point (`4u7`).
 fn parse_si(value: &str, unit: char) -> Option<f64> {
     let word = value
         .split_whitespace()

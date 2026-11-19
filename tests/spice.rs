@@ -1,3 +1,5 @@
+//! `gerberus stress`: the netlist, the ngspice run and the hot-plug findings on the test boards. These need
+//! ngspice installed (CI installs it).
 use std::path::{Path, PathBuf};
 
 use gerberus::design::Design;
@@ -84,6 +86,8 @@ fn the_sweep_is_repeatable() {
     }
 }
 
+/// The nominal netlist: the supply through the cable, every passive, the LDO and the loads, and a measurement
+/// for each pin limit.
 #[test]
 fn netlist_of_the_sniffer() {
     let (d, _, lib, _) = board("sniffer");
@@ -104,6 +108,7 @@ fn netlist_of_the_sniffer() {
         assert!(text.contains(want), "missing {want:?} in\n{text}");
     }
     assert!(c.inputs(&d).iter().any(|i| i.starts_with("VIN 5.5 V")));
+    // Signal inputs are left open, and said to be.
     assert!(
         c.skipped()
             .iter()
@@ -111,6 +116,7 @@ fn netlist_of_the_sniffer() {
     );
 }
 
+/// The sniffer's 10 µF input capacitor rings with the cable: VIN overshoots the ME6211's 6.5 V absolute maximum.
 #[test]
 fn sniffer_ldo_input_overshoots_on_hot_plug() {
     let (d, sweep, f) = stress("sniffer", 2);
@@ -130,8 +136,10 @@ fn sniffer_ldo_input_overshoots_on_hot_plug() {
     ] {
         assert!(u1.message.contains(want), "missing {want:?}: {}", u1.message);
     }
+    // The capacitor itself is rated 25 V, so it passes.
     let c1 = finding(&f, "C1.1 (+5V)");
     assert_eq!(c1.verdict, Verdict::Pass, "{}", c1.message);
+    // The rail behind the regulator doesn't ring.
     let vdd = finding(&f, "U2.VDD/VDDA (+3V3)");
     assert_eq!(vdd.verdict, Verdict::Pass, "{}", vdd.message);
     assert_eq!(sweep.runs.len(), 3);
@@ -140,18 +148,24 @@ fn sniffer_ldo_input_overshoots_on_hot_plug() {
     assert!(text.contains("aren't reported"), "{text}");
 }
 
+/// A limit read against another pin than ground is measured: a series diode's reverse voltage.
 #[test]
 fn limits_between_two_pins_are_measured() {
     let (d, sweep, f) = stress("can-encoder-rev1", 0);
     finding(&f, "D1.K (+12V) from A (VBUS)");
+    // The bus rings back below the rail the diode holds up, reverse biasing it by several volts.
     let (max, _, min, _) = sweep.peak(net(&d, "+12V"), Some(net(&d, "VBUS"))).unwrap();
     assert!(max > 5.0 && min < -1.0, "{max} {min}");
+    // Every pair a limit reads got a measurement.
     assert!(!sweep.limits().is_empty());
     for &(a, b) in sweep.limits() {
         assert!(sweep.peak(a, b).is_some(), "{} unmeasured", d.nets[a].name);
     }
 }
 
+/// Every element name in a netlist is unique (ngspice stops on a duplicate), TVS diodes clamp at the top of
+/// their breakdown range with the resistance their clamp figure gives, and a bidirectional TVS is two diodes
+/// back to back.
 #[test]
 fn netlist_names_and_tvs_models() {
     let (d, inputs, lib, v) = board("can-encoder-rev1");
@@ -168,7 +182,10 @@ fn netlist_names_and_tvs_models() {
     names.sort_unstable();
     names.dedup();
     assert_eq!(names.len(), all, "duplicate names in\n{text}");
+    // SMAJ18A: (29.2 V - 22.1 V) / 13.7 A.
     assert!(text.contains("RS=0.5182 BV=22.1"), "{text}");
+    // NUP2105L: each line is a pair of diodes sharing a middle node, breaking down at 32 V.
+    // (40 V - 32 V) / 5 A.
     let line = |start: &str| {
         text.lines()
             .find(|l| l.starts_with(start))
@@ -180,6 +197,7 @@ fn netlist_names_and_tvs_models() {
     assert!(text.contains("RS=1.6 BV=32"), "{text}");
 }
 
+/// A TVS that a supply holds past its breakdown keeps conducting: rev 1's SMAJ18A on the 24 V bus.
 #[test]
 fn a_tvs_held_past_breakdown_fails() {
     let (_, _, f) = stress("can-encoder-rev1", 0);
@@ -233,10 +251,13 @@ fn rerun(d: &Design, inputs: &BoardInputs, lib: &Library) -> (spice::Sweep, Vec<
     (sweep, f)
 }
 
+/// A P-FET in the power path (an IC with a forward drive) passes power on: the rail behind it is powered and
+/// checked, not hidden as a quiet signal net.
 #[test]
 fn a_pfet_in_the_power_path_passes_power() {
     let (mut d, inputs, lib, _) = board("can-encoder");
     let (vbus, vdc, gnd) = (net(&d, "VBUS"), net(&d, "+VDC"), net(&d, "GND"));
+    // Take the series diode out, and put an AO3401A in its place: D on the bus, S on the rail.
     let spare = new_net(&mut d, "SPARE");
     for pin in ["1", "2"] {
         move_pin(&mut d, "D1", pin, spare);
@@ -270,11 +291,13 @@ fn a_pfet_in_the_power_path_passes_power() {
     assert_ne!(u1.verdict, Verdict::Unknown, "{}", u1.message);
 }
 
+/// A maximum relative to another pin (`VDD + 0.3`) is checked on the difference in the same run.
 #[test]
 fn a_relative_maximum_is_checked_against_its_pin() {
     let (mut d, inputs, lib, _) = board("can-encoder");
     let (_, _, f) = stress("can-encoder", 0);
     assert_eq!(finding(&f, "U3.CSN").verdict, Verdict::Pass);
+    // Pull chip select up to 5 V instead: 1.7 V above VDD.
     let five = net(&d, "+5V");
     let csn = d.components["U3"]
         .pins
@@ -289,6 +312,7 @@ fn a_relative_maximum_is_checked_against_its_pin() {
     assert!(u3.message.contains("above VDD"), "{}", u3.message);
 }
 
+/// A switch node isn't modelled, so its pin is UNKNOWN; nets nothing drives aren't reported at all.
 #[test]
 fn switch_nodes_are_unknown() {
     let (_, _, f) = stress("can-encoder-rev1", 1);
@@ -300,6 +324,7 @@ fn switch_nodes_are_unknown() {
     assert_eq!(vin.verdict, Verdict::Pass, "{}", vin.message);
 }
 
+/// The worst run is named, with what it drew; the input capacitors ring above the settled rail.
 #[test]
 fn worst_run_is_reported() {
     let (d, sweep, f) = stress("can-encoder", 3);
@@ -308,6 +333,8 @@ fn worst_run_is_reported() {
     let vdc = d.nets.iter().position(|n| n.name == "+VDC").unwrap();
     let (max, _, _, _) = sweep.peak(vdc, None).unwrap();
     assert!(max > sweep.settled(vdc, None).unwrap() + 1.0, "{max}");
+    // A series diode holds the input capacitors at the peak of the ring: twice the bus, past the regulator's
+    // 38 V and the 50 V capacitors.
     let u1 = finding(&f, "U1.VIN (+VDC)");
     assert_eq!(
         (u1.verdict, u1.severity),
@@ -332,6 +359,7 @@ fn a_board_with_no_supply_input_is_an_error() {
     assert!(e.contains("no supply input"), "{e}");
 }
 
+/// The command line: a netlist file, JSON findings, and status 1 for an absolute maximum passed.
 #[test]
 fn stress_command() {
     let dir = root("tests/fixtures/sniffer");

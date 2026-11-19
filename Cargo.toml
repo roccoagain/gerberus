@@ -6,6 +6,7 @@ rust-version = "1.89"
 publish = false
 repository = "https://github.com/roccoagain/gerberus"
 
+# Released through cargo-dist (dist-workspace.toml), not crates.io.
 [package.metadata.dist]
 dist = true
 
@@ -23,6 +24,9 @@ unused_qualifications = "warn"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
+# Pedantic lints that are noise for this codebase. Part names, file formats and tool names (KiCad, SchDoc,
+# PcbDoc, LCSC) are everywhere in doc comments, the library has one user (the binary), and the checkers are
+# long, flat lists of rules that read better as one function than as many.
 doc_markdown = "allow"
 must_use_candidate = "allow"
 missing_errors_doc = "allow"
@@ -32,19 +36,28 @@ similar_names = "allow"
 many_single_char_names = "allow"
 module_name_repetitions = "allow"
 items_after_statements = "allow"
+# Voltages and counts are far below 2^52, so i64/u64 -> f64 never loses anything that matters.
 cast_precision_loss = "allow"
+# Coordinates, units and counts come out of files whose formats bound them; the casts that turn them into
+# indices and grid units are deliberate.
 cast_possible_truncation = "allow"
 cast_possible_wrap = "allow"
 cast_sign_loss = "allow"
+# Voltages are compared exactly on purpose: equal ends are the same parsed or propagated value, not the
+# result of arithmetic that could drift.
 float_cmp = "allow"
 struct_field_names = "allow"
 return_self_not_must_use = "allow"
+# Every lint exception is an `#[expect(..., reason = "...")]`: it says why, and it fails once the code no
+# longer needs it, so stale exceptions don't pile up.
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
+# Leftovers that should never reach main.
 dbg_macro = "warn"
 todo = "warn"
 unimplemented = "warn"
 
+# The profile that 'dist' will build with
 [profile.dist]
 inherits = "release"
 lto = "thin"
