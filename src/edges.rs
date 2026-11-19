@@ -19,7 +19,7 @@ use crate::policy::EdgePolicy;
 const C: f64 = 2.998e11;
 
 /// An SPI or I²S line, by a word of its net's name.
-fn is_bus_line(name: &str) -> bool {
+pub fn is_bus_line(name: &str) -> bool {
     const WORDS: [&str; 16] = [
         "SCK", "SCLK", "MOSI", "MISO", "COPI", "CIPO", "SDI", "SDO", "BCLK", "BCK", "LRCLK", "LRCK", "WS", "MCLK",
         "SDIN", "SDOUT",

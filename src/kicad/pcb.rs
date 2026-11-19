@@ -172,6 +172,9 @@ pub struct Zone {
     /// Filled outlines. KiCad joins each hole to its outline with a zero-width slit, so the even-odd rule
     /// gives the copper.
     pub polygons: Vec<Vec<Point>>,
+    /// The outlines drawn for the zones: inside one, a point the fill leaves bare is a hole (a pad's or via's
+    /// clearance), not the plane's edge.
+    pub outlines: Vec<Vec<Point>>,
     /// Gap the zone keeps to copper of other nets, mm.
     pub clearance: f64,
     /// Narrowest copper the fill keeps, mm: thinner slivers (between two clearance holes, say) are dropped.
@@ -216,6 +219,15 @@ impl PlacedPad {
 }
 
 impl Layout {
+    /// The centres of a footprint's pads with this number: more than one when the footprint repeats it.
+    pub fn pad_centres(&self, reference: &str, number: &str) -> Vec<Point> {
+        self.footprints
+            .iter()
+            .filter(|f| f.reference == reference)
+            .flat_map(|f| f.pads.iter().filter(|p| p.number == number).map(|p| p.at))
+            .collect()
+    }
+
     /// Copper layer names, top to bottom.
     pub fn copper_layers(&self) -> Vec<&str> {
         self.stackup
@@ -397,6 +409,17 @@ fn parse_layout(tree: &Sexp) -> Layout {
             .unwrap_or(0.5);
         let min_thickness = z.child("min_thickness").and_then(|c| c.arg_f64(1)).unwrap_or(0.25);
         let zone_layer = z.child("layer").and_then(|l| l.arg(1)).map(str::to_string);
+        let points = |p: &Sexp| -> Vec<Point> {
+            p.child("pts")
+                .map(|p| {
+                    p.children("xy")
+                        .filter_map(|xy| Some((xy.arg_f64(1)?, xy.arg_f64(2)?)))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let outline: Vec<Point> = z.child("polygon").map(points).unwrap_or_default();
+        let mut filled: Vec<String> = vec![];
         for f in z.children("filled_polygon") {
             let layer = f
                 .child("layer")
@@ -404,16 +427,12 @@ fn parse_layout(tree: &Sexp) -> Layout {
                 .map(str::to_string)
                 .or_else(|| zone_layer.clone())
                 .unwrap_or_default();
-            let pts: Vec<Point> = f
-                .child("pts")
-                .map(|p| {
-                    p.children("xy")
-                        .filter_map(|xy| Some((xy.arg_f64(1)?, xy.arg_f64(2)?)))
-                        .collect()
-                })
-                .unwrap_or_default();
+            let pts = points(f);
             if pts.len() < 3 {
                 continue;
+            }
+            if !filled.contains(&layer) {
+                filled.push(layer.clone());
             }
             match out.zones.iter_mut().find(|o| o.net == net && o.layer == layer) {
                 Some(o) => o.polygons.push(pts),
@@ -421,9 +440,19 @@ fn parse_layout(tree: &Sexp) -> Layout {
                     net: net.clone(),
                     layer,
                     polygons: vec![pts],
+                    outlines: vec![],
                     clearance,
                     min_thickness,
                 }),
+            }
+        }
+        if outline.len() >= 3 {
+            for o in out
+                .zones
+                .iter_mut()
+                .filter(|o| o.net == net && filled.contains(&o.layer))
+            {
+                o.outlines.push(outline.clone());
             }
         }
     }

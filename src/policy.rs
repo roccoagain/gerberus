@@ -151,8 +151,8 @@ pub struct EdgePolicy {
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HotLoopPolicy {
-    /// Square millimetres.
-    pub area: f64,
+    /// Millimetres round the loop.
+    pub length: f64,
     pub reason: String,
 }
 

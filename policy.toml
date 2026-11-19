@@ -65,14 +65,14 @@ reason = "a 10 °C rise, the usual design figure"
 [decoupling]
 distance = 5
 largest = 1e-6
-reason = "within 5 mm, the usual layout guideline for a decoupling capacitor of 1 µF or less"
+reason = "the usual layout guideline for a decoupling capacitor of 1 µF or less"
 
-# `gerberus traces`: the largest area a switching regulator's input loop (supply pin, input capacitor, ground pin)
-# may enclose, through the pad centres. Project judgement, not datasheet figures: an input capacitor right beside
-# a small switcher's pins encloses a few mm².
+# `gerberus traces`: the longest a switching regulator's input loop (supply pin, input capacitor, ground pin) may
+# be, round the pad centres. Project judgement, not datasheet figures: an input capacitor right beside a small
+# switcher's pins makes a loop of under 10 mm.
 [hot_loop]
-area = 25
-reason = "25 mm², an input capacitor placed beside the switcher's supply and ground pins"
+length = 15
+reason = "an input capacitor within a few millimetres of the switcher's supply and ground pins"
 
 # `gerberus traces`: the fastest edge a digital output pin is taken to make, as part files don't give output rise
 # times. Project judgement: fast enough to cover a modern microcontroller's fastest GPIO speed setting.

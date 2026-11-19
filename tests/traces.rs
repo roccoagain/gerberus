@@ -104,6 +104,7 @@ fn a_pour_or_an_unknown_current_is_unknown() {
         net: "VIN".into(),
         layer: "B.Cu".into(),
         polygons: vec![],
+        outlines: vec![],
         clearance: 0.2,
         min_thickness: 0.2,
     });
@@ -352,7 +353,7 @@ mod decoupling {
     use gerberus::finding::{Finding, Verdict};
     use gerberus::policy::DecouplingPolicy;
 
-    fn run(largest: f64) -> Vec<Finding> {
+    fn run(distance: f64, largest: f64) -> Vec<Finding> {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/can-encoder");
         let design = gerberus::kicad::load(&dir.join("can-encoder.kicad_sch")).unwrap();
         let lib = gerberus::limits::Library::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("parts")).unwrap();
@@ -360,47 +361,58 @@ mod decoupling {
         let v = gerberus::voltage::compute(&design, &lib, &inputs);
         let layout = gerberus::kicad::pcb::load_layout(&dir.join("can-encoder.kicad_pcb")).unwrap();
         let policy = DecouplingPolicy {
-            distance: 5.0,
+            distance,
             largest,
             reason: "test".into(),
         };
-        gerberus::decoupling::check(&design, &v, &layout, &policy)
+        gerberus::decoupling::check(&design, &lib, &v, &layout, &policy)
     }
 
     fn at<'a>(r: &'a [Finding], pin: &str) -> &'a Finding {
         r.iter().find(|f| f.message.starts_with(pin)).unwrap()
     }
 
-    /// The MCU's 3.3 V pin has C7 1.3 mm away; the LDO's input is 16.5 mm from the nearest 100 nF on +5V.
+    /// The MCU's 3.3 V pin has C7 (100 nF) 1.3 mm away.
     #[test]
     fn near_passes_and_far_fails() {
-        let r = run(1e-6);
-        let f = at(&r, "U2.17 ");
+        let f = at(&run(5.0, 1e-6), "U2.17 ").clone();
         assert_eq!(f.verdict, Verdict::Pass, "{}", f.message);
         assert!(f.message.contains("C7"), "{}", f.message);
-        let f = at(&r, "U5.3 ");
+        let f = at(&run(1.0, 1e-6), "U2.17 ").clone();
         assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
     }
 
-    /// A capacitor bigger than `largest` is bulk storage and doesn't count.
+    /// The LDO's input has C4, a 22 µF capacitor, nearer than any 100 nF: whether it decouples depends on whether
+    /// it's a ceramic, which isn't known.
     #[test]
-    fn bulk_capacitors_do_not_count() {
-        let r = run(10e-9);
+    fn a_nearer_large_capacitor_is_unknown() {
+        let r = run(5.0, 1e-6);
+        let f = at(&r, "U5.3 ");
+        assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
+        assert!(f.message.contains("C4"), "{}", f.message);
+    }
+
+    /// A capacitor bigger than `largest` isn't taken as decoupling.
+    #[test]
+    fn bulk_capacitors_do_not_pass() {
+        let r = run(5.0, 10e-9);
         let f = at(&r, "U2.17 ");
         assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
     }
 }
 
 mod plane_split {
-    use gerberus::design::{Design, Net};
+    use gerberus::design::{Component, Design, Net, Pin, PinKind};
     use gerberus::finding::Verdict;
     use gerberus::kicad::pcb::{Layout, Point, StackLayer, Track, Zone};
 
-    fn zone(polygons: Vec<Vec<Point>>) -> Zone {
+    /// A GND zone on B.Cu: its fills, and its outline.
+    fn zone(polygons: Vec<Vec<Point>>, outline: Vec<Point>) -> Zone {
         Zone {
             net: "GND".into(),
             layer: "B.Cu".into(),
             polygons,
+            outlines: vec![outline],
             clearance: 0.2,
             min_thickness: 0.2,
         }
@@ -410,7 +422,12 @@ mod plane_split {
         vec![(x0, 0.0), (x1, 0.0), (x1, 10.0), (x0, 10.0)]
     }
 
-    /// A track on F.Cu along y = 5.5 from x = 1 to x = 9, over whatever B.Cu has.
+    /// One filled square zone.
+    fn plane(x0: f64, x1: f64) -> Zone {
+        zone(vec![square(x0, x1)], square(x0, x1))
+    }
+
+    /// A track on F.Cu along y = 5.5 from x = 1 to x = 9, driven by U1's output, over whatever B.Cu has.
     fn verdict(zones: Vec<Zone>) -> Verdict {
         let layout = Layout {
             stackup: vec![
@@ -433,12 +450,25 @@ mod plane_split {
             zones,
             ..Default::default()
         };
+        let mut u1 = Component::default();
+        u1.pins.insert(
+            "1".into(),
+            Pin {
+                number: "1".into(),
+                name: "OUT".into(),
+                kind: PinKind::Output,
+                no_connect: false,
+                net: 0,
+                stack: None,
+            },
+        );
         let design = Design {
             nets: vec![Net {
                 name: "SIG".into(),
-                pins: vec![],
+                pins: vec![("U1".into(), "1".into())],
                 labels: vec![],
             }],
+            components: [("U1".to_string(), u1)].into_iter().collect(),
             ..Default::default()
         };
         gerberus::splits::check(&design, &layout)[0].verdict
@@ -446,10 +476,11 @@ mod plane_split {
 
     #[test]
     fn one_plane_passes() {
-        assert_eq!(verdict(vec![zone(vec![square(0.0, 10.0)])]), Verdict::Pass);
+        assert_eq!(verdict(vec![plane(0.0, 10.0)]), Verdict::Pass);
     }
 
-    /// A hole in the plane (a via's clearance, joined to the outline by KiCad's zero-width slit) doesn't split it.
+    /// A hole in the plane (a via's clearance, joined to the outline by KiCad's zero-width slit) doesn't split it,
+    /// even where the track runs inside it.
     #[test]
     fn a_hole_is_not_a_split() {
         let holed = vec![
@@ -466,21 +497,50 @@ mod plane_split {
             (4.0, 5.0),
             (0.0, 5.0),
         ];
-        assert_eq!(verdict(vec![zone(vec![holed])]), Verdict::Pass);
+        assert_eq!(verdict(vec![zone(vec![holed], square(0.0, 10.0))]), Verdict::Pass);
     }
 
     /// Two pieces with a gap between them under the track: its return current has to go around.
     #[test]
     fn a_gap_between_two_pieces_fails() {
-        assert_eq!(
-            verdict(vec![zone(vec![square(0.0, 4.0), square(6.0, 10.0)])]),
-            Verdict::Fail
-        );
+        assert_eq!(verdict(vec![plane(0.0, 4.0), plane(6.0, 10.0)]), Verdict::Fail);
     }
 
+    /// Two fills of one net that overlap are one piece of copper.
     #[test]
-    fn no_plane_is_unknown() {
+    fn overlapping_fills_are_one_plane() {
+        assert_eq!(verdict(vec![plane(0.0, 6.0), plane(4.0, 10.0)]), Verdict::Pass);
+    }
+
+    /// The track runs off the plane's edge.
+    #[test]
+    fn running_off_the_plane_is_unknown() {
+        assert_eq!(verdict(vec![plane(0.0, 5.0)]), Verdict::Unknown);
         assert_eq!(verdict(vec![]), Verdict::Unknown);
+    }
+
+    /// A net with no output on it, such as a strap tied by resistors, has no edges and isn't checked.
+    #[test]
+    fn undriven_nets_are_left_out() {
+        let layout = Layout {
+            tracks: vec![Track {
+                net: "STRAP".into(),
+                layer: "F.Cu".into(),
+                start: (1.0, 5.5),
+                end: (9.0, 5.5),
+                width: 0.2,
+            }],
+            ..Default::default()
+        };
+        let design = Design {
+            nets: vec![Net {
+                name: "STRAP".into(),
+                pins: vec![],
+                labels: vec![],
+            }],
+            ..Default::default()
+        };
+        assert!(gerberus::splits::check(&design, &layout).is_empty());
     }
 }
 
@@ -490,28 +550,54 @@ mod hot_loop {
     use gerberus::finding::Verdict;
     use gerberus::policy::HotLoopPolicy;
 
-    /// can-encoder's buck U1 has C2 beside its VIN and GND pins: a few mm². A tighter limit fails it.
+    /// can-encoder's buck U1 has C2 beside its VIN and GND pins. A tighter limit fails it.
     #[test]
     fn the_buck_input_loop() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/can-encoder");
         let design = gerberus::kicad::load(&dir.join("can-encoder.kicad_sch")).unwrap();
         let lib = gerberus::limits::Library::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("parts")).unwrap();
         let layout = gerberus::kicad::pcb::load_layout(&dir.join("can-encoder.kicad_pcb")).unwrap();
-        let run = |area: f64| {
+        let run = |length: f64| {
             let policy = HotLoopPolicy {
-                area,
+                length,
                 reason: "test".into(),
             };
             gerberus::loops::check(&design, &lib, &layout, &policy).remove(0)
         };
-        let f = run(25.0);
+        let f = run(15.0);
         assert_eq!(f.verdict, Verdict::Pass, "{}", f.message);
         assert!(
-            f.message.contains("C2") && f.message.contains("3.7 mm²"),
+            f.message.contains("C2") && f.message.contains("9.5 mm"),
             "{}",
             f.message
         );
         assert_eq!(run(1.0).verdict, Verdict::Fail);
+    }
+
+    /// Moved 20 mm away in line with the pins, the input capacitors C1 and C2 make a long loop that encloses next to
+    /// no area: the loop's length still fails it.
+    #[test]
+    fn a_far_capacitor_in_line_fails() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/can-encoder");
+        let design = gerberus::kicad::load(&dir.join("can-encoder.kicad_sch")).unwrap();
+        let lib = gerberus::limits::Library::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("parts")).unwrap();
+        let mut layout = gerberus::kicad::pcb::load_layout(&dir.join("can-encoder.kicad_pcb")).unwrap();
+        let u1 = layout.footprints.iter().find(|f| f.reference == "U1").unwrap().at;
+        for c in layout
+            .footprints
+            .iter_mut()
+            .filter(|f| f.reference == "C1" || f.reference == "C2")
+        {
+            for (i, p) in c.pads.iter_mut().enumerate() {
+                p.at = (u1.0 + 20.0 + i as f64, u1.1);
+            }
+        }
+        let policy = HotLoopPolicy {
+            length: 15.0,
+            reason: "test".into(),
+        };
+        let f = gerberus::loops::check(&design, &lib, &layout, &policy).remove(0);
+        assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
     }
 }
 
