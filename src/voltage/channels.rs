@@ -3,9 +3,7 @@ use crate::design::{Component, Design};
 use crate::limits::{DriveKind, Library};
 use std::collections::BTreeSet;
 
-use super::{
-    Channel, ChannelState, Driver, GATE_THRESHOLD_TAKEN_AS_ZERO_V_AT_ANY_TEMPERATURE, Voltages, part_pin_net, round,
-};
+use super::{Channel, ChannelState, Driver, Voltages, part_pin_net, round};
 
 /// The MOSFET channels in a design, all taken as possibly on until [`decide`] works them out. Only part files
 /// with a `channel` drive count: with no datasheet, nothing says which way a transistor conducts.
@@ -173,3 +171,5 @@ pub(super) fn decide(design: &Design, v: &Voltages, ch: &Channel) -> (ChannelSta
     }
     maybe(format!("{vgs}, so the channel may be on ({cite})"))
 }
+
+const GATE_THRESHOLD_TAKEN_AS_ZERO_V_AT_ANY_TEMPERATURE: f64 = 0.0;

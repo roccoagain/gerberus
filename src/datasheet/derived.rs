@@ -167,5 +167,3 @@ impl Arith {
         Ok(v)
     }
 }
-
-pub(super) const ARITHMETIC_CONSTANTS: [f64; 3] = [0.0, 1.0, 100.0];

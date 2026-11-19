@@ -2,11 +2,12 @@
 //! a bias or a channel.
 use crate::design::{Component, Design};
 use crate::inputs::BoardInputs;
+use crate::limits::Class;
 use crate::limits::{Bound, Drive, DriveKind, Library, Part, Quantity, Range};
 use std::fmt::Write as _;
 
 use super::{
-    HeldAt, Hold, NetVoltage, Regulation, Span, Why, cite, is_capacitor, is_resistor, part_pin_net, round, span_of,
+    HeldAt, Hold, NetVoltage, Regulation, Span, Why, cite, class_of, is_capacitor, part_pin_net, round, span_of,
 };
 
 /// One way a part sets a net.
@@ -605,4 +606,8 @@ fn recommended(part: &Part, pin: &str) -> (Option<f64>, Option<f64>) {
         }
     }
     (None, None)
+}
+
+fn is_resistor(lib: &Library, c: &Component) -> bool {
+    c.pins.len() == 2 && (c.lib_id.starts_with("Device:R") || class_of(lib, c) == Some(Class::Resistor))
 }

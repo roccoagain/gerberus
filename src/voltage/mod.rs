@@ -279,7 +279,6 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs) -> Voltages
 }
 
 const CHANNEL_SETTLING_PASSES: usize = 4;
-const GATE_THRESHOLD_TAKEN_AS_ZERO_V_AT_ANY_TEMPERATURE: f64 = 0.0;
 
 fn settle_channels(design: &Design, lib: &Library, inputs: &BoardInputs, channels: &mut [Channel]) -> Voltages {
     let mut v = compute_with(design, lib, inputs, channels);
@@ -739,10 +738,6 @@ pub fn is_connector(lib: &Library, c: &Component) -> bool {
     c.lib_id.starts_with("Connector") || class_of(lib, c) == Some(Class::Connector)
 }
 
-fn is_resistor(lib: &Library, c: &Component) -> bool {
-    c.pins.len() == 2 && (c.lib_id.starts_with("Device:R") || class_of(lib, c) == Some(Class::Resistor))
-}
-
 fn is_capacitor(lib: &Library, c: &Component) -> bool {
     c.lib_id.starts_with("Device:C") || class_of(lib, c) == Some(Class::Capacitor)
 }
@@ -781,17 +776,6 @@ fn is_bead(c: &Component) -> bool {
 /// An inductor or ferrite bead by its symbol (`Device:L*`, `Device:FerriteBead*`, `Device:Ferrite*`).
 fn is_inductor_symbol(c: &Component) -> bool {
     c.lib_id.starts_with("Device:L") || c.lib_id.starts_with("Device:Ferrite")
-}
-
-/// A two-pin part a net's voltage passes through, for the fallback range: resistors, inductors and ferrite
-/// beads (and so LEDs, `Device:L*`), net ties and fuses, and jumpers. Not switches: an open one is as likely.
-fn is_link(lib: &Library, c: &Component) -> bool {
-    c.pins.len() == 2
-        && (c.lib_id.starts_with("Device:R")
-            || is_inductor_symbol(c)
-            || short_kind(c).is_some()
-            || c.lib_id.starts_with("Jumper:")
-            || matches!(class_of(lib, c), Some(Class::Resistor | Class::Inductor | Class::Led)))
 }
 
 /// The datasheet page a range cites, as text.

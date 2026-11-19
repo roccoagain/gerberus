@@ -1,5 +1,6 @@
 //! Nets no drive reaches: the range of everything that can pull them, through resistors, inductors, LEDs, jumpers
 //! and IC outputs.
+use crate::design::Component;
 use crate::design::{Design, PinKind};
 use crate::inputs::BoardInputs;
 use crate::limits::{Class, Library};
@@ -7,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     Channel, ChannelState, Driver, NetVoltage, Span, Why, class_of, is_capacitor, is_connector, is_inductor_symbol,
-    is_link, is_undriven, merge, span_of, unknown,
+    is_undriven, merge, short_kind, span_of, unknown,
 };
 
 /// Nets nothing drives directly, joined through resistors, inductors, LEDs and jumpers. They share one range:
@@ -386,4 +387,15 @@ pub(super) fn build_groups(
             }
         })
         .collect()
+}
+
+/// A two-pin part a net's voltage passes through, for the fallback range: resistors, inductors and ferrite
+/// beads (and so LEDs, `Device:L*`), net ties and fuses, and jumpers. Not switches: an open one is as likely.
+fn is_link(lib: &Library, c: &Component) -> bool {
+    c.pins.len() == 2
+        && (c.lib_id.starts_with("Device:R")
+            || is_inductor_symbol(c)
+            || short_kind(c).is_some()
+            || c.lib_id.starts_with("Jumper:")
+            || matches!(class_of(lib, c), Some(Class::Resistor | Class::Inductor | Class::Led)))
 }

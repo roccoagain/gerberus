@@ -1,25 +1,8 @@
 //! Comparing a net's worst-case voltage with a pin's limits: each end of the range against each bound, and the
 //! verdict and message that come out.
-use crate::finding::{Severity, Verdict};
-use crate::limits::{Bound, Class, Limit, Range};
-use crate::policy::Policy;
+use crate::finding::Verdict;
+use crate::limits::{Bound, Range};
 use crate::voltage::Span;
-use std::collections::BTreeSet;
-
-use super::parts::{cap_voltage, tvs};
-use super::{Ctx, Report};
-
-/// Both bounds at once. An unknown end of one side leaves the other side's end.
-pub(super) fn intersect(a: Span, b: Span) -> Span {
-    let pick = |p: Option<f64>, q: Option<f64>, f: fn(f64, f64) -> f64| match (p, q) {
-        (Some(p), Some(q)) => Some(f(p, q)),
-        (p, q) => p.or(q),
-    };
-    Span {
-        min: pick(a.min, b.min, f64::max),
-        max: pick(a.max, b.max, f64::min),
-    }
-}
 
 /// The result of comparing a voltage with one end of a range.
 pub(super) enum End {
@@ -175,84 +158,6 @@ pub(super) fn verdict(ends: &[End]) -> (Verdict, String) {
     (Verdict::Pass, String::new())
 }
 
-/// What one limited pin (or set of pins) sees.
-pub(super) struct Seen {
-    what: String,
-    span: Option<Span>,
-    /// Which ends are only floors (low, high).
-    floor: (bool, bool),
-    nets: Vec<usize>,
-    /// The limit's `to` net, for bounds relative to another pin.
-    to: Option<usize>,
-}
-
-/// The voltage each limited pin sees, from the limit's `to` pin or, with no `to`, between each pair of its
-/// pins. Each entry: what it describes, the span, the nets it reads, and the `to` net for relative bounds.
-fn seen(ctx: &Ctx<'_>, limit: &Limit) -> Vec<Seen> {
-    let mut out = vec![];
-    if let Some(to) = &limit.to {
-        let tn = ctx.net(to);
-        for p in &limit.pins {
-            match (ctx.net(p), tn) {
-                (Some(pn), Some(tn)) => {
-                    // Signed: `bidirectional` only makes `breakdown` a magnitude.
-                    let s = ctx.diff(pn, tn);
-                    let floor = (ctx.volts.nets[pn].floor, ctx.volts.nets[tn].floor);
-                    let what = if ctx.span(tn) == Span::exact(0.0) {
-                        ctx.at(p, pn)
-                    } else {
-                        format!("{} from {}", ctx.at(p, pn), ctx.at(to, tn))
-                    };
-                    out.push(Seen {
-                        what,
-                        span: Some(s),
-                        floor,
-                        nets: vec![pn, tn],
-                        to: Some(tn),
-                    });
-                }
-                _ => out.push(Seen {
-                    what: format!("{}.{p}", ctx.reference),
-                    span: None,
-                    floor: (false, false),
-                    nets: vec![],
-                    to: None,
-                }),
-            }
-        }
-    } else {
-        let nets: Vec<(String, usize)> = limit
-            .pins
-            .iter()
-            .filter_map(|p| ctx.net(p).map(|n| (p.clone(), n)))
-            .collect();
-        let mut worst: Option<f64> = Some(0.0);
-        let mut read = BTreeSet::new();
-        for (i, (_, a)) in nets.iter().enumerate() {
-            for (_, b) in &nets[i + 1..] {
-                let d = magnitude(ctx.diff(*a, *b));
-                read.insert(*a);
-                read.insert(*b);
-                worst = worst.zip(d.max).map(|(w, m)| w.max(m));
-            }
-        }
-        let worst = Some(Span {
-            min: Some(0.0),
-            max: worst,
-        });
-        let names: Vec<&str> = nets.iter().map(|(p, _)| p.as_str()).collect();
-        let any_floor = read.iter().any(|&n| ctx.volts.nets[n].floor);
-        out.push(Seen {
-            what: format!("{} between pins {}", ctx.reference, names.join(", ")),
-            span: worst,
-            floor: (any_floor, any_floor),
-            nets: read.into_iter().collect(),
-            to: None,
-        });
-    }
-    out
-}
-
 /// The size of a voltage of either sign.
 pub(super) fn magnitude(s: Span) -> Span {
     match (s.min, s.max) {
@@ -266,76 +171,6 @@ pub(super) fn magnitude(s: Span) -> Span {
             Span::new(lo, hi)
         }
         _ => Span::unknown(),
-    }
-}
-
-pub(super) fn voltage_rules(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report) {
-    let class = ctx.part.class;
-    let passive = matches!(
-        class,
-        Class::Capacitor | Class::Resistor | Class::Inductor | Class::Connector
-    );
-    for Seen {
-        what,
-        span,
-        floor,
-        nets,
-        to,
-    } in seen(ctx, limit)
-    {
-        let Some(span) = span else {
-            r.findings.push(ctx.finding(
-                "abs-max",
-                Verdict::Unknown,
-                Severity::Error,
-                format!("{what}: the pin isn't in the schematic, or its reference pin isn't"),
-                nets,
-            ));
-            continue;
-        };
-        let other = |pin: &str| -> Option<Other> {
-            let n = ctx.net(pin)?;
-            let me = *nets.first()?;
-            // Tracking only holds when both are measured from a 0 V ground.
-            let grounded = to.is_none_or(|t| ctx.span(t) == Span::exact(0.0));
-            Some(Other {
-                span: to.map_or(ctx.span(n), |t| ctx.diff(n, t)),
-                same: me == n,
-                below: grounded && ctx.volts.stays_below(me, n),
-            })
-        };
-        let head = format!("{what}: {span}");
-
-        // abs-max. Passives and TVS diodes put their ratings in `recommended` and `breakdown`, so an unknown
-        // abs_max there is expected, not a gap.
-        let skip_abs = matches!(limit.abs_max, Range::Unknown(_)) && (passive || class == Class::Tvs);
-        if !skip_abs {
-            let (vd, why) = verdict(&compare(span, floor, &limit.abs_max, &other));
-            let msg = match vd {
-                Verdict::Pass => format!("{head}, inside abs max ({})", ctx.cite(&limit.abs_max)),
-                _ => format!("{head}: {why} ({})", ctx.cite(&limit.abs_max)),
-            };
-            r.findings
-                .push(ctx.finding("abs-max", vd, Severity::Error, msg, nets.clone()));
-        }
-
-        match class {
-            Class::Capacitor => cap_voltage(ctx, policy, limit, span, floor, &head, &nets, r),
-            Class::Tvs => tvs(ctx, limit, span, floor, &head, &nets, r),
-            _ => {
-                let (vd, why) = verdict(&compare(span, floor, &limit.recommended, &other));
-                let severity = if passive { Severity::Error } else { Severity::Warning };
-                let msg = match vd {
-                    Verdict::Pass => format!(
-                        "{head}, inside the recommended range ({})",
-                        ctx.cite(&limit.recommended)
-                    ),
-                    _ => format!("{head}: {why} ({})", ctx.cite(&limit.recommended)),
-                };
-                r.findings
-                    .push(ctx.finding("recommended", vd, severity, msg, nets.clone()));
-            }
-        }
     }
 }
 
@@ -369,5 +204,93 @@ pub(super) fn value_of(b: &Bound) -> Option<f64> {
     match b {
         Bound::Value(x) => Some(*x),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::limits::Bound;
+
+    fn other(span: Span, same: bool, below: bool) -> impl Fn(&str) -> Option<Other> {
+        move |_| Some(Other { span, same, below })
+    }
+
+    fn pin_bound(plus: f64, at_most: Option<f64>) -> Bound {
+        Bound::Pin {
+            pin: "VDD".into(),
+            plus,
+            at_most,
+        }
+    }
+
+    fn is(e: &End) -> &'static str {
+        match e {
+            End::Ok => "ok",
+            End::Fail(_) => "fail",
+            End::Unknown(_) => "unknown",
+        }
+    }
+
+    /// `VDD + 0.3 V` with VDD at 3.0 to 3.6 V: 3.2 V always passes, 4.0 V always fails, 3.5 V depends on how
+    /// the two move.
+    #[test]
+    fn relative_bounds() {
+        let vdd = other(Span::new(3.0, 3.6), false, false);
+        let b = pin_bound(0.3, None);
+        assert_eq!(is(&bound(Some(3.2), &b, &vdd, true)), "ok");
+        assert_eq!(is(&bound(Some(4.0), &b, &vdd, true)), "fail");
+        assert_eq!(is(&bound(Some(3.5), &b, &vdd, true)), "unknown");
+        // Bounded by VDD itself: passes even at 3.5 V.
+        let tracks = other(Span::new(3.0, 3.6), false, true);
+        assert_eq!(is(&bound(Some(3.5), &b, &tracks, true)), "ok");
+        // `at_most` caps it: min(VDD + 4, 5.5) fails at 5.6 V even when bounded by VDD.
+        let capped = pin_bound(4.0, Some(5.5));
+        assert_eq!(is(&bound(Some(5.6), &capped, &tracks, true)), "fail");
+        // With VDD from 1.0 V the cap is between 5.0 and 5.5 V.
+        let ft = other(Span::new(1.0, 3.6), false, false);
+        assert_eq!(is(&bound(Some(5.6), &capped, &ft, true)), "fail");
+        assert_eq!(is(&bound(Some(5.2), &capped, &ft, true)), "unknown");
+        assert_eq!(is(&bound(Some(4.9), &capped, &ft, true)), "ok");
+    }
+
+    /// On the same net, only `plus` matters: `VDD − 0.3 V` as a maximum can never hold.
+    #[test]
+    fn same_net() {
+        let same = other(Span::new(3.0, 3.6), true, true);
+        assert_eq!(is(&bound(Some(3.6), &pin_bound(0.3, None), &same, true)), "ok");
+        assert_eq!(is(&bound(Some(3.6), &pin_bound(-0.3, None), &same, true)), "fail");
+    }
+
+    /// An unknown net against a limit the datasheet doesn't give is UNKNOWN, never a pass.
+    #[test]
+    fn unknown_against_unknown() {
+        let none = |_: &str| None;
+        assert_eq!(is(&bound(None, &Bound::Unknown("x".into()), &none, true)), "unknown");
+    }
+
+    /// A FAIL on an end that is only a floor becomes UNKNOWN; the other end still fails.
+    #[test]
+    fn floors_soften_their_own_end() {
+        let none = |_: &str| None;
+        let range = Range::Known {
+            min: Bound::Value(1.7),
+            max: Bound::Value(3.3),
+            page: Some(1),
+            note: None,
+            derived: None,
+        };
+        let ends = compare(Span::new(0.0, 3.5), (true, false), &range, &none);
+        assert_eq!(ends.iter().map(is).collect::<Vec<_>>(), ["unknown", "fail"]);
+        assert_eq!(verdict(&ends).0, Verdict::Fail);
+        let ends = compare(Span::new(0.0, 3.2), (true, false), &range, &none);
+        assert_eq!(verdict(&ends).0, Verdict::Unknown);
+    }
+
+    /// Magnitude takes its floor from the end it comes from.
+    #[test]
+    fn magnitude_floors() {
+        assert!(!magnitude_floor(Span::new(0.0, 3.3), (true, false)));
+        assert!(magnitude_floor(Span::new(-5.0, 3.3), (true, false)));
     }
 }

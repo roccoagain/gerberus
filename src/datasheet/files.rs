@@ -51,7 +51,7 @@ pub fn lcsc_pdf_link(html: &str) -> Option<String> {
 
 /// The folder a board keeps its datasheet PDFs in, beside its `parts/` folder. `datasheet verify` reads a part's
 /// PDF from there before it downloads anything, and `doctor` says what name to save each one under.
-pub const FOLDER: &str = "datasheets";
+const FOLDER: &str = "datasheets";
 
 /// The name a part's datasheet is saved under: the part number, cleaned as a part file's name is, with `.pdf`.
 pub fn saved_name(mpn: &str) -> String {
@@ -60,7 +60,7 @@ pub fn saved_name(mpn: &str) -> String {
 }
 
 /// The first of `names` saved in `dir`: an exact match first, then one in any letter case.
-pub fn saved_in(dir: &Path, names: &[String]) -> Option<PathBuf> {
+fn saved_in(dir: &Path, names: &[String]) -> Option<PathBuf> {
     let files: Vec<PathBuf> = std::fs::read_dir(dir)
         .ok()?
         .filter_map(Result::ok)
@@ -83,7 +83,7 @@ pub fn saved_in(dir: &Path, names: &[String]) -> Option<PathBuf> {
 
 /// The folder datasheets go in for part files kept in `parts`: `datasheets/` beside it. A folder named only by
 /// `.` or `..` is resolved first, so `parts/` itself still finds the board's folder.
-pub fn folder_beside(parts: &Path) -> PathBuf {
+fn folder_beside(parts: &Path) -> PathBuf {
     let named = matches!(parts.components().next_back(), Some(std::path::Component::Normal(_)));
     let parts = if named {
         parts.to_path_buf()

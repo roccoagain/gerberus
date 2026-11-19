@@ -80,12 +80,12 @@ Every command reads a design into one design graph and checks that.
 - `src/finding.rs` holds what every checker reports (`Finding`, `Verdict`, `Severity`, `Waived`), and
   `src/units.rs` reads component values (`10k`, `100nF`, `4.7uH`).
 - `src/inputs.rs` reads a board's `inputs.toml`.
-- `src/voltage.rs` works out every net's worst-case voltage range. `check` runs the rules in `src/rules.rs`
+- `src/voltage/` works out every net's worst-case voltage range. `check` runs the rules in `src/rules/`
   against it, with the `esd` and `reverse-polarity` rules from `src/protection.rs` and the junction-temperature and
   forward-current rules from `src/thermal.rs`.
 - `src/spice/` runs the hot-plug stress simulation in ngspice (`stress`).
 - `src/doctor.rs` (`doctor`) traces each UNKNOWN finding back to what it waits on.
-- `src/pinout.rs` (`pinout`), `src/bom.rs` (`bom`), `src/si/` (`si`) and `src/datasheet.rs` (`datasheet`) each
+- `src/pinout.rs` (`pinout`), `src/bom.rs` (`bom`), `src/si/` (`si`) and `src/datasheet/` (`datasheet`) each
   back one command.
 - `src/main.rs` is the command line. `src/lib.rs` declares the modules, so tests can use them.
 

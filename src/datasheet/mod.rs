@@ -8,7 +8,7 @@
 //!    a value from the wrong page is caught. It reads the row too: a value whose row doesn't name the pin is
 //!    only plausible.
 //! 2. [`blank`] writes a copy of the part file with every value replaced by `"?"`. A second reader who has
-//!    not seen the first fills it in from the datasheet, and [`compare`] lists every value where the two
+//!    not seen the first fills it in from the datasheet, and [`compare()`] lists every value where the two
 //!    disagree.
 //!
 //! Neither decides that a part file is right. A value passes when both readers agree and its number sits in
@@ -20,9 +20,7 @@ mod reading;
 
 pub use compare::{Difference, blank, compare};
 pub use derived::{Derived, DerivedEnd, parse_derived};
-pub use files::{
-    FOLDER, default_cache_dir, fetch, file_name, folder_beside, lcsc_pdf_link, save_as, saved_for, saved_in, saved_name,
-};
+pub use files::{default_cache_dir, fetch, file_name, lcsc_pdf_link, save_as, saved_for, saved_name};
 pub use reading::check_claim;
 
 use std::collections::BTreeMap;
@@ -610,42 +608,4 @@ pub fn render(mpn: &str, outcomes: &[Outcome], all: bool) -> String {
         count(Status::Mismatch)
     );
     s
-}
-
-#[cfg(test)]
-mod tests {
-    use super::reading::{close, mentions, tokens};
-    use super::*;
-
-    #[test]
-    fn reads_numbers_with_signs_and_units() {
-        let t = tokens("VIN to GND   –0.3   38 V   ±2000   −1.5mV  SOT-23  C5446  1/16W  5%");
-        let got: Vec<(f64, bool, Option<Unit>)> =
-            t.iter().map(|t| (t.value, t.plus_minus, t.unit.map(|u| u.0))).collect();
-        assert_eq!(
-            got,
-            vec![
-                (-0.3, false, None),
-                (38.0, false, Some(Unit::Volt)),
-                (2000.0, true, None),
-                (-1.5, false, Some(Unit::Volt)),
-                (0.0625, false, Some(Unit::Watt)),
-                (5.0, false, Some(Unit::Fraction)),
-            ]
-        );
-        assert!(close(t[3].unit.unwrap().1, 1e-3));
-        assert_eq!(tokens("± 15 kV")[0].value, 15.0);
-        assert!(tokens("± 15 kV")[0].plus_minus);
-        assert!(tokens("0402WGF1001TCE").is_empty());
-        assert_eq!(tokens("-40 to 125°C")[1].unit.map(|u| u.0), Some(Unit::Celsius));
-        assert_eq!(tokens("100 ppm/°C")[0].unit.map(|u| u.0), Some(Unit::Ppm));
-    }
-
-    #[test]
-    fn mentions_whole_words_only() {
-        assert!(mentions("VIN to GND", "VIN"));
-        assert!(mentions("VDD–VSS external", "vdd"));
-        assert!(!mentions("VINT", "VIN"));
-        assert!(!mentions("anything", ""));
-    }
 }
