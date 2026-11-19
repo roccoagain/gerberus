@@ -1,3 +1,4 @@
+//! Turns a design into an ngspice netlist for one run of the sweep.
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
@@ -9,6 +10,7 @@ use crate::policy::SpicePolicy;
 use crate::units::{parse_farads, parse_henries, parse_ohms};
 use crate::voltage::{Voltages, resistance_range};
 
+/// A part value: fixed, or drawn from `[lo, hi]` on each run.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value {
     Fixed(f64),
@@ -45,12 +47,14 @@ enum Element {
         b: usize,
         henries: Value,
     },
+    /// A diode from `a` (anode) to `k`, with its model card.
     D {
         name: String,
         a: usize,
         k: usize,
         model: String,
     },
+    /// A regulator: holds `output` at `set`, or `drop` below `input` when that is lower.
     Reg {
         name: String,
         input: usize,
@@ -59,6 +63,7 @@ enum Element {
         drop: f64,
         switching: bool,
     },
+    /// An IC's supply current, drawn in full once its rail reaches `on` volts.
     Load {
         name: String,
         rail: usize,
@@ -67,6 +72,7 @@ enum Element {
     },
 }
 
+/// A supply input switched on through the cable.
 #[derive(Debug, Clone, PartialEq)]
 struct Source {
     name: String,
@@ -75,13 +81,17 @@ struct Source {
     volts: f64,
 }
 
+/// A design as ngspice elements.
 #[derive(Debug, Clone)]
 pub struct Circuit {
     ground: Vec<bool>,
     elements: Vec<Element>,
     sources: Vec<Source>,
+    /// Parts left out, with why.
     skipped: Vec<String>,
+    /// For each net, the first part on it that isn't modelled.
     unmodelled: BTreeMap<usize, String>,
+    /// For each net, the lowest voltage the static analysis gives it once powered, when that is a firm value.
     expected: Vec<Option<f64>>,
 }
 
@@ -89,8 +99,13 @@ fn is_ground(volts: &Voltages, net: usize) -> bool {
     volts.nets[net].span.min == Some(0.0) && volts.nets[net].span.max == Some(0.0)
 }
 
+/// A TVS diode's resistance past breakdown, in ohms, when its part file gives no `clamp` figure: a soft guess
+/// on the pessimistic side (the SMAJ18A's (29.2 V − 22.1 V) / 13.7 A is 0.52 Ω; small ESD diodes are about
+/// 1 Ω). A softer clamp lets the rail behind it go higher.
 pub const TVS_OHMS: f64 = 1.0;
 
+/// A TVS diode's resistance past breakdown: from its clamping voltage at its pulse current, measured from the
+/// top of its breakdown range, or [`TVS_OHMS`].
 fn tvs_ohms(l: &crate::limits::Limit, bv: f64) -> f64 {
     l.clamp
         .as_ref()
@@ -99,8 +114,12 @@ fn tvs_ohms(l: &crate::limits::Limit, bv: f64) -> f64 {
         .unwrap_or(TVS_OHMS)
 }
 
+/// The resistance an IC's forward drive (a transistor's body diode, such as a P-FET reverse-polarity switch)
+/// is modelled with: its channel switched on, bypassing the diode, so what passes through is as high as it
+/// can be.
 pub const SWITCH_OHMS: f64 = 0.05;
 
+/// A part's forward drop and its test current, from its forward drive.
 fn forward(part: Option<&Part>, led: bool) -> (f64, f64) {
     let drive = part.and_then(|p| p.drives.iter().find(|d| d.kind == DriveKind::Forward));
     let vf = drive
@@ -116,6 +135,7 @@ fn forward(part: Option<&Part>, led: bool) -> (f64, f64) {
     (vf, at)
 }
 
+/// A diode's model card: `vf` volts at `at` amps forward, series resistance `rs`, and a reverse breakdown.
 fn diode_model(name: &str, vf: f64, at: f64, led: bool, rs: f64, bv: Option<f64>) -> String {
     let n = if led { 2.0 } else { 1.0 };
     let vt = 0.025_85;
@@ -124,6 +144,8 @@ fn diode_model(name: &str, vf: f64, at: f64, led: bool, rs: f64, bv: Option<f64>
     format!(".model {name} D(IS={is:e} N={n} RS={}{bv})", sig(rs))
 }
 
+/// The voltage a protection limit breaks down at: its maximum, as a part can clamp that high, or its minimum
+/// when only that is given.
 fn breakdown_at(r: &Range) -> Option<f64> {
     match r {
         Range::Known { min, max, .. } => match (max, min) {
@@ -134,21 +156,27 @@ fn breakdown_at(r: &Range) -> Option<f64> {
     }
 }
 
+/// The pair of nets `V(a) − V(b)` is measured on, with ground written as `None`; `None` when the difference is
+/// always 0.
 pub type Pair = (usize, Option<usize>);
 
 impl Circuit {
+    /// Whether a net is the simulation's ground.
     pub fn is_ground(&self, net: usize) -> bool {
         self.ground.get(net).copied().unwrap_or(false)
     }
 
+    /// The first part on a net that isn't modelled.
     pub fn unmodelled_on(&self, net: usize) -> Option<&str> {
         self.unmodelled.get(&net).map(String::as_str)
     }
 
+    /// Parts left out of the simulation, with why.
     pub fn skipped(&self) -> &[String] {
         &self.skipped
     }
 
+    /// The inputs switched on, for the report.
     pub fn inputs(&self, design: &Design) -> Vec<String> {
         self.sources
             .iter()
@@ -156,6 +184,7 @@ impl Circuit {
             .collect()
     }
 
+    /// The net a part's pin is on, by the pin's datasheet name.
     pub fn pin_net(&self, c: &Component, part: &Part, name: &str) -> Option<usize> {
         part.pins_named(name)
             .into_iter()
@@ -163,15 +192,19 @@ impl Circuit {
             .or_else(|| c.pins.get(name).map(|p| p.net))
     }
 
+    /// The pair `V(a) − V(b)` is measured on, with ground as `None`; `None` when it is always 0.
     pub fn key(&self, a: usize, b: usize) -> Option<Pair> {
         let b = (!self.is_ground(b)).then_some(b);
         (Some(a) != b && !(self.is_ground(a) && b.is_none())).then_some((a, b))
     }
 
+    /// The lowest voltage the static analysis says a net reaches once powered, when it gives a firm one.
     pub fn expected(&self, net: usize) -> Option<f64> {
         self.expected.get(net).copied().flatten()
     }
 
+    /// Every pair of nets a voltage limit reads: each pin against the limit's reference, and against any
+    /// pin a bound is relative to (`max = VDD + 0.3`).
     pub fn pairs(&self, design: &Design, lib: &Library) -> Vec<Pair> {
         let mut out: BTreeSet<Pair> = BTreeSet::new();
         for c in design.components.values() {
@@ -202,6 +235,7 @@ impl Circuit {
         out.into_iter().collect()
     }
 
+    /// Every net a pair touches, measured from ground, so a check can tell whether the run powered it.
     pub fn with_nets(&self, pairs: &[Pair]) -> Vec<Pair> {
         let mut all: BTreeSet<Pair> = pairs.iter().copied().collect();
         for &(a, b) in pairs {
@@ -222,6 +256,7 @@ impl Circuit {
         }
     }
 
+    /// One run's netlist, with a measurement for every pair, and a line saying what was drawn.
     pub fn netlist(
         &self,
         policy: &SpicePolicy,
@@ -268,6 +303,7 @@ impl Circuit {
                     );
                 }
                 Element::L { name, a, b, henries } => {
+                    // A little winding resistance keeps the matrix well behaved.
                     let _ = writeln!(
                         s,
                         "L{name} {} x{name} {:e}\nRL{name} x{name} {} 0.01",
@@ -292,6 +328,7 @@ impl Circuit {
                     let (i, o) = (self.node(*input), self.node(*output));
                     let v = set.draw(rng.as_deref_mut());
                     let draw = if *switching {
+                        // Power in = power out (100 % efficiency): the least it can draw.
                         format!("max(i(VS{name}),0)*v({o})/max(v({i}),1)")
                     } else {
                         format!("max(i(VS{name}),0)")
@@ -311,6 +348,8 @@ impl Circuit {
         for m in models {
             let _ = writeln!(s, "{m}");
         }
+        // Every measured net gets a path to ground, so it exists in ngspice even when no modelled part
+        // touches it (a measurement on a missing node fails).
         let nets: BTreeSet<usize> = pairs
             .iter()
             .flat_map(|&(a, b)| std::iter::once(a).chain(b))
@@ -322,6 +361,8 @@ impl Circuit {
         let step = (policy.duration / 20_000.0).min(policy.rise_time / 4.0);
         let _ = writeln!(s, ".tran {step:e} {:e} 0 {step:e}", policy.duration);
         for (i, &(a, b)) in pairs.iter().enumerate() {
+            // ngspice's .meas takes a difference only as an expression (`v(a,b)` and `-v(b)` fail), and allows
+            // at most 99 of those, so a difference is formed by a source on a node of its own.
             let v = match b {
                 None => format!("v({})", self.node(a)),
                 Some(b) => {
@@ -349,6 +390,7 @@ fn not_a_supply(input: &crate::inputs::Input) -> bool {
     input.min <= 0.0
 }
 
+/// Builds the circuit: every part gerberus can model, and the board's supply inputs.
 pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Voltages) -> Result<Circuit, String> {
     let n = design.nets.len();
     let mut c = Circuit {
@@ -363,6 +405,8 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
             .map(|n| n.span.min.filter(|&v| v > 0.0 && !n.floor))
             .collect(),
     };
+    // Supply inputs (a positive minimum) are switched on; signal inputs are left open, as their drivers'
+    // own resistance and slew aren't known.
     for input in inputs.inputs.iter().filter(|i| i.fault.is_none()) {
         if not_a_supply(input) {
             c.skipped.push(format!(
@@ -438,6 +482,7 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
             || lib_id.starts_with("Device:NetTie")
             || ferrite;
         if two && short {
+            // Closed: the worst case for stress, as nothing is cut off.
             c.elements.push(Element::R {
                 name: reference.clone(),
                 a: nets[0],
@@ -549,6 +594,7 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
                         let model = diode_model(&format!("DM_{name}"), vf, at, false, tvs_ohms(l, bv), Some(bv));
                         any = true;
                         if l.bidirectional {
+                            // Two diodes back to back, each breaking down at the rating.
                             let mid = format!("{name}m");
                             c.elements.push(Element::D {
                                 name: format!("{name}a"),
@@ -595,6 +641,7 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
                             .find(|d| d.kind == DriveKind::Regulates && d.pin == r.pin)
                             .and_then(|d| d.headroom.as_ref());
                         let switching = head.is_some_and(|h| h.duty < 1.0);
+                        // The model can only step down: its output follows its input when that is lower.
                         if volts.nets[r.supply].span.max.is_some_and(|v| h.min > v) {
                             skip(&mut c, "it steps its input up, which isn't modelled".into());
                             c.unmodelled.entry(r.output).or_insert_with(|| reference.clone());
@@ -614,6 +661,8 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
                         });
                     }
                 }
+                // A transistor's forward drive (a P-FET's body diode, which its channel bypasses once switched
+                // on) passes power on: it is the channel, switched on.
                 if !regulators.contains(reference.as_str()) {
                     for (k, d) in p.drives.iter().filter(|d| d.kind == DriveKind::Forward).enumerate() {
                         let (Some(a), Some(b)) = (c.pin_net(comp, p, &d.pin), c.pin_net(comp, p, &d.to)) else {
@@ -627,6 +676,8 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
                         });
                     }
                 }
+                // A switch node swings between the supply and ground at the switching frequency; the
+                // regulator here is an averaged source, so those pins aren't modelled.
                 for d in p.drives.iter().filter(|d| d.kind == DriveKind::Switches) {
                     if let Some(net) = c.pin_net(comp, p, &d.pin) {
                         c.unmodelled
@@ -660,6 +711,7 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
             _ => skip(&mut c, "gerberus has no model for it".into()),
         }
     }
+    // Bidirectional TVS pairs share a middle node, written into the model text after ';'.
     let mut mids: BTreeMap<String, usize> = BTreeMap::new();
     for e in &mut c.elements {
         if let Element::D { k, model, .. } = e

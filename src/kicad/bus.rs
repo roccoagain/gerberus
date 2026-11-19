@@ -1,29 +1,43 @@
+//! Bus names as KiCad reads them from labels and sheet pins: vectors such as `D[0..7]` and groups such as
+//! `USB{DP DM}` or `{CTRL}`, where `CTRL` is a bus alias.
+//!
+//! Ported from KiCad's `NET_SETTINGS::ParseBusVector`, `NET_SETTINGS::ParseBusGroup` and
+//! `SCH_CONNECTION::ConfigureFromLabel`.
 use std::collections::HashMap;
 
+/// Bus aliases by name, each with its member names.
 pub type Aliases = HashMap<String, Vec<String>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BusKind {
+    /// `D[0..7]`: members pair up across sheets by position.
     Vector,
+    /// `USB{DP DM}`: members pair up across sheets by name.
     Group,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Member {
+    /// The name without a group's prefix, such as `DP` in `USB{DP DM}`.
     pub local: String,
+    /// The net name, such as `USB.DP`.
     pub name: String,
+    /// Position inside its vector, so `D3` in `D[0..7]` is 3. KiCad leaves this at 0 for a plain group member.
     pub index: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bus {
     pub kind: BusKind,
+    /// Every net in the bus, with vectors inside a group flattened in place.
     pub members: Vec<Member>,
 }
 
+/// Vectors with more members than this are read as plain names, to keep a typo like `D[0..99999999]` cheap.
 const MAX_VECTOR: i64 = 4096;
 
 impl Bus {
+    /// The member of this bus that `other` pairs with, as KiCad's `CONNECTION_GRAPH::matchBusMember` does.
     pub fn find(&self, other: &Member) -> Option<usize> {
         match self.kind {
             BusKind::Vector => self.members.iter().position(|m| m.index == other.index),
@@ -35,6 +49,7 @@ impl Bus {
         }
     }
 
+    /// True if every member of `other` is also in this bus.
     pub fn contains_all(&self, other: &Bus) -> bool {
         other
             .members
@@ -43,6 +58,7 @@ impl Bus {
     }
 }
 
+/// Reads a label as a bus, or returns `None` if it names a single net.
 pub fn parse(label: &str, aliases: &Aliases) -> Option<Bus> {
     if let Some((_, names)) = parse_vector(label) {
         let members = names
@@ -60,6 +76,7 @@ pub fn parse(label: &str, aliases: &Aliases) -> Option<Bus> {
         });
     }
     let (group, names) = parse_group(label)?;
+    // A named group prefixes its members' net names; an unnamed one does not.
     let prefix = if group.is_empty() {
         String::new()
     } else {
@@ -92,6 +109,8 @@ fn add_member(members: &mut Vec<Member>, prefix: &str, name: &str) {
             });
         }
     } else if parse_group(name).is_some() {
+        // A group nested in a group (only possible through an alias). KiCad does not join these members to
+        // anything either.
     } else {
         members.push(Member {
             local: name.to_string(),
@@ -101,14 +120,17 @@ fn add_member(members: &mut Vec<Member>, prefix: &str, name: &str) {
     }
 }
 
+/// `_`, `^` and `~` before `{` start subscript, superscript and overbar markup, not a bus group.
 fn is_markup(c: char) -> bool {
     matches!(c, '_' | '^' | '~')
 }
 
+/// A `"` that is not escaped with a backslash.
 fn is_quote(s: &[char], i: usize) -> bool {
     s[i] == '"' && (i == 0 || s[i - 1] != '\\')
 }
 
+/// Reads `PREFIX[M..N]SUFFIX` into the prefix and the member names.
 fn parse_vector(text: &str) -> Option<(String, Vec<String>)> {
     let s: Vec<char> = text.chars().collect();
     let mut i = 0;
@@ -153,8 +175,10 @@ fn parse_vector(text: &str) -> Option<(String, Vec<String>)> {
                     && is_markup(prefix[open - 1])
                 {
                     if open == prefix.len() - 1 {
+                        // `D_{[1..2]}`: the markup decorates the range, not the name.
                         prefix.truncate(open - 1);
                     } else {
+                        // `~{BE[0..3]}`: the markup wraps the whole name.
                         markup_wraps_name = true;
                     }
                 }
@@ -222,6 +246,7 @@ fn parse_vector(text: &str) -> Option<(String, Vec<String>)> {
     Some((prefix, names))
 }
 
+/// Reads `NAME{A B C}` (members split by spaces or commas) into the name and the member names.
 fn parse_group(text: &str) -> Option<(String, Vec<String>)> {
     let s: Vec<char> = text.chars().collect();
     let mut i = 0;
@@ -333,6 +358,7 @@ mod tests {
         assert_eq!(names("[1..2]").unwrap(), ["1", "2"]);
         assert_eq!(names("~{BE[0..1]}").unwrap(), ["~{BE0}", "~{BE1}"]);
         assert_eq!(names("D_{[1..2]}").unwrap(), ["D1", "D2"]);
+        // Not buses: a single member, an unknown suffix, an unclosed range, a plain name.
         for net in ["D[1..1]", "D[0..1]X", "D[0..1", "D0", "D[0..1] X"] {
             assert_eq!(names(net), None, "{net}");
         }
@@ -354,6 +380,7 @@ mod tests {
         let bus = parse("PWR{CTRL RST}", &aliases).unwrap();
         let got: Vec<&str> = bus.members.iter().map(|m| m.name.as_str()).collect();
         assert_eq!(got, ["PWR.EN", "PWR.D0", "PWR.D1", "PWR.RST"]);
+        // A bare alias name is a net, as in KiCad.
         assert_eq!(parse("CTRL", &aliases), None);
     }
 
@@ -362,9 +389,11 @@ mod tests {
         let aliases = Aliases::new();
         let d = parse("D[0..3]", &aliases).unwrap();
         let b = parse("B[4..7]", &aliases).unwrap();
+        // Vectors pair by position, whatever the names.
         assert_eq!(d.find(&b.members[1]), Some(1));
         let g = parse("USB{DP DM}", &aliases).unwrap();
         let h = parse("X{DM DP}", &aliases).unwrap();
+        // Groups pair by name without the prefix.
         assert_eq!(g.find(&h.members[0]), Some(1));
         assert!(d.contains_all(&parse("D[1..2]", &aliases).unwrap()));
     }

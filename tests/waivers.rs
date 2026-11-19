@@ -1,3 +1,5 @@
+//! `waivers.toml`: accepted findings leave the counts with their reason, and a waiver that matches nothing is a
+//! warning.
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -57,12 +59,14 @@ fn a_waiver_takes_its_findings_out_of_the_counts() {
         after.0 + after.1 + after.2 + gone,
         "the unused waiver adds one warning"
     );
+    // The second waiver matched nothing: a warning names it.
     assert!(
         waived
             .findings
             .iter()
             .any(|f| f.rule == "waiver" && f.message.contains("no such pin"))
     );
+    // JSON carries the waived findings with their reasons.
     let json = serde_json::to_string(&waived).unwrap();
     assert!(json.contains("\"waived\"") && json.contains("checked by hand"));
 }
@@ -76,6 +80,7 @@ fn bad_waivers_are_refused() {
     assert!(toml::from_str::<Waivers>("[[waiver]]\nrule = \"esd\"\nreference = \"U4\"\n").is_err());
 }
 
+/// `check` reads waivers.toml next to the schematic, and --all lists what it waived.
 #[test]
 fn check_reads_the_file_next_to_the_schematic() {
     let dir = std::env::temp_dir().join(format!("gerberus-waivers-{}", std::process::id()));
@@ -121,6 +126,7 @@ fn check_reads_the_file_next_to_the_schematic() {
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains("waived[") && text.contains("waived: accepted"), "{text}");
+    // A waiver for a part the design doesn't have stops the check.
     std::fs::write(
         dir.join("waivers.toml"),
         "[[waiver]]\nrule = \"esd\"\nreference = \"U999\"\nreason = \"x\"\n",
@@ -144,6 +150,7 @@ fn kitchen_sink() -> (
     (design, v, report)
 }
 
+/// Two waivers that match the same finding are both in use: neither is reported as matching nothing.
 #[test]
 fn overlapping_waivers_are_both_used() {
     let (design, v, report) = kitchen_sink();
@@ -170,10 +177,12 @@ fn overlapping_waivers_are_both_used() {
         "{:#?}",
         waived.findings
     );
+    // The note names the file the waivers came from.
     let text = render(&design, &v, &waived, &Show::default());
     assert!(text.contains("waived in custom.toml"), "{text}");
 }
 
+/// A reverse-polarity summary that FAILs only because of its fault case's FAILs is waived with them.
 #[test]
 fn waiving_a_fault_cases_failures_waives_its_summary() {
     let (_, _, report) = kitchen_sink();
@@ -205,6 +214,8 @@ fn waiving_a_fault_cases_failures_waives_its_summary() {
     assert!(waived.waived.iter().any(|w| w.finding == summary));
 }
 
+/// A waiver an agent proposed doesn't apply until a person deletes its `proposed` line: the finding still
+/// counts, with a note that names who proposed it and why.
 #[test]
 fn a_proposed_waiver_waits_for_a_person() {
     let dir = root("tests/fixtures/kitchen-sink");
@@ -246,12 +257,14 @@ fn a_proposed_waiver_waits_for_a_person() {
         "{}",
         still.message
     );
+    // Approved: the line is gone, and the finding leaves the counts.
     let approved: Waivers = toml::from_str(&text("by = \"Rocco\"\n")).unwrap();
     let mut r = report.clone();
     approved.apply(&mut r, "waivers.toml");
     assert!(!r.waived.is_empty());
     let empty: Waivers = toml::from_str(&text("proposed = \" \"\n")).unwrap();
     assert!(!empty.problems(&design).is_empty());
+    // Both at once is a mistake: approving means deleting `proposed`.
     let both: Waivers = toml::from_str(&text("by = \"Rocco\"\nproposed = \"Claude\"\n")).unwrap();
     assert!(!both.problems(&design).is_empty());
 }

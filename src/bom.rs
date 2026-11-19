@@ -1,3 +1,12 @@
+//! BOM health: whether each part on the board can still be bought, and from whom.
+//!
+//! Parts are grouped into BOM lines by the same part number the limits library uses ([`component_mpn`]),
+//! then looked up at LCSC by the schematic's LCSC number, through the JSON endpoint behind its product pages,
+//! which needs no key. It gives stock, LCSC's own listing status and similar parts, but not the manufacturer's
+//! lifecycle.
+//!
+//! Lookups are cached on disk, so a check can run offline against the last answer and tests never touch the
+//! network.
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -8,18 +17,29 @@ use crate::design::{Component, Design};
 use crate::limits::{Library, component_mpn};
 use crate::spec::{Spec, compare};
 
+/// Schematic fields that may hold an LCSC part number, in the order they are tried. KiCad libraries and
+/// JLCPCB's tooling use all of these.
 pub const LCSC_FIELDS: [&str; 5] = ["LCSC", "LCSC Part", "LCSC Part #", "JLCPCB Part #", "JLC"];
 
+/// One BOM line: every fitted part that shares a part number and a distributor part number.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Line {
+    /// The part number from the `MPN` field, or the value when there is none (as the limits library does).
     pub mpn: String,
+    /// Whether `mpn` came from an `MPN` field rather than the value.
     pub has_mpn_field: bool,
+    /// The LCSC part number, such as `C1525`, if the schematic gives one.
     pub lcsc: Option<String>,
+    /// The raw text of an LCSC field that isn't an LCSC part number.
     pub bad_lcsc: Option<String>,
     pub references: Vec<String>,
+    /// A plain resistor or non-polarised capacitor (KiCad `Device:R…` or `Device:C…` symbol). Many makers
+    /// build the same value and size, so a single LCSC listing is not a sourcing risk.
     pub commodity: bool,
 }
 
+/// Groups the fitted parts of a design into BOM lines. Parts that are not fitted, not in the BOM or not on the
+/// board are left out.
 pub fn lines(design: &Design) -> Vec<Line> {
     let mut by_key: BTreeMap<(String, Option<String>, Option<String>), Line> = BTreeMap::new();
     for (r, c) in &design.components {
@@ -45,6 +65,8 @@ pub fn lines(design: &Design) -> Vec<Line> {
                 references: Vec::new(),
                 commodity: true,
             });
+        // One part with an MPN field is enough to compare against LCSC; one part that isn't a plain
+        // resistor or capacitor makes the whole line a sourcing question.
         line.has_mpn_field |= has_mpn_field;
         line.commodity &= is_commodity(c);
         line.references.push(r.clone());
@@ -57,6 +79,8 @@ pub fn lines(design: &Design) -> Vec<Line> {
     out
 }
 
+/// KiCad's plain resistor and non-polarised capacitor symbols. Anything else (crystals, shunts, trimmers,
+/// polarised capacitors) is not a commodity.
 const COMMODITY_SYMBOLS: [&str; 8] = [
     "Device:R",
     "Device:R_Small",
@@ -80,12 +104,14 @@ fn lcsc_field(c: &Component) -> Option<&str> {
         .find(|s| !s.is_empty() && *s != "~")
 }
 
+/// `C1525`, `c1525` and ` C1525 ` are all `C1525`. Anything else is not an LCSC part number.
 pub fn normalize_lcsc(s: &str) -> Option<String> {
     let s = s.trim();
     let digits = s.strip_prefix('C').or_else(|| s.strip_prefix('c'))?;
     (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())).then(|| format!("C{digits}"))
 }
 
+/// Orders `C2` before `C10`.
 fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     fn split(s: &str) -> (&str, u64, &str) {
         let start = s.find(|c: char| c.is_ascii_digit()).unwrap_or(s.len());
@@ -97,16 +123,26 @@ fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     split(a).cmp(&split(b)).then_with(|| a.cmp(b))
 }
 
+/// What a distributor says about one of its part numbers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Listing {
+    /// The distributor's part number, such as `C1525`.
     pub code: String,
+    /// The manufacturer part number the distributor sells under this code.
     pub mpn: String,
     pub manufacturer: String,
+    /// Units in stock.
     pub stock: u64,
+    /// The distributor's own listing status (LCSC's `productCycle`, `normal` for a part it sells normally).
+    /// This is not the manufacturer's lifecycle.
     pub status: String,
+    /// JLCPCB assembly class: `basic` or `extended`, when LCSC gives one.
     pub assembly: Option<String>,
     pub package: String,
+    /// Parts the distributor lists as similar. Nobody has checked that they fit or meet the same ratings.
     pub similar: Vec<Similar>,
+    /// The distributor's parameter table (LCSC's `paramVOList`), such as `Resistance` = `2.2Ω`. Empty for
+    /// answers cached by gerberus before 0.4.
     #[serde(default)]
     pub params: BTreeMap<String, String>,
 }
@@ -123,6 +159,7 @@ pub struct Similar {
 }
 
 impl Listing {
+    /// Reads LCSC's product detail JSON. `Ok(None)` means LCSC answered but has no listing for the code.
     pub fn from_lcsc_json(json: &serde_json::Value) -> Result<Option<Listing>, String> {
         if json.get("ok").and_then(serde_json::Value::as_bool) != Some(true)
             || json.get("code").and_then(serde_json::Value::as_i64) != Some(200)
@@ -195,27 +232,41 @@ impl Listing {
     }
 }
 
+/// Where listings come from.
 pub trait Source {
+    /// `Ok(None)` when the distributor has no listing for `code`.
     fn listing(&mut self, code: &str) -> Result<Option<Listing>, String>;
+    /// Why the last answer for `code` may be out of date, such as a cached answer used because a fresh
+    /// lookup failed.
     fn caveat(&self, _code: &str) -> Option<String> {
         None
     }
 }
 
+/// One cached answer. `listing: None` caches "the distributor has no such part" too.
 #[derive(Debug, Serialize, Deserialize)]
 struct CacheEntry {
+    /// Seconds since the Unix epoch.
     fetched: u64,
     listing: Option<Listing>,
+    /// [`CACHE_VERSION`] when written. An older entry lacks fields (LCSC's parameters), so it is fetched
+    /// again when online and used as it is offline.
     #[serde(default)]
     version: u32,
 }
 
+/// Version 2 added LCSC's parameter table.
 const CACHE_VERSION: u32 = 2;
 
+/// A distributor asked over the network, with answers cached on disk.
 pub struct Online {
+    /// One JSON file per part. Without it every lookup goes to the network.
     pub cache: Option<PathBuf>,
+    /// Cached answers younger than this are used without asking again.
     pub max_age: Duration,
+    /// Use only the cache, whatever its age; a part that isn't cached is an error.
     pub offline: bool,
+    /// The lookup endpoint. Tests point it somewhere unreachable.
     pub endpoint: String,
     agent: Option<ureq::Agent>,
     caveats: BTreeMap<String, String>,
@@ -224,6 +275,7 @@ pub struct Online {
 const LCSC_DETAIL: &str = "https://wmsc.lcsc.com/ftps/wm/product/detail?productCode=";
 
 impl Online {
+    /// An LCSC source.
     pub fn new(cache: Option<PathBuf>, max_age: Duration, offline: bool) -> Online {
         Online {
             endpoint: LCSC_DETAIL.to_string(),
@@ -235,6 +287,7 @@ impl Online {
         }
     }
 
+    /// `$XDG_CACHE_HOME/gerberus/lcsc`, or `~/.cache/gerberus/lcsc`.
     pub fn default_cache_dir() -> Option<PathBuf> {
         let base = std::env::var_os("XDG_CACHE_HOME")
             .filter(|v| !v.is_empty())
@@ -243,6 +296,8 @@ impl Online {
         Some(base.join("gerberus").join("lcsc"))
     }
 
+    /// A part number as a file name: letters, digits, `-` and `.` are kept, anything else becomes `_` and its
+    /// hex code, so `ABC/123` and `ABC_123` don't share a file.
     fn cache_path(&self, code: &str) -> Option<PathBuf> {
         use std::fmt::Write;
         let mut name = String::new();
@@ -256,6 +311,7 @@ impl Online {
         Some(self.cache.as_ref()?.join(format!("{name}.json")))
     }
 
+    /// `Ok(None)` when nothing is cached; `Err` when a cache file exists but can't be read.
     fn read_cache(&self, code: &str) -> Result<Option<CacheEntry>, String> {
         let Some(path) = self.cache_path(code) else {
             return Ok(None);
@@ -271,6 +327,8 @@ impl Online {
     }
 
     fn write_cache(&self, code: &str, listing: Option<&Listing>) {
+        // A cache that can't be written only costs a repeat lookup, so it is not an error. Writing to a
+        // temporary file and renaming it means a reader never sees half a file.
         let Some(path) = self.cache_path(code) else { return };
         let entry = CacheEntry {
             fetched: now(),
@@ -300,6 +358,7 @@ impl Online {
                     .proxy(ureq::Proxy::try_from_env())
                     .timeout_global(Some(Duration::from_secs(30)))
                     .user_agent(concat!("gerberus/", env!("CARGO_PKG_VERSION")))
+                    // Error statuses come back as answers, so a 404 can mean "no such part".
                     .http_status_as_error(false)
                     .build()
                     .into()
@@ -320,6 +379,7 @@ impl Online {
     }
 }
 
+/// The status and body of an answer.
 fn read(resp: Result<ureq::http::Response<ureq::Body>, ureq::Error>, code: &str) -> Result<(u16, String), String> {
     let mut resp = resp.map_err(|e| format!("asking LCSC about {code}: {e}"))?;
     let status = resp.status().as_u16();
@@ -347,6 +407,7 @@ impl Source for Online {
                 .map(|c| c.listing)
                 .ok_or_else(|| format!("{code} is not in the LCSC cache and lookups are offline"));
         }
+        // A damaged cache file is refetched rather than trusted.
         let cached = self.read_cache(code).ok().flatten();
         if let Some(c) = &cached
             && now().saturating_sub(c.fetched) < self.max_age.as_secs()
@@ -374,6 +435,7 @@ impl Source for Online {
     }
 }
 
+/// A fixed set of listings, for tests.
 #[derive(Debug, Default)]
 pub struct Fixed(pub BTreeMap<String, Option<Listing>>);
 
@@ -388,8 +450,11 @@ impl Source for Fixed {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
+    /// The board can't be built as drawn.
     Error,
+    /// Worth a look before ordering.
     Warning,
+    /// Not enough data to say.
     Unknown,
     Info,
 }
@@ -407,14 +472,17 @@ impl std::fmt::Display for Severity {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Topic {
+    /// The schematic's distributor number and part number disagree, or one is missing.
     Identity,
     Lifecycle,
     Stock,
     SecondSource,
+    /// What JLCPCB's assembly service needs: an LCSC number on every part, and basic rather than extended parts.
     Assembly,
 }
 
 impl Topic {
+    /// The name in a report, as in `error[bom-stock]`.
     pub fn name(self) -> &'static str {
         match self {
             Topic::Identity => "bom-identity",
@@ -431,7 +499,9 @@ pub struct Finding {
     pub severity: Severity,
     pub topic: Topic,
     pub message: String,
+    /// Supporting facts, each printed on its own `note:` line.
     pub notes: Vec<String>,
+    /// The fix, when there is one to name.
     pub help: Option<String>,
 }
 
@@ -447,16 +517,22 @@ impl Finding {
     }
 }
 
+/// The health of one BOM line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Health {
     pub line: Line,
+    /// `None` when there was nothing to look up, or the lookup failed (see `findings`).
     pub listing: Option<Listing>,
     pub findings: Vec<Finding>,
 }
 
+/// Options for [`check`].
 #[derive(Debug, Clone, Copy)]
 pub struct Options {
+    /// How many boards will be built. Stock below `boards ×` the parts per board is an error.
     pub boards: u64,
+    /// JLCPCB will assemble the board from LCSC's stock: a part with no LCSC number is an error rather than
+    /// unknown, and extended parts are counted and offered basic equivalents.
     pub jlcpcb: bool,
 }
 
@@ -469,11 +545,16 @@ impl Default for Options {
     }
 }
 
+/// Whether a distributor's part number is the schematic's, allowing a packing or plating suffix the schematic
+/// leaves off: `PESD5V0S1BA,115` and `S2B-XH-A(LF)(SN)` are `PESD5V0S1BA` and `S2B-XH-A`. Only a suffix after a
+/// comma or bracket counts, since letters after a part number often name another package (`PESD5V0S1BAF`).
 fn same_mpn(distributor: &str, schematic: &str) -> bool {
     let base = |s: &str| squash(s.split([',', '(']).next().unwrap_or(s));
     squash(distributor) == squash(schematic) || base(distributor) == base(schematic)
 }
 
+/// Upper case with everything but letters and digits removed, so `SM04B-GHS-TB(LF)(SN)` and
+/// `SM04B-GHS-TB_LF_SN` match.
 fn squash(s: &str) -> String {
     s.chars()
         .filter(char::is_ascii_alphanumeric)
@@ -481,6 +562,7 @@ fn squash(s: &str) -> String {
         .collect()
 }
 
+/// Percent-encodes everything but letters, digits and `-._~`, for a URL path segment or a form value.
 fn encode(s: &str) -> String {
     use std::fmt::Write;
     let mut out = String::new();
@@ -494,16 +576,22 @@ fn encode(s: &str) -> String {
     out
 }
 
+/// LCSC's search page for a part number or description, for the user to open.
 pub fn lcsc_search_url(query: &str) -> String {
     format!("https://www.lcsc.com/search?q={}", encode(query))
 }
 
+/// Checks every BOM line of a design against a source, without part files: resistors and capacitors are
+/// compared with LCSC's listing by value and footprint size only.
 pub fn check(design: &Design, source: &mut dyn Source, opts: Options) -> Vec<Health> {
     check_with_parts(design, source, opts, None)
 }
 
+/// Checks every BOM line of a design against a source. With a part library, a resistor's or capacitor's
+/// ratings from the part file of its `MPN` field are compared with LCSC's listing too.
 pub fn check_with_parts(design: &Design, source: &mut dyn Source, opts: Options, lib: Option<&Library>) -> Vec<Health> {
     let lines = lines(design);
+    // Lines with different part numbers can share an LCSC number (`10k` and `10K`); stock must cover them all.
     let mut per_code: BTreeMap<String, u64> = BTreeMap::new();
     for l in &lines {
         if let Some(code) = l.lcsc.clone() {
@@ -640,6 +728,8 @@ pub fn check_with_parts(design: &Design, source: &mut dyn Source, opts: Options,
     out
 }
 
+/// The line's other parts share its LCSC number but may have another footprint (or value, written another way):
+/// each that reads differently from the first is compared with LCSC's listing on its own.
 fn other_references(design: &Design, line: &Line, l: &Listing, first: &Spec, out: &mut Vec<Finding>) {
     let have = Spec::from_lcsc(&l.params, &l.package);
     if have.kind.is_none() {
@@ -668,6 +758,7 @@ fn other_references(design: &Design, line: &Line, l: &Listing, first: &Spec, out
     }
 }
 
+/// What a line's resistor or capacitor should be, from its first part. `None` for anything else.
 fn want_spec(design: &Design, line: &Line, lib: Option<&Library>) -> Option<Spec> {
     if !line.commodity {
         return None;
@@ -678,8 +769,11 @@ fn want_spec(design: &Design, line: &Line, lib: Option<&Library>) -> Option<Spec
     s.kind.is_some().then_some(s)
 }
 
+/// How many of LCSC's similar parts are looked up in full to find equivalents for one line.
 const EQUIVALENT_LOOKUPS: usize = 8;
 
+/// `per_board` counts every part on the board that uses this LCSC number, across all lines. `want` is
+/// what the line's resistor or capacitor should be, when it is one.
 fn judge(
     line: &Line,
     l: &Listing,
@@ -691,6 +785,8 @@ fn judge(
 ) {
     let code = &l.code;
     let have = want.map(|_| Spec::from_lcsc(&l.params, &l.package));
+    // A resistor or capacitor LCSC gives parameters for is compared by what it is, not by its part number:
+    // another maker's part of the same value, size and ratings is the same part to JLCPCB.
     let mut spec_problem = false;
     let mut fix_rating = false;
     let mut identity: Option<usize> = None;
@@ -837,6 +933,8 @@ fn judge(
         ""
     };
     let mut stock: Option<usize> = None;
+    // JLCPCB keeps its own stock of its basic parts, apart from LCSC's retail stock, so LCSC running short of one
+    // is a warning for a JLCPCB build.
     let basic_for_jlcpcb = opts.jlcpcb && l.assembly.as_deref() == Some("basic");
     let short = if basic_for_jlcpcb {
         Severity::Warning
@@ -869,6 +967,9 @@ fn judge(
         ));
     }
 
+    // Equivalents for a resistor or capacitor: LCSC's similar parts, looked up in full and kept when they are
+    // the same value and size, rated at least as well as the schematic's part (or, when that isn't known,
+    // as LCSC's), and in stock for the build.
     if let (Some(w), Some(h)) = (want, &have)
         && h.kind.is_some()
         && (!spec_problem || fix_rating)
@@ -877,6 +978,8 @@ fn judge(
         let wanted_basic = opts.jlcpcb && extended;
         if stock.is_some() || fix_rating || wanted_basic {
             let floor = floor_spec(w, h);
+            // An equivalent is only offered when every rating it must meet is known: LCSC sometimes leaves out a
+            // capacitor's dielectric, and then an X7R part could be offered for a C0G one.
             let missing = floor.missing_ratings();
             let looked = if missing.is_empty() {
                 equivalents(l, &floor, needed.max(1), source)
@@ -978,6 +1081,7 @@ fn judge(
         );
         return;
     }
+    // Resistors and capacitors with LCSC parameters had their similar parts checked above.
     if have.as_ref().is_some_and(|h| h.kind.is_some()) {
         return;
     }
@@ -1042,6 +1146,7 @@ fn push(out: &mut Vec<Finding>, severity: Severity, topic: Topic, message: Strin
     out.len() - 1
 }
 
+/// Whether LCSC's spec gives an attribute that [`compare`] names.
 fn h_has(h: &Spec, what: &str) -> bool {
     match what {
         "value" => h.value.is_some(),
@@ -1054,6 +1159,8 @@ fn h_has(h: &Spec, what: &str) -> bool {
     }
 }
 
+/// What an equivalent must at least be: the schematic's part, with each rating it doesn't give taken from
+/// LCSC's listing. A rating LCSC's part falls short on is one the schematic's part gives, so it comes from there.
 fn floor_spec(want: &Spec, lcsc: &Spec) -> Spec {
     let mut s = want.clone();
     s.tolerance = s.tolerance.or(lcsc.tolerance);
@@ -1064,12 +1171,16 @@ fn floor_spec(want: &Spec, lcsc: &Spec) -> Spec {
     s
 }
 
+/// What [`equivalents`] found, and how far it looked.
 struct Equivalents {
     found: Vec<(Listing, Spec)>,
+    /// Similar parts whose lookup failed or gave no parameters, so weren't judged.
     unread: usize,
+    /// Whether there were more candidates than [`EQUIVALENT_LOOKUPS`].
     capped: bool,
 }
 
+/// LCSC's similar parts that meet `floor` with `needed` in stock, basic parts first, then by stock.
 fn equivalents(l: &Listing, floor: &Spec, needed: u64, source: &mut dyn Source) -> Equivalents {
     let candidates: Vec<&Similar> = l
         .similar
@@ -1102,6 +1213,7 @@ fn equivalents(l: &Listing, floor: &Spec, needed: u64, source: &mut dyn Source) 
     }
 }
 
+/// `value`, `value and size`, `value, size and tolerance`.
 fn join_and(words: &[&str]) -> String {
     match words {
         [] => "nothing".into(),
@@ -1110,6 +1222,7 @@ fn join_and(words: &[&str]) -> String {
     }
 }
 
+/// One line's listing, as the first note of each of its findings.
 fn listing_note(h: &Health) -> Option<String> {
     let l = h.listing.as_ref()?;
     Some(format!(
@@ -1126,6 +1239,8 @@ fn listing_note(h: &Health) -> Option<String> {
     ))
 }
 
+/// The report rustc-style: each error, warning and unknown with its line's parts and listing, a `pass` line
+/// for each line with none (shown with `--all`), and the counts. Info findings become notes.
 pub fn render(report: &[Health], opts: Options, show: &crate::diag::Show) -> String {
     use crate::diag::{Diagnostic, Level};
     let mut out = String::new();
@@ -1134,16 +1249,19 @@ pub fn render(report: &[Health], opts: Options, show: &crate::diag::Show) -> Str
     for h in report {
         let location = format!("{} ({})", h.line.references.join(", "), h.line.mpn);
         let infos: Vec<&Finding> = h.findings.iter().filter(|f| f.severity == Severity::Info).collect();
+        // The JLCPCB summary rides on the last line but is about the whole board.
         let (board, infos): (Vec<&Finding>, Vec<&Finding>) = infos
             .into_iter()
             .partition(|f| f.topic == Topic::Assembly && f.message.contains(" lines are JLCPCB extended"));
         closing.extend(board.iter().map(|f| f.message.clone()));
+        // Each line counts once, at its worst finding.
         match h.findings.iter().map(|f| f.severity).min() {
             Some(Severity::Error) => errors += 1,
             Some(Severity::Warning) => warnings += 1,
             Some(Severity::Unknown) => unknown += 1,
             _ => passed += 1,
         }
+        // A cheaper JLCPCB basic equivalent is worth seeing even on a line with nothing wrong.
         let (todo, infos): (Vec<&Finding>, Vec<&Finding>) = infos.into_iter().partition(|f| f.topic == Topic::Assembly);
         for f in &todo {
             let mut d = Diagnostic::line(
@@ -1213,5 +1331,6 @@ pub fn render(report: &[Health], opts: Options, show: &crate::diag::Show) -> Str
     out
 }
 
+/// Said once per report with `--jlcpcb`.
 pub const JLCPCB_STOCK_NOTE: &str = "stock is LCSC's; JLCPCB keeps its own assembly stock of the same C numbers, \
 which can differ, so check a part LCSC is short of in JLCPCB's parts library before replacing it.";

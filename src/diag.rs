@@ -1,13 +1,29 @@
+//! Terminal output in the style of rustc's diagnostics:
+//!
+//! ```text
+//! error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V
+//!   --> U6.PA4 (/mcu/VSENSE)
+//!    = note: worst case 0 to 26 V
+//!    = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx
+//!    = help: keep the pin inside its rating: a divider, clamp or series resistor, or a part rated higher
+//! ```
+//!
+//! The checkers write each finding as one sentence that cites its numbers. [`Diagnostic::from_message`] splits
+//! that sentence into a headline, where it is, and notes, so the report reads at a glance while every word the
+//! checker wrote is still printed. The JSON output keeps the message whole.
 use std::fmt::Write as _;
 use std::io::IsTerminal as _;
 
+/// How bad a diagnostic is, which picks its label and colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Level {
     Error,
     Warning,
     Unknown,
     Pass,
+    /// Something to add, from `doctor`.
     Todo,
+    /// A finding a waiver accepted.
     Waived,
 }
 
@@ -41,12 +57,14 @@ const GREEN: &str = "1;32";
 pub const BLUE: &str = "1;34";
 pub const BOLD: &str = "1";
 
+/// Whether to write ANSI colour codes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Style {
     pub color: bool,
 }
 
 impl Style {
+    /// Colours only a terminal, and never when `NO_COLOR` is set to anything (<https://no-color.org>).
     pub fn detect() -> Style {
         Style {
             color: std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty()) && std::io::stdout().is_terminal(),
@@ -62,15 +80,20 @@ impl Style {
     }
 }
 
+/// What a report shows besides errors and warnings.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Show {
+    /// List UNKNOWNs and passes, not just count them.
     pub all: bool,
+    /// Print the longer explanations: how each net in a FAIL got its range, and long lists in full.
     pub verbose: bool,
     pub style: Style,
+    /// Columns to wrap notes at; 0 means 100.
     pub width: usize,
 }
 
 impl Show {
+    /// Everything, uncoloured: what `--all --verbose` prints with `NO_COLOR` set.
     pub fn everything() -> Show {
         Show {
             all: true,
@@ -80,10 +103,12 @@ impl Show {
         }
     }
 
+    /// The column notes wrap at.
     pub fn columns(&self) -> usize {
         if self.width == 0 { 100 } else { self.width }
     }
 
+    /// Reads `--all` and `--verbose`/`-v` out of `args`, returning the rest.
     pub fn parse(args: &[String]) -> (Show, Vec<String>) {
         let mut show = Show::default();
         let mut rest = vec![];
@@ -99,6 +124,7 @@ impl Show {
         (show, rest)
     }
 
+    /// Whether a finding at `level` is listed.
     pub fn lists(&self, level: Level) -> bool {
         match level {
             Level::Error | Level::Warning | Level::Todo => true,
@@ -107,18 +133,22 @@ impl Show {
     }
 }
 
+/// One finding laid out for the terminal.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
     pub level: Level,
     pub rule: String,
     pub headline: String,
+    /// The pin, part or pair it is about, after `-->`.
     pub location: Option<String>,
     pub notes: Vec<String>,
     pub help: Option<String>,
+    /// Longer explanations shown only with `--verbose`: a title and its lines, printed as they are.
     pub details: Vec<(String, Vec<String>)>,
 }
 
 impl Diagnostic {
+    /// A diagnostic that is just its headline, as a pass is.
     pub fn line(level: Level, rule: &str, text: &str) -> Diagnostic {
         Diagnostic {
             level,
@@ -131,6 +161,9 @@ impl Diagnostic {
         }
     }
 
+    /// Splits a checker's message into headline, location and notes. `subjects` are what the finding is about: a
+    /// reference designator, or a pair's nets. A message that opens with one and a colon, like
+    /// `U6.PA4 (/mcu/VSENSE): ...`, gives its location from that opening.
     pub fn from_message(level: Level, rule: &str, subjects: &[&str], message: &str) -> Diagnostic {
         let mut segs = split_top(message, ": ");
         let mut location = None;
@@ -144,9 +177,12 @@ impl Diagnostic {
             }
         }
         let mut claim = if segs.is_empty() { String::new() } else { segs.remove(0) };
+        // A bare opening like `at J6` is a place, not a claim: the claim is what follows it.
         if location.is_none() && !segs.is_empty() && claim.split_whitespace().count() <= 3 {
             claim = format!("{claim}: {}", segs.remove(0));
         }
+        // An aside closing the whole claim, like a datasheet citation, covers every part of it, unless earlier
+        // parts have their own.
         let mut pieces: Vec<String> = split_top(&claim, "; ")
             .into_iter()
             .flat_map(|p| split_top(&p, ". "))
@@ -179,6 +215,7 @@ impl Diagnostic {
         };
         notes.extend(cited);
         let mut also: Vec<String> = pieces.map(|p| tidy(&p)).collect();
+        // A short last clause like `not modelled` labels the text after the next colon: keep them together.
         if !segs.is_empty() && also.last().is_some_and(|l| l.split_whitespace().count() <= 3) {
             let label = also.pop().unwrap_or_default();
             segs[0] = format!("{label}: {}", segs[0]);
@@ -208,6 +245,7 @@ impl Diagnostic {
         }
     }
 
+    /// Writes the diagnostic, wrapping notes at `width` columns, and a blank line after it. A pass is one line.
     pub fn render(&self, out: &mut String, style: Style, verbose: bool, width: usize) {
         let label = style.paint(self.level.color(), &format!("{}[{}]", self.level.label(), self.rule));
         let _ = writeln!(
@@ -252,6 +290,8 @@ impl Diagnostic {
     }
 }
 
+/// The closing line, cargo-style: `error: 18 errors, 9 warnings, 110 unknown, 402 passed`, then notes on what
+/// was left out and how to show it.
 pub fn summary(out: &mut String, show: &Show, counts: [usize; 4], has_details: bool) {
     let [errors, warnings, unknown, passed] = counts;
     let style = show.style;
@@ -260,6 +300,7 @@ pub fn summary(out: &mut String, show: &Show, counts: [usize; 4], has_details: b
     } else if warnings > 0 {
         (YELLOW, "warning")
     } else if unknown > 0 {
+        // Nothing failed, but nothing unknown counts as a pass either.
         (CYAN, "unknown")
     } else {
         (GREEN, "ok")
@@ -306,6 +347,7 @@ pub fn plural(n: usize, what: &str) -> String {
     format!("{n} {what}{}", if n == 1 { "" } else { "s" })
 }
 
+/// The terminal width for wrapping: `COLUMNS` if set, else 100.
 pub fn width() -> usize {
     std::env::var("COLUMNS")
         .ok()
@@ -314,6 +356,7 @@ pub fn width() -> usize {
         .unwrap_or(100)
 }
 
+/// Splits `s` on `sep` where it isn't inside parentheses.
 fn split_top(s: &str, sep: &str) -> Vec<String> {
     let mut out = vec![];
     let mut depth = 0i32;
@@ -338,6 +381,8 @@ fn split_top(s: &str, sep: &str) -> Vec<String> {
     out
 }
 
+/// Takes out parenthesised asides long enough to be citations or derivations, returning the text without them
+/// and the asides. Short ones, like a net name, stay.
 fn strip_asides(s: &str) -> (String, Vec<String>) {
     let mut text = String::new();
     let mut asides = vec![];
@@ -359,14 +404,17 @@ fn strip_asides(s: &str) -> (String, Vec<String>) {
     (text, asides)
 }
 
+/// Whether a parenthesised part is a citation or derivation rather than a name: long, or ending in a page.
 fn is_aside(inner: &str) -> bool {
     let page = |w: &str| {
         w.strip_prefix('p')
             .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
     };
+    // A net name like `unconnected-(J5-SBU1-PadA8)` has no spaces, however long; a citation always does.
     inner.contains(' ') && (inner.chars().count() > 24 || inner.split([' ', ',']).any(page))
 }
 
+/// Takes the aside that ends `s` off it.
 fn strip_last_aside(s: &str) -> (String, Option<String>) {
     let t = s.trim_end();
     let mut open = None;
@@ -392,10 +440,12 @@ fn strip_last_aside(s: &str) -> (String, Option<String>) {
     }
 }
 
+/// The first `(` outside parentheses.
 fn top_open(s: &str) -> Option<usize> {
     s.find('(')
 }
 
+/// The `)` that closes the `(` at `open`.
 fn matching(s: &str, open: usize) -> Option<usize> {
     let mut depth = 0;
     for (i, c) in s[open..].char_indices() {
@@ -413,6 +463,7 @@ fn matching(s: &str, open: usize) -> Option<usize> {
     None
 }
 
+/// Verbs a claim can open with, so the headline reads `U6.PA4 reaches 26 V` rather than `U6.PA4: reaches 26 V`.
 const VERBS: [&str; 18] = [
     "is",
     "are",
@@ -434,6 +485,7 @@ const VERBS: [&str; 18] = [
     "needs",
 ];
 
+/// Whether an opening like `U6.PA4 (/mcu/VSENSE)` or `R15.1 (/LED0) from R15.2 (/LED0_A)` only says where.
 fn is_locator(seg: &str, subjects: &[&str]) -> bool {
     let bare = without_parens(seg);
     let words: Vec<&str> = bare.split_whitespace().collect();
@@ -441,6 +493,7 @@ fn is_locator(seg: &str, subjects: &[&str]) -> bool {
         && (words.len() == 1 || ["from", "to", "between"].contains(&words[1]))
 }
 
+/// Whether `word` is one of `subjects`, or a pin of one: `U6` or `U6.PA4` for `U6`.
 fn names(word: &str, subjects: &[&str]) -> bool {
     subjects
         .iter()
@@ -461,6 +514,7 @@ fn without_parens(s: &str) -> String {
     out
 }
 
+/// Whether a segment is just a worst-case range, like `0 to 26 V` or `0 to 3.366 V across it`.
 fn is_span(s: &str) -> bool {
     let words: Vec<&str> = s.split_whitespace().collect();
     words.iter().any(|w| w.parse::<f64>().is_ok() || *w == "UNKNOWN")
@@ -473,6 +527,7 @@ fn starts_with_verb(s: &str) -> bool {
     s.split_whitespace().next().is_some_and(|w| VERBS.contains(&w))
 }
 
+/// The pin or part a sentence opens with, like `J3.1 (+3V3)` in `J3.1 (+3V3) has no TVS ...`.
 fn leading_pin(s: &str, subjects: &[&str]) -> Option<String> {
     let first = s.split_whitespace().next()?;
     if !names(first, subjects) {
@@ -487,10 +542,12 @@ fn leading_pin(s: &str, subjects: &[&str]) -> Option<String> {
     Some(format!("{first}{paren}"))
 }
 
+/// Trims stray separators left from splitting.
 fn tidy(s: &str) -> String {
     s.trim().trim_end_matches([',', ';', ':']).trim().to_string()
 }
 
+/// Greedy word wrap.
 fn wrap(text: &str, width: usize) -> Vec<String> {
     let mut lines = vec![];
     let mut line = String::new();

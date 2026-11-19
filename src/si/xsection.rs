@@ -1,6 +1,22 @@
+//! A 2D quasi-static field solver for the cross-section of one trace, or an edge-coupled pair, over a reference
+//! plane (microstrip) or between two (stripline).
+//!
+//! It solves Laplace's equation for the potential on a graded rectangular grid by finite volumes, once with the
+//! real dielectrics and once in air, and gets the capacitance per unit length from the charge on the trace. The
+//! impedance is then `1 / (c √(C · C_air))` and the effective permittivity `C / C_air`. This is the method
+//! commercial 2D solvers use (they use boundary elements rather than a grid, which changes the speed, not the
+//! answer). It is quasi-static: good while the cross-section is much smaller than a wavelength, which holds
+//! for PCB traces far beyond USB 2.0's 240 MHz fundamental.
+//!
+//! A pair is solved on half the domain. Its odd mode (one trace at +1 V, the other at −1 V) puts a 0 V wall on
+//! the symmetry plane; its even mode (both at +1 V) puts a mirror there. A single trace is the even mode of a
+//! "pair" with no gap, so it uses the same code.
+/// Vacuum permittivity, F/m.
 const EPS0: f64 = 8.854_187_812_8e-12;
+/// Speed of light, m/s.
 pub const C0: f64 = 299_792_458.0;
 
+/// One slab of dielectric, measured up from the lower reference plane in mm.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Slab {
     pub bottom: f64,
@@ -8,29 +24,40 @@ pub struct Slab {
     pub er: f64,
 }
 
+/// A trace cross-section. All lengths are in millimetres.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CrossSection {
     pub width: f64,
     pub thickness: f64,
+    /// Edge-to-edge gap to the other trace of an edge-coupled pair, or `None` for a lone trace.
     pub gap: Option<f64>,
+    /// Height of the trace's bottom face above the lower plane.
     pub height: f64,
+    /// Height of an upper plane, for a stripline. `None` leaves open air above.
     pub top_plane: Option<f64>,
+    /// Dielectrics; anything they don't cover is air.
     pub slabs: Vec<Slab>,
 }
 
+/// The impedance and effective permittivity of one propagation mode.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Mode {
+    /// Ω, for one trace.
     pub z: f64,
     pub er_eff: f64,
 }
 
+/// What a cross-section solves to.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Solution {
+    /// A lone trace's characteristic impedance, or a pair's odd mode (half the differential impedance).
     pub odd: Mode,
+    /// A pair's even mode (twice the common-mode impedance). `None` for a lone trace.
     pub even: Option<Mode>,
 }
 
 impl Solution {
+    /// The differential impedance, Ω: twice the odd-mode impedance, or twice a lone trace's.
     pub fn z_diff(&self) -> f64 {
         2.0 * self.odd.z
     }
@@ -50,6 +77,9 @@ impl CrossSection {
         } else {
             &[Wall::Mirror]
         };
+        // Every (mode, dielectric or air, grid) solve is independent, so they run on their own threads. The
+        // grid error is first order in the cell size (it comes from the field singularity at the trace's
+        // edges), so a second solve on a grid twice as coarse extrapolates it away (Richardson).
         let jobs: Vec<(Wall, bool, f64)> = walls
             .iter()
             .flat_map(|&w| [(w, false, 1.0), (w, false, 2.0), (w, true, 1.0), (w, true, 2.0)])
@@ -78,6 +108,7 @@ impl CrossSection {
         }
     }
 
+    /// Capacitance per metre of the right-hand trace, with the symmetry plane at x = 0 as `wall`.
     fn capacitance(&self, wall: Wall, air: bool, coarsen: f64) -> f64 {
         let w = self.width;
         let t = self.thickness.max(0.0);
@@ -86,6 +117,7 @@ impl CrossSection {
         let z_bot = self.height;
         let z_top = z_bot + t;
 
+        // Grid lines: every edge and interface, graded finely near the trace and coarsely far away.
         let mut fine = (w / 40.0).min(self.height / 30.0);
         if t > 0.0 {
             fine = fine.min(t / 2.0);
@@ -114,6 +146,7 @@ impl CrossSection {
         let zs = graded(&zkeys, fine);
         let (nx, nz) = (xs.len(), zs.len());
 
+        // Permittivity of each cell, from the slab at its middle height.
         let eps = |i: usize, j: usize| -> f64 {
             if i + 1 >= nx || j + 1 >= nz {
                 return 0.0;
@@ -125,6 +158,7 @@ impl CrossSection {
             }
         };
 
+        // Fixed nodes: the planes, the far boundary, the trace and (odd mode) the symmetry wall.
         let tol = fine * 1e-3;
         let on_trace = |i: usize, j: usize| {
             xs[i] >= x_in - tol && xs[i] <= x_out + tol && zs[j] >= z_bot - tol && zs[j] <= z_top + tol
@@ -139,6 +173,7 @@ impl CrossSection {
             }
         };
 
+        // Number the free nodes and assemble the five-point finite-volume system.
         let mut index = vec![usize::MAX; nx * nz];
         let mut n = 0;
         for j in 0..nz {
@@ -149,6 +184,7 @@ impl CrossSection {
                 }
             }
         }
+        // Coupling between a node and each neighbour: ε × (face length) / (distance).
         let couple = |i: usize, j: usize, di: isize, dj: isize| -> f64 {
             let dz = |j: usize| if j + 1 < nz { zs[j + 1] - zs[j] } else { 0.0 };
             let dx = |i: usize| if i + 1 < nx { xs[i + 1] - xs[i] } else { 0.0 };
@@ -208,6 +244,7 @@ impl CrossSection {
         }
         let phi = conjugate_gradient(&rows, &diag, &rhs);
 
+        // Charge on the trace: the flux leaving its nodes into the free ones and the fixed 0 V ones.
         let mut q = 0.0;
         for j in 0..nz {
             for i in 0..nx {
@@ -226,6 +263,7 @@ impl CrossSection {
                 }
             }
         }
+        // A lone trace was solved as its right half.
         let q = if self.gap.is_none() { 2.0 * q } else { q };
         EPS0 * q
     }
@@ -233,10 +271,14 @@ impl CrossSection {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Wall {
+    /// Odd mode: the plane between the traces sits at 0 V.
     Ground,
+    /// Even mode, or a lone trace's centre line: no field crosses it.
     Mirror,
 }
 
+/// Grid coordinates through every key point, each `(position, cell size wanted there)`. Cells grow by at most
+/// 15 % from one to the next, so the grid is fine at edges and interfaces and coarse far from the trace.
 fn graded(keys: &[(f64, f64)], fine: f64) -> Vec<f64> {
     let mut keys: Vec<(f64, f64)> = keys.to_vec();
     keys.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -271,8 +313,12 @@ fn graded(keys: &[(f64, f64)], fine: f64) -> Vec<f64> {
     out
 }
 
+/// Solves `A x = b` for the symmetric positive-definite `A` given as off-diagonal rows (`A[k][m] = −g`) plus
+/// its diagonal, by conjugate gradients with a diagonal incomplete-Cholesky preconditioner. Unknowns are
+/// numbered row by row, so a row's lower neighbours are those with smaller numbers.
 fn conjugate_gradient(rows: &[Vec<(usize, f64)>], diag: &[f64], b: &[f64]) -> Vec<f64> {
     let n = b.len();
+    // DIC: d'_k = a_kk − Σ_{j<k} g_kj² / d'_j, and M = (D' − L) D'⁻¹ (D' − U).
     let mut dp = diag.to_vec();
     for k in 0..n {
         for &(m, g) in &rows[k] {
@@ -358,6 +404,8 @@ mod tests {
         }
     }
 
+    /// Hammerstad and Jensen's closed form for a zero-thickness microstrip, accurate to about 1 % (Hammerstad
+    /// & Jensen, "Accurate Models for Microstrip Computer-Aided Design", IEEE MTT-S 1980).
     fn hammerstad(w: f64, h: f64, er: f64) -> (f64, f64) {
         let u = w / h;
         let f = 6.0 + (2.0 * std::f64::consts::PI - 6.0) * (-(30.666 / u).powf(0.7528)).exp();
@@ -386,10 +434,12 @@ mod tests {
 
     #[test]
     fn centred_stripline_matches_the_exact_formula() {
+        // Zero-thickness centred stripline has an exact answer: Z = 30π/√εr · K(k)/K(k'), k = sech(πw/2b).
         let (w, b, er) = (0.2_f64, 0.6_f64, 4.0_f64);
         let k = 1.0 / (std::f64::consts::PI * w / (2.0 * b)).cosh();
         let kp = (1.0 - k * k).sqrt();
         let ellip = |m: f64| {
+            // Arithmetic-geometric mean: K(m) = π / (2 AGM(1, √(1−m²))).
             let (mut a, mut g) = (1.0_f64, (1.0 - m * m).sqrt());
             for _ in 0..30 {
                 let (an, gn) = (f64::midpoint(a, g), (a * g).sqrt());
@@ -435,6 +485,7 @@ mod tests {
             assert!(s.odd.z > last);
             last = s.odd.z;
         }
+        // Far apart, the pair is two lone traces.
         assert!((last - lone).abs() / lone < 0.02, "{last} vs {lone}");
     }
 }

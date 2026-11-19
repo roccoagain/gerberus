@@ -1,3 +1,15 @@
+//! Trace current: is every track wide enough for the current its net carries?
+//!
+//! A track's safe current comes from the IPC-2221 fit, `I = k · ΔT^0.44 · A^0.725` (A in mil², k = 0.048 on an
+//! outer layer and 0.024 on an inner one), for the temperature rise `policy.toml` allows and the copper thickness
+//! in the board's stackup. IPC-2221's curves are the conservative ones IPC-2152 later replaced; they suit a check
+//! that must not pass a track that could overheat.
+//!
+//! The current is what `thermal` works out the net supplies: everything its parts draw. No track carries more, so a
+//! net whose narrowest track takes that current passes. A narrower track fails only when it is sure to carry all
+//! of it: the net joins exactly two pads, has no copper pour, and the track is on every path between them.
+//! Otherwise the current through that track isn't known (it may feed only one branch, or a pour may carry it
+//! alongside), and the result is UNKNOWN. A net whose current isn't fully known is UNKNOWN too.
 use std::collections::BTreeMap;
 
 use crate::design::Design;
@@ -6,6 +18,7 @@ use crate::kicad::pcb::{Layout, PlacedPad, StackLayer, Track};
 use crate::policy::TracePolicy;
 use crate::thermal::Thermal;
 
+/// Copper thickness of each copper layer, mm, and whether it is an outer layer.
 fn copper(layout: &Layout) -> BTreeMap<String, (f64, bool)> {
     let names: Vec<(&str, f64)> = layout
         .stackup
@@ -23,6 +36,7 @@ fn copper(layout: &Layout) -> BTreeMap<String, (f64, bool)> {
         .collect()
 }
 
+/// IPC-2221's safe current, amps, for a track `width` mm wide and `thickness` mm thick.
 pub fn ipc2221(width: f64, thickness: f64, outer: bool, rise: f64) -> f64 {
     let mil = 1.0 / 0.0254;
     let area = width * mil * thickness * mil;
@@ -30,6 +44,7 @@ pub fn ipc2221(width: f64, thickness: f64, outer: bool, rise: f64) -> f64 {
     k * rise.powf(0.44) * area.powf(0.725)
 }
 
+/// Contacts between tracks, pads and vias.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Node {
     Track(usize),
@@ -39,6 +54,7 @@ enum Node {
 
 type Pt = crate::kicad::pcb::Point;
 
+/// Distance from `p` to the segment `a`–`b`.
 fn to_segment(p: Pt, a: Pt, b: Pt) -> f64 {
     let (dx, dy) = (b.0 - a.0, b.1 - a.1);
     let len2 = dx * dx + dy * dy;
@@ -50,6 +66,7 @@ fn to_segment(p: Pt, a: Pt, b: Pt) -> f64 {
     (p.0 - a.0 - t * dx).hypot(p.1 - a.1 - t * dy)
 }
 
+/// Whether two segments come within `r` of each other (touching, crossing or overlapping copper).
 fn segments_touch(a: &Track, b: &Track, r: f64) -> bool {
     let cross = |p: Pt, q: Pt, x: Pt| (q.0 - p.0) * (x.1 - p.1) - (q.1 - p.1) * (x.0 - p.0);
     let (d1, d2) = (cross(a.start, a.end, b.start), cross(a.start, a.end, b.end));
@@ -67,6 +84,8 @@ fn segments_touch(a: &Track, b: &Track, r: f64) -> bool {
     .any(|d| d <= r + 1e-6)
 }
 
+/// Whether removing track `cut` (an index into `tracks`) separates pad 0 from pad 1. Contacts are taken
+/// generously (any copper overlap), so a track is only ever found to separate them when it surely does.
 fn separates(tracks: &[&Track], pads: &[&PlacedPad], vias: &[(Pt, f64)], cut: Option<usize>) -> bool {
     let nodes: Vec<Node> = (0..tracks.len())
         .map(Node::Track)
@@ -115,6 +134,7 @@ fn separates(tracks: &[&Track], pads: &[&PlacedPad], vias: &[(Pt, f64)], cut: Op
     a != b
 }
 
+/// The `trace-current` findings, one per net with tracks and a current.
 pub fn check(design: &Design, layout: &Layout, th: &Thermal, policy: &TracePolicy) -> Vec<Finding> {
     let mut out = vec![];
     let cu = copper(layout);
@@ -128,6 +148,8 @@ pub fn check(design: &Design, layout: &Layout, th: &Thermal, policy: &TracePolic
             continue;
         }
         let amps = load.amps;
+        // Each track's safe current, narrowest first. With no stackup in the board file the copper could be
+        // anything from ½ oz to 2 oz: a pass takes the thinnest, a fail the thickest.
         let (thin, thick_cu) = if layout.stackup_assumed {
             (Some(0.0175), Some(0.070))
         } else {
@@ -183,6 +205,7 @@ pub fn check(design: &Design, layout: &Layout, th: &Thermal, policy: &TracePolic
             }
         } else {
             let &(i, cap) = rated.first().expect("tracks have layers");
+            // Sure to carry all of it: two pads, no pour, and this track on the only path between them.
             let pads: Vec<_> = layout
                 .footprints
                 .iter()
@@ -196,6 +219,7 @@ pub fn check(design: &Design, layout: &Layout, th: &Thermal, policy: &TracePolic
                 .map(|v| (v.at, v.diameter / 2.0))
                 .collect();
             let pour = layout.zones.iter().any(|z| z.net == net.name) || layout.zone_nets.contains(&net.name);
+            // A track that can't take it even at the thickest copper, and is sure to carry all of it.
             let sure = (pads.len() == 2 && !pour && !separates(&tracks, &pads, &vias, None))
                 .then(|| {
                     rated

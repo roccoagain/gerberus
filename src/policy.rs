@@ -1,3 +1,5 @@
+//! Derating policy: how far below a datasheet rating a design should stay. This is project judgement, not
+//! datasheet fact, so it lives in its own file (`policy.toml`) and never in `parts/`.
 use std::path::Path;
 
 use serde::Deserialize;
@@ -9,12 +11,17 @@ use crate::limits::{Class, Limit, Part, Quantity};
 pub struct Policy {
     #[serde(default, rename = "derate")]
     pub derates: Vec<Derate>,
+    /// The ESD level a pin on an external connector must survive without a clamp.
     pub esd: Option<EsdLevel>,
+    /// How far below its maximum a junction is kept.
     pub junction: Option<JunctionMargin>,
+    /// The cable and sweep for `gerberus stress`.
     pub spice: Option<SpicePolicy>,
+    /// The temperature rise a track may have, for `gerberus traces`.
     pub traces: Option<TracePolicy>,
 }
 
+/// Keep every junction `margin` °C below its maximum temperature: reliability derating.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct JunctionMargin {
@@ -22,6 +29,7 @@ pub struct JunctionMargin {
     pub reason: String,
 }
 
+/// IEC 61000-4-2 levels, in volts. Level 4 is 8 kV contact and 15 kV air.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EsdLevel {
@@ -30,13 +38,16 @@ pub struct EsdLevel {
     pub reason: String,
 }
 
+/// Use only `factor` of a rating, for parts of a class (or one part number) and one quantity.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Derate {
     pub class: Option<Class>,
     pub mpn: Option<String>,
     pub quantity: Quantity,
+    /// Fraction of the rating to use, such as 0.8 for 80 %.
     pub factor: f64,
+    /// Why, for the report.
     pub reason: String,
 }
 
@@ -46,10 +57,12 @@ impl Policy {
         Policy::parse(&text, &path.display().to_string())
     }
 
+    /// The `policy.toml` at the root of this repository, built into the binary.
     pub fn builtin() -> Result<Policy, String> {
         Policy::parse(include_str!("../policy.toml"), "policy.toml (built in)")
     }
 
+    /// Parses a policy file's text; `origin` names it in errors.
     pub fn parse(text: &str, origin: &str) -> Result<Policy, String> {
         let policy: Policy = toml::from_str(text).map_err(|e| format!("{origin}: {e}"))?;
         let problems = policy.problems();
@@ -73,6 +86,7 @@ impl Policy {
         out
     }
 
+    /// The derating that applies to a part's limit. A rule naming the part number wins over a class rule.
     pub fn derate_for(&self, part: &Part, limit: &Limit) -> Option<&Derate> {
         let matching = |d: &&Derate| d.quantity == limit.quantity;
         self.derates
@@ -88,13 +102,19 @@ impl Policy {
     }
 }
 
+/// `policy.toml`'s `[spice]` table: the cable a board is plugged in through, and the sweep.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct SpicePolicy {
+    /// The cable's inductance range in henries, `[min, max]`: each run draws one.
     pub cable_inductance: [f64; 2],
+    /// The cable's resistance in ohms, including the connector's contacts.
     pub cable_resistance: f64,
+    /// How fast the supply switches on, 0 to its maximum, in seconds. A hot plug is close to instant.
     pub rise_time: f64,
+    /// How long to simulate, in seconds.
     pub duration: f64,
+    /// How many Monte Carlo runs, besides the one at nominal values.
     pub runs: usize,
     pub reason: String,
 }
@@ -112,9 +132,11 @@ impl Default for SpicePolicy {
     }
 }
 
+/// The temperature rise a track may have, from `policy.toml`'s `[traces]`.
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TracePolicy {
+    /// °C above the board.
     pub rise: f64,
     pub reason: String,
 }

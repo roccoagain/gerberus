@@ -1,3 +1,10 @@
+//! `gerberus doctor`: what to add so `check` can settle its UNKNOWN results, most useful first.
+//!
+//! Every UNKNOWN finding is traced back to what it waits on: a connector pin inputs.toml doesn't describe, a
+//! part with no part file, or a pin its part file gives no limit. A finding on a net is traced through the
+//! net's explanation (each step's `from` nets) to the steps that made it UNKNOWN, and the references those
+//! steps name. Each thing to add is then ranked by how many UNKNOWN findings wait on it. A finding can wait on
+//! several things, so adding one of them may not be enough to settle it: the count is an upper bound.
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -12,25 +19,36 @@ use crate::limits::{Coverage, Library, component_mpn, coverage};
 use crate::rules::Report;
 use crate::voltage::Voltages;
 
+/// Where the board's files are, to say where each fix goes.
 pub struct Setup {
+    /// The inputs file `check` reads.
     pub inputs: PathBuf,
+    /// No inputs file was found, so `check` ran knowing only ground.
     pub inputs_missing: bool,
+    /// The `parts/` folder next to the schematic.
     pub parts: PathBuf,
+    /// The design, as given on the command line, for the commands the help suggests.
     pub design: String,
 }
 
+/// One thing to add.
 #[derive(Debug, Clone, Serialize)]
 pub struct Item {
+    /// `inputs`, `part-file`, `fill-in`, `pin-limits`, `drive` or `guess`.
     pub rule: &'static str,
     pub title: String,
+    /// UNKNOWN findings that wait on this.
     pub unknown: usize,
     pub references: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mpn: Option<String>,
+    /// Connector pins for `inputs`, part pin names for `pin-limits`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pins: Vec<String>,
+    /// The datasheet link on the schematic symbol, if it has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub datasheet: Option<String>,
+    /// The file to write or change.
     pub file: String,
     pub notes: Vec<String>,
     pub help: String,
@@ -39,17 +57,25 @@ pub struct Item {
 #[derive(Debug, Clone, Serialize)]
 pub struct Doctor {
     pub items: Vec<Item>,
+    /// UNKNOWN findings in all.
     pub unknown: usize,
+    /// UNKNOWN findings some item waits on.
     pub settled: usize,
+    /// Pins whose inputs.toml entry is still a guess from `gerberus init`.
     pub guesses: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Key {
+    /// A connector, by reference.
     Inputs(String),
+    /// A part number with no part file.
     Part(String),
+    /// A part number whose part file has no limit for some pins.
     Pins(String),
+    /// A part whose power output no part file says the voltage of, by reference.
     Drive(String),
+    /// A part number whose part file, started by `part new`, still has values not read from the datasheet.
     Fill(String),
 }
 
@@ -64,6 +90,7 @@ pub fn diagnose(
     let cov = coverage(design, lib);
     let unchecked = |r: &str| matches!(cov.get(r), Some(Coverage::Unchecked { .. }));
     let mpn = |r: &str| component_mpn(&design.components[r]).to_string();
+    // A part whose file `part new` started and nobody has finished.
     let unread = |r: &str| {
         design
             .components
@@ -76,6 +103,7 @@ pub fn diagnose(
     let mut unknown = 0;
     let mut settled = 0;
     for (i, f) in report.findings.iter().enumerate() {
+        // `check` counts summary findings (reverse polarity) apart from the rest, so they aren't counted here.
         if f.verdict != Verdict::Unknown || crate::rules::SUMMARY_RULES.contains(&f.rule) {
             continue;
         }
@@ -122,6 +150,8 @@ pub fn diagnose(
                 keys.insert(k);
                 continue;
             }
+            // A bipolar transistor's (or a dual MOSFET's) channel isn't modelled, so a part file for it wouldn't
+            // settle what its pins do to a net. A single MOSFET's part file can give a `channel` drive.
             let cant_model = text.contains("on a part gerberus can't model");
             for r in references_in(text, design) {
                 if unchecked(&r) && !(cant_model && is_transistor(&design.components[&r])) {
@@ -342,6 +372,7 @@ pub fn diagnose(
             });
         }
     }
+    // Part numbers that share a datasheet are often one series, which a part family covers in one file.
     let mut by_sheet: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for i in items.iter().filter(|i| i.rule == "part-file") {
         if let (Some(d), Some(m)) = (&i.datasheet, &i.mpn) {
@@ -363,6 +394,7 @@ pub fn diagnose(
         }
     }
     items.sort_by(|a, b| b.unknown.cmp(&a.unknown).then_with(|| a.title.cmp(&b.title)));
+    // Guesses come first whatever they settle: every result that rests on one is only as good as the guess.
     let guesses = crate::init::guesses(inputs);
     if !guesses.is_empty() {
         items.insert(
@@ -399,6 +431,8 @@ pub fn diagnose(
     }
 }
 
+/// Where the part's datasheet is saved, or where to save it: the same place `datasheet verify` reads for the part
+/// file at `file`, whose part number is `mpn`. `linked`: the symbol or file has a link to download it from.
 fn saved_note(file: &Path, mpn: &str, linked: bool) -> String {
     match crate::datasheet::saved_for(file, mpn) {
         Some(p) => format!("datasheet saved: {}", p.display()),
@@ -464,6 +498,7 @@ fn part_item(design: &Design, lib: &Library, setup: &Setup, m: &str, refs: Vec<S
     }
 }
 
+/// The steps that made these nets UNKNOWN, following each net's explanation back through the nets it read.
 fn roots<'a>(volts: &'a Voltages, nets: &[usize]) -> Vec<&'a str> {
     let mut seen = BTreeSet::new();
     let mut stack = nets.to_vec();
@@ -486,11 +521,13 @@ fn roots<'a>(volts: &'a Voltages, nets: &[usize]) -> Vec<&'a str> {
     out
 }
 
+/// `J1`, `3` from `UNKNOWN: J1.3 is a connector pin with no range in inputs.toml...`.
 fn connector_pin(text: &str) -> Option<(&str, &str)> {
     let head = &text[..text.find(" is a connector pin")?];
     head.rsplit(' ').next()?.split_once('.')
 }
 
+/// The references a message names, as `D1` or a pin `D1.2`.
 fn references_in(text: &str, design: &Design) -> BTreeSet<String> {
     text.split(|c: char| c.is_whitespace() || ",;:()\"'".contains(c))
         .filter_map(|w| w.split('.').next())
@@ -499,11 +536,14 @@ fn references_in(text: &str, design: &Design) -> BTreeSet<String> {
         .collect()
 }
 
+/// A transistor whose channel no `[[drive]]` can describe: a bipolar one, or a MOSFET whose symbol doesn't name
+/// a single G, D and S (a dual part). A single MOSFET's part file can give a `channel` drive.
 fn is_transistor(c: &crate::design::Component) -> bool {
     let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
     (letters == "Q" || c.lib_id.starts_with("Transistor")) && crate::voltage::fet_pins(c).is_none()
 }
 
+/// `3 unknown results wait on it`.
 fn waiting(n: usize) -> String {
     format!(
         "{} {} on it",
@@ -512,11 +552,13 @@ fn waiting(n: usize) -> String {
     )
 }
 
+/// `A1`, `38` from `UNKNOWN: A1.38 is a power output, and no part file says what it drives`.
 fn power_output(text: &str) -> Option<(&str, &str)> {
     let end = text.find(" is a power output, and no part file says")?;
     text[..end].rsplit(' ').next()?.split_once('.')
 }
 
+/// `a, b and c`.
 fn list(items: &[String], and: &str) -> String {
     match items {
         [] => String::new(),
@@ -525,6 +567,7 @@ fn list(items: &[String], and: &str) -> String {
     }
 }
 
+/// The to-do list for the terminal.
 pub fn render(doctor: &Doctor, show: &Show) -> String {
     let mut out = String::new();
     for item in &doctor.items {
@@ -585,6 +628,7 @@ pub fn render(doctor: &Doctor, show: &Show) -> String {
     out
 }
 
+/// Where `check` looks for a board's files.
 pub fn setup(design: &Path, inputs: Option<&Path>) -> Setup {
     let dir = design.parent().unwrap_or(Path::new("."));
     let path = inputs.map_or_else(|| dir.join("inputs.toml"), Path::to_path_buf);

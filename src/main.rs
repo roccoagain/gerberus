@@ -1,3 +1,4 @@
+// No `unwrap()` outside tests; see src/lib.rs.
 #![warn(clippy::unwrap_used)]
 
 use std::path::{Path, PathBuf};
@@ -179,6 +180,7 @@ fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
         .file_name()
         .map_or_else(|| path.display().to_string(), |f| f.to_string_lossy().into());
     let (mpn, text) = gerberus::part_new::template(&design, which, &source)?;
+    // What `check` would load, so the file is never one it rejects.
     let part: gerberus::limits::Part = toml::from_str(&text).map_err(|e| format!("the template doesn't parse: {e}"))?;
     let problems = part.problems();
     if !problems.is_empty() {
@@ -187,6 +189,9 @@ fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
     let dir = path.parent().unwrap_or(Path::new(".")).join("parts");
     let file = dir.join(gerberus::datasheet::file_name(&mpn));
 
+    // A part the library already covers, by a file, a family or the schematic's own rating, doesn't need one
+    // unless asked. A part file in the board's own folders under another name is never doubled: the library
+    // would refuse to load with the part defined twice.
     let mut flags = vec![];
     for d in &extra {
         flags.push("--parts".to_string());
@@ -323,6 +328,7 @@ fn part_show(mpn: &str, rest: &[String]) -> Result<bool, String> {
     Ok(true)
 }
 
+/// The part file the library has for `mpn`: the file itself, or the one its part family writes.
 fn part_text(lib: &Library, mpn: &str) -> Result<String, String> {
     if let Some(path) = lib.files.get(mpn) {
         return Ok(gerberus::limits::builtin_text(path)
@@ -334,6 +340,7 @@ fn part_text(lib: &Library, mpn: &str) -> Result<String, String> {
         if let Some(text) = family.part_text(mpn) {
             let at = |e: String| format!("{}: {e}", path.display());
             let text = text.map_err(at)?;
+            // The same checks `check` runs on it, so this never prints a part that `check` would reject.
             let part = family.part(mpn).expect("it decoded above").map_err(at)?;
             let problems = part.problems();
             if !problems.is_empty() {
@@ -349,16 +356,24 @@ fn part_text(lib: &Library, mpn: &str) -> Result<String, String> {
     Err(format!("no part file or part family has {mpn:?}"))
 }
 
+/// Command-line options shared by the commands that read part files.
 struct Options {
+    /// A `parts/` folder next to the schematic, then any `--parts` folders, read after the built-in library.
     dirs: Vec<PathBuf>,
+    /// `--pcb`, when the command takes it and it was given.
     pcb: Option<PathBuf>,
+    /// `--inputs` and `--explain`, for the commands that work out voltages.
     inputs: Option<PathBuf>,
     explain: Vec<String>,
+    /// `--fault`, for `voltages`: a fault case to work out instead of normal operation.
     fault: Option<String>,
+    /// Don't print the note about a missing inputs.toml: `doctor` lists it as a thing to add.
     quiet: bool,
+    /// `--waivers`, for `check` and `doctor`.
     waivers: Option<PathBuf>,
 }
 
+/// Reads `--parts` and whichever of `--pcb`, `--inputs`, `--explain`, `--fault` and `--waivers` the command takes.
 fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, String> {
     let mut dirs: Vec<PathBuf> = vec![];
     let local = path.parent().unwrap_or(Path::new(".")).join("parts");
@@ -397,6 +412,7 @@ fn load_design(path: &Path) -> Result<gerberus::design::Design, String> {
     Ok(design)
 }
 
+/// The built-in shared library, then each folder in `dirs`, a later file replacing an earlier one.
 fn load_library(dirs: &[PathBuf]) -> Result<Library, String> {
     let mut lib = Library::builtin()?;
     for dir in dirs {
@@ -405,6 +421,7 @@ fn load_library(dirs: &[PathBuf]) -> Result<Library, String> {
     Ok(lib)
 }
 
+/// The design, its library and its worked-out net voltages.
 fn analyse(
     path: &Path,
     o: &Options,
@@ -424,6 +441,7 @@ fn analyse(
         .inputs
         .clone()
         .unwrap_or_else(|| path.parent().unwrap_or(Path::new(".")).join("inputs.toml"));
+    // Without an inputs.toml next to the design, run anyway with no inputs, and say what that leaves out.
     let inputs = if o.inputs.is_none() && !inputs_path.exists() {
         let inputs = BoardInputs::none(&path.display().to_string(), &design);
         let ground = match inputs.inputs.first() {
@@ -497,6 +515,7 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
     Ok(report.errors() == 0)
 }
 
+/// Applies `--waivers`, or a `waivers.toml` next to the design when there is one.
 fn waive(
     path: &Path,
     o: &Options,
@@ -545,6 +564,7 @@ fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
     Ok(report.errors() == 0)
 }
 
+/// The design's check report, with its own inputs.toml, waivers.toml and parts/ folder.
 fn report(path: &Path, rest: &[String]) -> Result<(gerberus::design::Design, gerberus::rules::Report), String> {
     let mut o = options(path, rest, &[])?;
     o.quiet = true;
@@ -558,6 +578,7 @@ fn report(path: &Path, rest: &[String]) -> Result<(gerberus::design::Design, ger
 fn diff(path: &Path, rest: &[String]) -> Result<bool, String> {
     let json = rest.iter().any(|a| a == "--json");
     let mut rest: Vec<String> = rest.iter().filter(|a| *a != "--json").cloned().collect();
+    // A temporary copy of the old revision, removed when this returns.
     let mut _old_tree = None;
     let (old, new) = if let Some(i) = rest.iter().position(|a| a == "--rev") {
         let rev = rest.get(i + 1).ok_or("--rev takes a git revision")?.clone();
@@ -609,6 +630,7 @@ fn init(path: &Path, rest: &[String]) -> Result<bool, String> {
         .file_stem()
         .map_or_else(|| path.display().to_string(), |f| f.to_string_lossy().into());
     let text = gerberus::init::template(&design, &lib, &board);
+    // What `check` would load, so the file is never one it rejects.
     let inputs: BoardInputs = toml::from_str(&text).map_err(|e| format!("the starter file doesn't parse: {e}"))?;
     let problems = inputs.problems(&design);
     if !problems.is_empty() {
@@ -761,6 +783,7 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
     let (show, rest) = Show::parse(rest);
     let mut opts = Options::default();
     let mut dirs: Vec<PathBuf> = vec![];
+    // Part files give resistors' and capacitors' ratings, to compare with LCSC's listing.
     let local = path.parent().unwrap_or(Path::new(".")).join("parts");
     if local.is_dir() {
         dirs.push(local);
@@ -796,6 +819,7 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
         .all(|h| h.findings.iter().all(|f| f.severity != Severity::Error)))
 }
 
+/// Returns whether the board passed (no errors).
 fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
     let (show, rest) = Show::parse(rest);
     let opts = options(path, &rest, &["--pcb"])?;
@@ -958,6 +982,7 @@ fn datasheet(sub: &str, rest: &[String]) -> Result<bool, String> {
             let mut ok = true;
             for f in &files {
                 let part = Part::load(f)?;
+                // A file `part new` started still has values nobody has read: say so, and don't pass it.
                 if part.unread() {
                     ok = false;
                     println!(
@@ -966,6 +991,7 @@ fn datasheet(sub: &str, rest: &[String]) -> Result<bool, String> {
                         gerberus::limits::NOT_READ
                     );
                 }
+                // A PDF saved in the board's datasheets/ folder comes before a download.
                 let saved = || datasheet::saved_for(f, &part.mpn);
                 let pdf = match (&pdf, &part.datasheet) {
                     (Some(p), _) => p.clone(),

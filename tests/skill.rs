@@ -1,3 +1,5 @@
+//! `gerberus skill install`: the shipped skills written into a board's repository, updated when gerberus is, and
+//! never over a file someone changed unless forced.
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -26,9 +28,11 @@ fn installs_once_and_keeps_edits() {
     for f in gerberus::skill::FILES {
         assert_eq!(std::fs::read_to_string(skills.join(f.path)).unwrap(), f.text);
     }
+    // Again: nothing to do.
     let out = run(&dir, &[]);
     assert!(out.status.success(), "{out:?}");
     assert!(String::from_utf8_lossy(&out.stdout).contains("up to date"));
+    // An edited file is kept, and nothing else is written, unless --force.
     let skill = skills.join("check-board/SKILL.md");
     std::fs::write(&skill, "edited").unwrap();
     std::fs::remove_file(skills.join("datasheet-to-part/SKILL.md")).unwrap();
@@ -42,12 +46,14 @@ fn installs_once_and_keeps_edits() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// A file an earlier gerberus installed, unchanged since, is updated without --force.
 #[test]
 fn an_earlier_install_is_updated() {
     let dir = temp("update");
     let skills = dir.join(".claude/skills");
     let skill = skills.join("check-board/SKILL.md");
     std::fs::create_dir_all(skill.parent().unwrap()).unwrap();
+    // What an older version wrote, and its record (FNV-1a of "old text").
     std::fs::write(&skill, "old text").unwrap();
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in b"old text" {
@@ -66,6 +72,7 @@ fn an_earlier_install_is_updated() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// Each skill has the front matter agents need, and the format guide the datasheet skill reads ships with it.
 #[test]
 fn skills_are_complete() {
     let files = gerberus::skill::FILES;
@@ -82,12 +89,14 @@ fn skills_are_complete() {
     }
 }
 
+/// Every `gerberus ...` command a skill names is in the usage text, with its subcommand.
 #[test]
 fn skills_name_real_commands() {
     let usage = Command::new(env!("CARGO_BIN_EXE_gerberus")).output().unwrap();
     let usage = String::from_utf8_lossy(&usage.stderr).to_string();
     let mut seen = 0;
     for f in gerberus::skill::FILES.iter().filter(|f| f.path.ends_with("SKILL.md")) {
+        // In code: a `gerberus x` span, or a line of a code block.
         for (k, part) in f.text.split('`').enumerate() {
             for line in part.lines() {
                 let line = line.trim_start();
@@ -103,8 +112,10 @@ fn skills_name_real_commands() {
                     want = format!("{want} {}", words.get(1).copied().unwrap_or(""));
                 }
                 assert!(usage.contains(&want), "{}: {line}", f.path);
+                // Every option it gives is one the command takes.
                 let usage_line = usage.lines().find(|l| l.trim_start().starts_with(&want)).unwrap();
                 for opt in words.iter().filter(|w| w.starts_with("--")) {
+                    // A report option (--all) is described below the command list.
                     assert!(
                         usage_line.contains(*opt)
                             || usage.contains(&format!("{opt},"))

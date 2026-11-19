@@ -1,3 +1,28 @@
+//! Signal levels: how far the signals in `inputs.toml` swing each net, worked out in ngspice.
+//!
+//! Each `[[signal]]` is an AC source between its two pins. Every rail (a net the voltage engine knows both ends
+//! of, held by an input, a regulator or a diode) is a DC source. The circuit is linear, so ngspice finds each
+//! net's bias with every rail at its lowest, and then how far each rail moves it on its own going to its highest;
+//! the worst case of any mix of rail ends follows from those. It also finds each net's gain from each signal
+//! across the signal's band (`.ac`), and the gain of the difference between the two pins of every limit
+//! directly, so their phases count. A pin then reaches its bias plus and minus the sum of each signal's peak
+//! times its largest gain: every signal in phase, the worst case.
+//!
+//! A net whose bias only the simulator's 10¹² Ω leak to ground sets (a capacitor-coupled input that biases
+//! itself, a net past a part left open) has no bias: its findings are UNKNOWN.
+//!
+//! What is modelled: resistors, capacitors and inductors at their marked values; ferrite beads, fuses and net
+//! ties as shorts; and op-amps from their part file's `[[opamp]]` as ideal amplifiers (an open-loop gain of 10⁶
+//! with no bandwidth limit and no clipping, so the levels show where a real one would clip). Everything else is
+//! left open: diodes, and IC pins with no op-amp model. A part left open on a net a signal reaches is an UNKNOWN
+//! `signal-path` finding, as nothing past it is checked, and its own pins' levels can't be trusted.
+//!
+//! Rules:
+//! - `clipping` (warning): an op-amp's output must stay inside its supply rails less the datasheet's output
+//!   swing. Past the rails it surely clips; inside them, with no swing figure, the result is UNKNOWN.
+//! - `signal-level`: every voltage limit on a pin a signal reaches. Past the absolute maximum is an error, past
+//!   the recommended range a warning; a limit the part file doesn't give is UNKNOWN.
+//! - `signal-path` (warning, UNKNOWN): a part the simulation leaves open on a net a signal reaches.
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
@@ -9,43 +34,60 @@ use crate::spice::simulate;
 use crate::units::{parse_farads, parse_henries, parse_ohms};
 use crate::voltage::{Driver, Span, Voltages, is_connector};
 
+/// Smaller gains than this count as no signal at all.
 const NO_SIGNAL: f64 = 1e-4;
 
+/// How far a net's bias may move when the leak's return moves 1 V before it counts as set by the leak alone.
 const LEAK_SET: f64 = 1e-3;
 
+/// A DC voltage anywhere in `lo..=hi`: a rail on `net`, or the DC a DC-coupled signal's source holds its pin at.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rail {
     pub net: usize,
     pub lo: f64,
     pub hi: f64,
+    /// The low end is only a floor (a regulator that may not hold): a check may pass on it but not fail on it.
     pub floor: bool,
+    /// For a signal's source: the signal's index.
     pub source: Option<usize>,
 }
 
+/// A net's bias as the rails move: `b0` with every rail at its lowest, plus `delta[i]` as rail `i` alone goes to
+/// its highest. Linear, so any mix of rail ends is the sum.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Bias {
     pub b0: f64,
     pub delta: Vec<f64>,
 }
 
+/// A part the simulation leaves open.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Skipped {
     pub reference: String,
     pub why: String,
     pub nets: Vec<usize>,
+    /// The nets its pins could drive or load: every pin but a plain input.
     pub drives: Vec<usize>,
 }
 
+/// Everything `gerberus signal` worked out.
 #[derive(Debug, Clone)]
 pub struct Levels {
     pub rails: Vec<Rail>,
+    /// Nets on the simulation's ground: rails held at exactly 0 V.
     pub ground: BTreeSet<usize>,
+    /// Each net's bias; missing when only the leak sets it.
     pub bias: BTreeMap<usize, Bias>,
+    /// Each net's peak from ground, summed over the signals.
     pub peak: BTreeMap<usize, f64>,
+    /// The peak of the difference between two nets, summed over the signals, for the pairs limits compare.
     pub pair_peak: BTreeMap<(usize, usize), f64>,
+    /// Per signal, the largest gain to each net it reaches.
     pub gains: Vec<(String, BTreeMap<usize, f64>)>,
     pub skipped: Vec<Skipped>,
+    /// Nets whose bias only the leak sets, but that the voltage engine gives a range for: a bias from inside a part.
     pub engine: BTreeMap<usize, Span>,
+    /// Pairs of rails (by index) where one is worked out from the other, so they move together.
     pub linked: BTreeSet<(usize, usize)>,
 }
 
@@ -60,6 +102,7 @@ impl Levels {
         self.bias.get(&net).cloned()
     }
 
+    /// The lowest and highest DC voltage of `a` from `b` with the rails anywhere in their ranges.
     pub fn dc(&self, a: usize, b: usize) -> Option<(f64, f64)> {
         let (x, y) = (self.bias_of(a)?, self.bias_of(b)?);
         let base = x.b0 - y.b0;
@@ -72,6 +115,7 @@ impl Levels {
         Some((lo, hi))
     }
 
+    /// The signals' peak on `a` measured from `b`.
     pub fn swing(&self, a: usize, b: usize) -> f64 {
         if a == b {
             return 0.0;
@@ -80,9 +124,11 @@ impl Levels {
         self.pair_peak
             .get(&key)
             .copied()
+            // Not measured as a pair: the two peaks added, as if in opposite phase.
             .unwrap_or_else(|| self.peak.get(&a).copied().unwrap_or(0.0) + self.peak.get(&b).copied().unwrap_or(0.0))
     }
 
+    /// The lowest and highest `a` reaches from `b`: its DC range and the signals' peak.
     pub fn reach(&self, a: usize, b: usize) -> Option<(f64, f64)> {
         let (lo, hi) = self.dc(a, b)?;
         let p = self.swing(a, b);
@@ -93,6 +139,8 @@ impl Levels {
         self.peak.get(&net).is_some_and(|&p| p > 0.0)
     }
 
+    /// Why a FAIL of `a` from `b` may not be real: it moves with a rail whose low end is only a floor, or with two
+    /// rails one is worked out from, which this sweeps apart.
     fn shaky(&self, design: &Design, a: usize, b: usize) -> Option<String> {
         let (x, y) = (self.bias_of(a)?, self.bias_of(b)?);
         let moves: Vec<usize> = (0..self.rails.len())
@@ -119,6 +167,7 @@ impl Levels {
     }
 }
 
+/// One element of the small-signal circuit.
 enum Element {
     R(String, usize, usize, f64),
     C(String, usize, usize, f64),
@@ -132,6 +181,7 @@ enum Element {
     },
 }
 
+/// Simulates the signals in `inputs` on the design. Fails when there are no signals, or ngspice can't run.
 pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages) -> Result<Levels, String> {
     if inputs.signals.is_empty() {
         return Err(
@@ -147,6 +197,7 @@ pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages
         sources.push((s, a, b));
     }
     let (elements, mut skipped, shorts) = elements(design, lib);
+    // Nets joined by a short (a bead, fuse or net tie) are one rail: only the first gets a source.
     let mut join: Vec<usize> = (0..design.nets.len()).collect();
     fn root(join: &mut [usize], mut n: usize) -> usize {
         while join[n] != n {
@@ -183,6 +234,7 @@ pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages
             });
         }
     }
+    // A DC-coupled signal holds its pin at the DC the pin's [[input]] gives, from `to`; with none, at `to`.
     let mut on_pin = BTreeSet::new();
     for (k, &(s, a, b)) in sources.iter().enumerate() {
         if s.ac_coupled {
@@ -202,6 +254,7 @@ pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages
             .any(|i| i.fault.is_none() && net_of(&i.pin.reference, &i.pin.pin) == Some(a));
         let range = if has_input {
             match (pa.min, pa.max, pb.min, pb.max) {
+                // The input's range is the pin's whole voltage, the signal's swing included.
                 (Some(al), Some(ah), Some(bl), Some(bh)) => Some((al - bh + s.peak, ah - bl - s.peak)),
                 _ => None,
             }
@@ -230,6 +283,7 @@ pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages
             source: Some(k),
         });
     }
+    // An op-amp whose output is on ground or a rail (an unused half) drives nothing: leave it out.
     let fixed: BTreeSet<usize> = ground
         .iter()
         .copied()
@@ -256,6 +310,7 @@ pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages
         kept.push(e);
     }
     let elements = kept;
+    // Rails one is worked out from the other, which move together.
     let mut linked = BTreeSet::new();
     for (i, r) in rails.iter().enumerate() {
         let mut seen = BTreeSet::from([r.net]);
@@ -332,6 +387,7 @@ pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages
     })
 }
 
+/// The parts the simulation models, what it leaves open, and the shorts (beads, fuses, net ties) among them.
 fn elements(design: &Design, lib: &Library) -> (Vec<Element>, Vec<Skipped>, Vec<(usize, usize)>) {
     let mut out = vec![];
     let mut skipped = vec![];
@@ -419,6 +475,8 @@ fn elements(design: &Design, lib: &Library) -> (Vec<Element>, Vec<Skipped>, Vec<
     (out, skipped, shorts)
 }
 
+/// The pairs of nets whose difference a limit compares: every voltage limit's pin and reference, a pin and the
+/// pin a bound follows, and each op-amp's output and supply pins. Keyed with the smaller net first.
 fn pairs(design: &Design, lib: &Library) -> Vec<(usize, usize)> {
     let mut out = BTreeSet::new();
     for c in design.components.values() {
@@ -469,6 +527,7 @@ fn sanitize(s: &str) -> String {
         .collect()
 }
 
+/// The netlist for signal `k`: its source carries the AC, and the first one also sweeps the rails and the leak.
 fn netlist(
     ground: &BTreeSet<usize>,
     rails: &[Rail],
@@ -486,6 +545,7 @@ fn netlist(
         }
     };
     let mut t = format!("* gerberus signal: {}\n", sources[k].0.name);
+    // A rail's source, or a DC-coupled signal's, by the name `alter` uses.
     let source = |i: usize| rails[i].source.map_or_else(|| format!("vr{i}"), |k| format!("vs{k}"));
     for (i, r) in rails.iter().enumerate() {
         if r.source.is_none() {
@@ -495,6 +555,7 @@ fn netlist(
     for (i, &(s, a, b)) in sources.iter().enumerate() {
         let ac = if i == k { " AC 1" } else { "" };
         if s.ac_coupled {
+            // Through a large capacitor, so the board sets the pin's bias.
             let _ = writeln!(t, "VS{i} s{i} {} DC 0{ac}", nd(b));
             let _ = writeln!(t, "CS{i} s{i} {} 1", nd(a));
         } else {
@@ -520,6 +581,8 @@ fn netlist(
             }
         }
     }
+    // Every node gets a very high resistance to the leak's return, so one only capacitors reach still has a DC
+    // value; moving the return shows which nets only the leak sets.
     t.push_str("VLEAK nleak 0 DC 0\n");
     for &n in nets {
         let _ = writeln!(t, "RLEAK{n} n{n} nleak 1e12");
@@ -570,9 +633,11 @@ fn netlist(
     t
 }
 
+/// The `clipping`, `signal-level` and `signal-path` findings.
 pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
     let mut out = vec![];
     let name = |n: usize| design.nets[n].name.as_str();
+    // Nets a part left open could drive or load, besides those a source holds.
     let held = |n: usize| levels.ground.contains(&n) || levels.rails.iter().any(|r| r.net == n);
     let mut open: BTreeMap<usize, &str> = BTreeMap::new();
     for s in &levels.skipped {
@@ -582,7 +647,9 @@ pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
             }
         }
     }
+    // The nets each finding reads, for the checks below.
     let mut reads: Vec<Vec<usize>> = vec![];
+    // Op-amps whose output goes past a rail, and their inputs, which are ahead of the clipping.
     let mut clips: Vec<String> = vec![];
     let mut ahead: BTreeSet<usize> = BTreeSet::new();
     for s in &levels.skipped {
@@ -713,6 +780,7 @@ pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
                 }),
             });
         }
+        // Passives are left to `check`: their ratings are far above any signal on a sound design.
         if matches!(
             part.class,
             Class::Resistor | Class::Capacitor | Class::Inductor | Class::Connector
@@ -778,6 +846,7 @@ pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
     out
 }
 
+/// One pin against one limit: the verdict, its severity and what was compared.
 #[expect(
     clippy::too_many_arguments,
     reason = "unrelated inputs; a one-use struct would only rename them"
@@ -875,6 +944,7 @@ fn level(
     (Verdict::Pass, Severity::Error, format!("{head}, inside its limits"))
 }
 
+/// Why a level from `to` isn't known when only the simulation's leak sets a bias.
 fn unbiased(levels: &Levels, pin: &str, pn: usize, to: &str, tn: usize) -> String {
     let inside = [pn, tn]
         .into_iter()
@@ -896,6 +966,7 @@ fn round(v: f64) -> f64 {
     (v * 1000.0).round() / 1000.0
 }
 
+/// The levels as text: each signal's gain to every net it reaches, and each net's range from ground.
 pub fn describe(design: &Design, levels: &Levels) -> String {
     let mut out = String::new();
     let ground = levels.ground.iter().next().copied();

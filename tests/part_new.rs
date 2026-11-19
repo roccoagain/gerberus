@@ -1,3 +1,5 @@
+//! `gerberus part new`: a part file started from the schematic symbol, which loads as written and keeps every
+//! unread value UNKNOWN.
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -40,6 +42,7 @@ fn an_ic_gets_its_pins_and_one_unread_limit_from_ground() {
     assert_eq!(p.limits[0].to.as_deref(), Some("GND"));
     assert!(!p.limits[0].pins.contains(&"GND".to_string()));
     assert!(unread(&p.limits[0].abs_max) && unread(&p.limits[0].recommended));
+    // Named by part number instead of reference, it is the same part.
     assert_eq!(part(&d, "TCAN1044AVDDFRQ1").0, mpn);
 }
 
@@ -63,6 +66,8 @@ fn an_unknown_part_is_an_error() {
     assert!(template(&can_encoder(), "U99", "x").is_err());
 }
 
+/// Swapped in for the real part file, the template turns U4's results UNKNOWN with the unread reason, and
+/// `doctor` lists it as a file to fill in.
 #[test]
 fn doctor_lists_a_template_to_fill_in() {
     let dir = root("tests/fixtures/can-encoder");
@@ -98,6 +103,8 @@ fn doctor_lists_a_template_to_fill_in() {
     );
 }
 
+/// The command writes `parts/<MPN>.toml` next to the schematic, never over a file, and not for a part the
+/// library already has.
 #[test]
 fn command_writes_the_file_once() {
     let dir = std::env::temp_dir().join(format!("gerberus-part-new-{}", std::process::id()));
@@ -116,6 +123,7 @@ fn command_writes_the_file_once() {
             .output()
             .unwrap()
     };
+    // The built-in library has U4's part.
     let out = run(&["U4"]);
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("already has a part file"));
@@ -124,12 +132,15 @@ fn command_writes_the_file_once() {
     let file = dir.join("parts/TCAN1044AVDDFRQ1.toml");
     let text = std::fs::read_to_string(&file).unwrap();
     assert!(text.contains(NOT_READ));
+    // Now the board's own folder has it, and it isn't replaced without --force.
     let out = run(&["U4"]);
     assert_eq!(out.status.code(), Some(2));
     assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// An unread template gets none of the benefit of a real part file: an unread TVS doesn't clamp anything, and
+/// `datasheet verify` fails on it.
 #[test]
 fn an_unread_tvs_clamps_nothing() {
     let dir = root("tests/fixtures/kitchen-sink");
@@ -137,6 +148,7 @@ fn an_unread_tvs_clamps_nothing() {
     let inputs = BoardInputs::load(&dir.join("inputs.toml")).unwrap();
     let mut lib = Library::load_dir(&root("parts")).unwrap();
     let (mpn, text) = template(&design, "D6", "kitchen-sink.kicad_sch").unwrap();
+    // The symbol is a plain diode; the file is read as a TVS, as someone would correct its class first.
     let mut p: Part = toml::from_str(&text).unwrap();
     p.class = Class::Tvs;
     assert!(p.unread());
@@ -169,11 +181,13 @@ fn an_unread_tvs_clamps_nothing() {
     assert!(String::from_utf8_lossy(&out.stdout).contains(NOT_READ));
 }
 
+/// A capacitor the schematic already rates isn't given a file that would replace that rating, unless forced.
 #[test]
 fn a_class_default_is_kept() {
     let dir = std::env::temp_dir().join(format!("gerberus-class-default-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
+    // C1 keeps its 50 V Voltage field but gets a part number nothing has a file for.
     let text = std::fs::read_to_string(root("tests/fixtures/can-encoder/can-encoder.kicad_sch"))
         .unwrap()
         .replacen("\"CC0805KKX7R9BB225\"", "\"NO-SUCH-CAP\"", 1);

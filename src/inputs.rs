@@ -1,3 +1,7 @@
+//! Board inputs: the voltages the outside world puts on a board's connector pins, such as `J1.1` at 7 to
+//! 26 V from `J1.4`. A checker starts every net's voltage range from these.
+//!
+//! The file is TOML and sits next to the board's schematic. See `parts/README.md` for the format.
 use std::path::Path;
 
 use serde::Deserialize;
@@ -7,27 +11,40 @@ use crate::design::Design;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BoardInputs {
+    /// Which board this describes, for messages.
     pub board: String,
     #[serde(default, rename = "input")]
     pub inputs: Vec<Input>,
+    /// Connector pins the outside world doesn't drive, such as a debug probe's target-voltage sense pin.
     #[serde(default)]
     pub undriven: Vec<Undriven>,
+    /// Limits on the voltage between two input pins, such as a CAN bus's differential voltage, where the two
+    /// pins move together.
     #[serde(default)]
     pub differential: Vec<Differential>,
+    /// The ambient temperature range the board works in. Without it, parts are taken over their own rated
+    /// range.
     pub temperature: Option<BoardTemperature>,
+    /// Signals brought in at connector pins, such as a guitar or a line input, for `gerberus signal`.
     #[serde(default, rename = "signal")]
     pub signals: Vec<Signal>,
 }
 
+/// An AC signal between two pins, such as a guitar's tip from its sleeve: up to `peak` volts either way from
+/// wherever the board biases the pin, across `frequency`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Signal {
     pub name: String,
     pub pin: PinRef,
     pub to: PinRef,
+    /// The largest peak, in volts (half the peak-to-peak).
     pub peak: f64,
+    /// The band, in hertz: 20 Hz to 20 kHz when it isn't given.
     #[serde(default = "audio_band")]
     pub frequency: [f64; 2],
+    /// The source reaches the pin through a capacitor, so the board sets the pin's DC bias. Otherwise the pin is
+    /// held at the DC of `to`, as a DC-coupled source (a pickup, a line driver into a DC path) would.
     #[serde(default)]
     pub ac_coupled: bool,
     pub source: String,
@@ -41,9 +58,11 @@ fn audio_band() -> [f64; 2] {
 #[serde(deny_unknown_fields)]
 pub struct Undriven {
     pub pin: PinRef,
+    /// Why nothing outside drives it.
     pub source: String,
 }
 
+/// `V(pin) − V(to)` stays between `min` and `max` volts, whatever each pin's own range allows.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Differential {
@@ -65,20 +84,33 @@ pub struct BoardTemperature {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Input {
+    /// A short label, such as `VBUS`.
     pub name: String,
+    /// The pin the voltage is applied to, as `REF.PIN`, such as `J1.1`.
     pub pin: PinRef,
+    /// The pin it is measured from, usually the connector's ground pin.
     pub to: PinRef,
+    /// Volts.
     pub min: f64,
+    /// Volts, or the voltage of another pin, for a debug probe whose outputs follow the target voltage it senses.
     pub max: Max,
+    /// Where the range comes from: a design document, a spec, a battery's chemistry.
     pub source: String,
+    /// The name of a fault case, such as `VBUS shorted onto CANH`. A fault input is left out of the normal
+    /// analysis. Each case is checked on its own: its inputs (every input with that name) replace the normal
+    /// inputs on the nets they touch.
     pub fault: Option<String>,
+    /// Why this input can't be connected backwards. Without it, an input that is always above 0 V (a supply)
+    /// is also checked reversed, as the fault case `<name> reversed`.
     pub reverse: Option<String>,
 }
 
+/// The top of an input's range.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(untagged)]
 pub enum Max {
     Value(f64),
+    /// The voltage of another pin's net, plus `plus` volts.
     Pin(Follow),
 }
 
@@ -105,6 +137,7 @@ impl From<f64> for Max {
     }
 }
 
+/// A part pin written as `REF.PIN`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "String")]
 pub struct PinRef {
@@ -133,6 +166,9 @@ impl std::fmt::Display for PinRef {
 }
 
 impl BoardInputs {
+    /// For a board with no inputs.toml: only its ground, taken as 0 V when a net is named `GND`, `0V` or `VSS`.
+    /// Every connector pin is left as whatever might be plugged in, so nets that only a connector reaches stay
+    /// UNKNOWN.
     pub fn none(board: &str, design: &Design) -> BoardInputs {
         let ground = design.nets.iter().find(|n| {
             let name = n.name.rsplit('/').next().unwrap_or("").to_ascii_uppercase();
@@ -176,6 +212,7 @@ impl BoardInputs {
         toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
     }
 
+    /// The fault cases, in the order the file first names them.
     pub fn faults(&self) -> Vec<&str> {
         let mut out: Vec<&str> = vec![];
         for f in self.inputs.iter().filter_map(|i| i.fault.as_deref()) {
@@ -186,6 +223,8 @@ impl BoardInputs {
         out
     }
 
+    /// The supply inputs that are checked connected backwards: every normal input whose range stays above 0 V,
+    /// unless it says why it can't be reversed. Each is the fault case `<name> reversed`.
     pub fn reversible(&self) -> Vec<&Input> {
         self.inputs
             .iter()
@@ -194,10 +233,14 @@ impl BoardInputs {
             .collect()
     }
 
+    /// The name of the fault case that connects an input backwards.
     pub fn reversed_case(input: &Input) -> String {
         format!("{} reversed", input.name)
     }
 
+    /// These inputs plus a fault case for each [`BoardInputs::reversible`] input, with its range negated: a
+    /// supply plugged in backwards puts its voltage on the ground pin, which is the same as minus that voltage
+    /// on the supply pin.
     pub fn with_reversals(&self) -> BoardInputs {
         let mut out = self.clone();
         for i in self.reversible() {
@@ -217,6 +260,8 @@ impl BoardInputs {
         out
     }
 
+    /// The inputs of one fault case: the normal inputs, except those on a net one of the case's inputs drives,
+    /// plus the case's own inputs. Other cases are left out.
     pub fn case(&self, design: &Design, fault: &str) -> BoardInputs {
         let net = |p: &PinRef| design.pin_net(&p.reference, &p.pin).map(|n| n.name.clone());
         let ours: Vec<&Input> = self
@@ -235,6 +280,7 @@ impl BoardInputs {
             fault: None,
             ..i.clone()
         }));
+        // A fault on either pin breaks the link between them.
         let differential = self
             .differential
             .iter()
@@ -248,6 +294,7 @@ impl BoardInputs {
         }
     }
 
+    /// Everything that doesn't match the design or doesn't make sense. Empty when the file is sound.
     pub fn problems(&self, design: &Design) -> Vec<String> {
         let mut out = Vec::new();
         for s in &self.signals {
@@ -280,6 +327,7 @@ impl BoardInputs {
                     net.map(|n| n.name.clone())
                 })
                 .collect();
+            // A pin measured from itself is only allowed at 0 V: the board's ground reference.
             let ground_reference = i.pin == i.to && i.min == 0.0 && i.max == Max::Value(0.0);
             if let [Some(a), Some(b)] = nets.as_slice()
                 && a == b
@@ -343,6 +391,7 @@ impl BoardInputs {
             } else if nets[0] == nets[1] {
                 out.push(format!("differential {} to {}: both pins are on one net", d.pin, d.to));
             } else if nets.iter().any(|n| !driven.contains(n)) {
+                // A fault case drops a differential only when it replaces an input on one of its nets.
                 out.push(format!(
                     "differential {} to {}: both pins must be on nets a normal input drives",
                     d.pin, d.to

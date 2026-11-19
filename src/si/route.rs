@@ -1,9 +1,13 @@
+//! How one net is routed: the copper path from the driver's pad to the connector's, and everything that hangs
+//! off it (stubs).
 use std::collections::{BTreeMap, BinaryHeap, HashMap};
 
 use crate::kicad::pcb::{Layout, Point, dist};
 
+/// Distance under which two points count as the same, mm. KiCad stores coordinates in nanometres.
 const SAME: f64 = 1e-4;
 
+/// One straight piece of copper on the path or a stub.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Piece {
     pub layer: String,
@@ -18,9 +22,11 @@ impl Piece {
     }
 }
 
+/// What the signal meets, in order from the driver's pad.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Step {
     Track(Piece),
+    /// A via, entered on one layer and left on another (the same one when the via only hangs off the path).
     Via {
         at: Point,
         from: String,
@@ -28,33 +34,43 @@ pub enum Step {
         drill: f64,
         diameter: f64,
     },
+    /// A pad the path runs through, such as an ESD diode placed on the trace.
     Pad {
         reference: String,
         number: String,
     },
+    /// Copper hanging off the path here.
     Stub(Stub),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stub {
+    /// Where it leaves the path.
     pub at: Point,
+    /// Track length from the path to its farthest end, mm.
     pub length: f64,
+    /// The layer and width of its first track, when it has one.
     pub layer: Option<String>,
     pub width: Option<f64>,
     pub vias: usize,
+    /// Pads it reaches, as `(reference, pad number)`.
     pub pads: Vec<(String, String)>,
 }
 
+/// A net routed from one pad to another.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Route {
     pub net: String,
+    /// `(reference, pad number)` of the two ends.
     pub from: (String, String),
     pub to: (String, String),
     pub steps: Vec<Step>,
+    /// Pads on the net that no copper reaches.
     pub unrouted: Vec<(String, String)>,
 }
 
 impl Route {
+    /// Track length from end to end, mm.
     pub fn length(&self) -> f64 {
         self.pieces().map(Piece::length).sum()
     }
@@ -81,7 +97,9 @@ impl Route {
 #[derive(Debug, Clone)]
 enum Kind {
     Track(Piece),
+    /// From a via's hub to its copper on one layer.
     Via(usize),
+    /// From a pad to copper that touches it.
     Pad,
 }
 
@@ -148,6 +166,7 @@ impl Graph {
     }
 }
 
+/// Nearest point to `p` on segment `a`–`b`, as the fraction along it.
 fn project(p: Point, a: Point, b: Point) -> f64 {
     let (dx, dy) = (b.0 - a.0, b.1 - a.1);
     let len2 = dx * dx + dy * dy;
@@ -161,6 +180,7 @@ fn lerp(a: Point, b: Point, t: f64) -> Point {
     (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)
 }
 
+/// Builds the copper graph of `net`.
 fn graph(layout: &Layout, net: &str) -> (Graph, Vec<(usize, String, String)>) {
     let copper = layout.copper_layers();
     let span = |a: &str, b: &str| -> Vec<String> {
@@ -190,6 +210,8 @@ fn graph(layout: &Layout, net: &str) -> (Graph, Vec<(usize, String, String)>) {
         lookup: HashMap::new(),
     };
 
+    // Split each track wherever another track ends on it, a via sits on it or it runs across a pad's centre
+    // line, so that everything joins at a node.
     for t in &tracks {
         let mut cuts: Vec<(f64, Point)> = vec![(0.0, t.start), (1.0, t.end)];
         let near = |p: Point, slack: f64| {
@@ -237,6 +259,7 @@ fn graph(layout: &Layout, net: &str) -> (Graph, Vec<(usize, String, String)>) {
         }
     }
 
+    // A via joins its copper on every layer it passes through.
     for (i, v) in vias.iter().enumerate() {
         let hub = g.other(Node::ViaHub(i));
         for layer in span(&v.layers.0, &v.layers.1) {
@@ -256,6 +279,7 @@ fn graph(layout: &Layout, net: &str) -> (Graph, Vec<(usize, String, String)>) {
         }
     }
 
+    // A pad joins the copper ending on it.
     let mut pad_nodes = Vec::new();
     for (f, pad) in &pads {
         let node = g.other(Node::Pad {
@@ -292,6 +316,7 @@ impl Ord for Visit {
     }
 }
 
+/// Shortest track distance from `sources` to every node, and the edge each was reached by.
 fn dijkstra(g: &Graph, sources: &[usize]) -> (Vec<f64>, Vec<Option<usize>>) {
     let mut d = vec![f64::INFINITY; g.nodes.len()];
     let mut via = vec![None; g.nodes.len()];
@@ -317,6 +342,9 @@ fn dijkstra(g: &Graph, sources: &[usize]) -> (Vec<f64>, Vec<Option<usize>>) {
     (d, via)
 }
 
+/// Routes `net` from the pad `driver` picks out to the farthest part `is_end` accepts, entering it at its
+/// nearest pad. With no driver given, the path starts at the IC pad farthest from every `is_end` pad (any pad
+/// when no IC is on the net), which is the PHY on a USB line.
 pub fn trace(
     layout: &Layout,
     net: &str,
@@ -340,6 +368,7 @@ pub fn trace(
             .map(|(n, _, _)| *n)
             .ok_or_else(|| format!("{net}: no pad {r}.{p}"))?
     } else {
+        // An IC (U, IC) drives the line; failing that, whatever sits farthest along it.
         let routed: Vec<&(usize, String, String)> = pads
             .iter()
             .filter(|(n, r, _)| !is_end(r) && d[*n].is_finite())
@@ -364,7 +393,11 @@ pub fn trace(
         return Err(format!("{net}: the driver's pad has no copper path to the connector"));
     }
 
+    // Walk from the driver to the connector along the shortest path.
     let (_, back) = dijkstra(&g, &[start]);
+    // The far end is the connector farthest along the line, entered at its nearest pad: a header tapped
+    // near the driver is then a stub, and a USB-C connector's second D+ pad (B6 beside A6) is too.
+    // Connector pads the driver can't reach, such as a USB-C connector's unrouted B6, are unrouted too.
     let mut unrouted = unrouted;
     for (n, r, p) in &pads {
         if is_end(r) && *n != start && back[*n].is_none() && !unrouted.iter().any(|u| &u.0 == r && &u.1 == p) {
@@ -415,6 +448,7 @@ pub fn trace(
     let mut steps = Vec::new();
     let mut seen_branch = std::collections::BTreeSet::new();
     for (k, &node) in path_nodes.iter().enumerate() {
+        // Stubs leaving this node.
         for &e in &g.adj[node] {
             if path_edge_set.contains(&e) || seen_branch.contains(&e) {
                 continue;
@@ -441,6 +475,7 @@ pub fn trace(
         let next = path_nodes[k + 1];
         match &g.edges[e].kind {
             Kind::Track(p) => {
+                // Orient the piece the way the signal travels.
                 let forward = node_at(node).is_some_and(|a| dist(a, p.start) < SAME);
                 let mut piece = p.clone();
                 if !forward {
@@ -449,6 +484,7 @@ pub fn trace(
                 steps.push(Step::Track(piece));
             }
             Kind::Via(i) => {
+                // Entering the hub; the step is recorded with the layer it is left on.
                 if let Node::ViaHub(_) = g.nodes[next] {
                     let v = via_list[*i];
                     let from = layer_of(&g, node).unwrap_or_default();
@@ -501,6 +537,7 @@ fn path_len(g: &Graph, back: &[Option<usize>], mut n: usize) -> f64 {
     total
 }
 
+/// Everything reachable from `root` through `first` without touching the path again.
 fn explore(
     g: &Graph,
     root: usize,
@@ -521,6 +558,8 @@ fn explore(
         stub.layer = Some(p.layer.clone());
         stub.width = Some(p.width);
     }
+    // Gather the branch's copper first, then measure it: a branch with a loop can be reached the long way
+    // round first.
     let mut stack = vec![(root, first)];
     let mut vias = std::collections::BTreeSet::new();
     let mut branch: Vec<usize> = Vec::new();
@@ -552,6 +591,7 @@ fn explore(
             }
         }
     }
+    // Shortest distance from the path to each node of the branch (Bellman-Ford over the few edges it has).
     let mut depth: BTreeMap<usize, f64> = BTreeMap::new();
     depth.insert(root, 0.0);
     loop {

@@ -18,11 +18,6 @@ protection, the CAN bus and its faults, debug and serial headers, two USB ports,
 temperature, and an unpowered sensor. `tests/kitchen_sink.rs` asserts every FAIL that `check`, `pinout`, `si` and
 `bom` report on it, and that each section's pass case passes; the board's README says what each part is for.
 
-## Code style
-
-No comments, in Rust or in the build and CI config: make names and structure carry the meaning instead.
-`tests/no_comments.rs` fails the build on any comment. See [CLAUDE.md](../CLAUDE.md) for what is allowed.
-
 ## CI checks
 
 CI (`.github/workflows/ci.yml`) runs on pushes to main, on every pull request, and weekly for new advisories:
