@@ -2,9 +2,9 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use gerberus::diag::Show;
+use gerberus::finding::{Severity, Verdict};
 use gerberus::kicad::pcb::load_layout;
 use gerberus::limits::Library;
-use gerberus::rules::{Severity, Verdict};
 use gerberus::si::geometry::Section;
 use gerberus::si::{self, PairNets, Report};
 

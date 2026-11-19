@@ -1,11 +1,11 @@
 use std::collections::BTreeSet;
-use std::fmt;
 use std::fmt::Write as _;
 
 use serde::Serialize;
 
 use crate::design::{Component, Design, PinKind};
 use crate::diag::{Diagnostic, Level, Show};
+use crate::finding::{Finding, Severity, Verdict};
 use crate::inputs::BoardInputs;
 use crate::limits::{Bound, Class, Coverage, Library, Limit, Lookup, Part, Quantity, Range, coverage};
 use crate::policy::Policy;
@@ -55,60 +55,11 @@ pub const RULES: [(&str, &str); 14] = [
     ),
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Verdict {
-    Fail,
-    Unknown,
-    Pass,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Severity {
-    Error,
-    Warning,
-}
-
-impl fmt::Display for Verdict {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Verdict::Fail => "FAIL",
-            Verdict::Unknown => "UNKNOWN",
-            Verdict::Pass => "PASS",
-        })
-    }
-}
-
-impl fmt::Display for Severity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Severity::Error => "error",
-            Severity::Warning => "warning",
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Finding {
-    pub rule: &'static str,
-    pub verdict: Verdict,
-    pub severity: Severity,
-    pub reference: String,
-    pub message: String,
-    #[serde(skip)]
-    pub nets: Vec<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub case: Option<String>,
-    #[serde(skip)]
-    pub headline: Option<String>,
-}
-
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Report {
     pub findings: Vec<Finding>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub waived: Vec<crate::waivers::Waived>,
+    pub waived: Vec<crate::finding::Waived>,
     #[serde(skip)]
     pub waivers_file: String,
     #[serde(skip)]

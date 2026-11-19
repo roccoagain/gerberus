@@ -1,16 +1,10 @@
 use std::collections::BTreeMap;
 
 use crate::design::Design;
+use crate::finding::{Finding, Severity, Verdict};
 use crate::kicad::pcb::{Layout, PlacedPad, StackLayer, Track};
-use crate::rules::{Finding, Severity, Verdict};
+use crate::policy::TracePolicy;
 use crate::thermal::Thermal;
-
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TracePolicy {
-    pub rise: f64,
-    pub reason: String,
-}
 
 fn copper(layout: &Layout) -> BTreeMap<String, (f64, bool)> {
     let names: Vec<(&str, f64)> = layout

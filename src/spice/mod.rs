@@ -4,40 +4,16 @@ mod run;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use serde::Deserialize;
+use crate::policy::SpicePolicy;
 
 use crate::design::Design;
+use crate::finding::{Finding, Severity, Verdict};
 use crate::inputs::BoardInputs;
 use crate::limits::{Bound, Class, Library, Lookup, Part, Quantity, Range};
-use crate::rules::{Finding, Severity, Verdict};
 use crate::voltage::Voltages;
 
 pub use netlist::{Circuit, Pair, SWITCH_OHMS, TVS_OHMS, build};
 pub use run::{Measured, simulate};
-
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct SpicePolicy {
-    pub cable_inductance: [f64; 2],
-    pub cable_resistance: f64,
-    pub rise_time: f64,
-    pub duration: f64,
-    pub runs: usize,
-    pub reason: String,
-}
-
-impl Default for SpicePolicy {
-    fn default() -> SpicePolicy {
-        SpicePolicy {
-            cable_inductance: [0.1e-6, 1e-6],
-            cable_resistance: 0.1,
-            rise_time: 1e-6,
-            duration: 2e-3,
-            runs: 16,
-            reason: "a hot plug through about a metre of cable".into(),
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Rng(u64);
@@ -58,44 +34,6 @@ impl Rng {
     pub fn between(&mut self, lo: f64, hi: f64) -> f64 {
         lo + (hi - lo) * self.next_f64()
     }
-}
-
-pub fn parse_farads(value: &str) -> Option<f64> {
-    parse_si(value, 'F')
-}
-
-pub fn parse_henries(value: &str) -> Option<f64> {
-    parse_si(value, 'H')
-}
-
-fn parse_si(value: &str, unit: char) -> Option<f64> {
-    let word = value
-        .split_whitespace()
-        .find(|w| w.starts_with(|c: char| c.is_ascii_digit() || c == '.'))?;
-    let word = word.trim_end_matches(unit).trim_end_matches(unit.to_ascii_lowercase());
-    let prefix = |c: char| match c {
-        'p' => Some(1e-12),
-        'n' => Some(1e-9),
-        'u' | 'µ' | 'μ' => Some(1e-6),
-        'm' => Some(1e-3),
-        _ => None,
-    };
-    let at = word.char_indices().find(|(_, c)| !(c.is_ascii_digit() || *c == '.'));
-    let v = match at {
-        None => word.parse::<f64>().ok()?,
-        Some((i, c)) => {
-            let mult = prefix(c)?;
-            let (whole, rest) = (&word[..i], &word[i + c.len_utf8()..]);
-            if rest.is_empty() {
-                whole.parse::<f64>().ok()? * mult
-            } else if !whole.contains('.') && rest.chars().all(|c| c.is_ascii_digit()) {
-                format!("{whole}.{rest}").parse::<f64>().ok()? * mult
-            } else {
-                return None;
-            }
-        }
-    };
-    (v.is_finite() && v > 0.0).then_some(v)
 }
 
 fn sig(x: f64) -> String {

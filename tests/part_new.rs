@@ -4,8 +4,9 @@ use std::process::Command;
 use gerberus::design::Design;
 use gerberus::inputs::BoardInputs;
 use gerberus::kicad;
+use gerberus::limits::NOT_READ;
 use gerberus::limits::{Class, Library, Part, Range};
-use gerberus::part_new::{NOT_READ, template};
+use gerberus::part_new::template;
 
 fn root(rel: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)
@@ -151,7 +152,7 @@ fn an_unread_tvs_clamps_nothing() {
     assert!(!esd.is_empty());
     assert!(
         esd.iter()
-            .all(|f| f.verdict != gerberus::rules::Verdict::Pass && !f.message.contains("clamped by D6")),
+            .all(|f| f.verdict != gerberus::finding::Verdict::Pass && !f.message.contains("clamped by D6")),
         "{esd:?}"
     );
 

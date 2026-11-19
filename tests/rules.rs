@@ -2,11 +2,12 @@ use std::path::{Path, PathBuf};
 
 use gerberus::design::{Component, Design, Net, Pin, PinKind};
 use gerberus::diag::Show;
+use gerberus::finding::{Severity, Verdict};
 use gerberus::inputs::BoardInputs;
 use gerberus::kicad;
 use gerberus::limits::Library;
 use gerberus::policy::Policy;
-use gerberus::rules::{RULES, Report, Severity, Verdict, check, render};
+use gerberus::rules::{RULES, Report, check, render};
 use gerberus::voltage::{Span, Voltages, compute};
 
 fn root(rel: &str) -> PathBuf {
@@ -141,7 +142,7 @@ fn vbus_on_the_bus_faults() {
         .into_iter()
         .partition(|f| f.case.as_deref() == Some("VBUS reversed"));
     assert!(!reversed.is_empty() && reversed.iter().all(|f| f.verdict != Verdict::Fail));
-    let (r4, rest): (Vec<&gerberus::rules::Finding>, Vec<_>) = faults
+    let (r4, rest): (Vec<&gerberus::finding::Finding>, Vec<_>) = faults
         .iter()
         .partition(|f| f.reference == "R4" && matches!(f.rule, "resistor-power" | "recommended"));
     assert!(rest.iter().all(|f| f.verdict == Verdict::Pass), "{rest:#?}");

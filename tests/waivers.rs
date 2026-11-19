@@ -3,11 +3,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use gerberus::diag::Show;
+use gerberus::finding::{Severity, Verdict};
 use gerberus::inputs::BoardInputs;
 use gerberus::kicad;
 use gerberus::limits::Library;
 use gerberus::policy::Policy;
-use gerberus::rules::{Severity, Verdict, check, render};
+use gerberus::rules::{check, render};
 use gerberus::voltage::compute;
 use gerberus::waivers::Waivers;
 

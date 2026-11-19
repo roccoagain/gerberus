@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use gerberus::design::{Component, Design, Net, Pin, PinKind};
+use gerberus::finding::Verdict;
 use gerberus::inputs::BoardInputs;
 use gerberus::limits::Library;
-use gerberus::rules::Verdict;
 use gerberus::signal::{check, levels};
 use gerberus::voltage::compute;
 
@@ -114,7 +114,7 @@ source = "test"
     .unwrap()
 }
 
-fn run(peak: f64) -> (Design, Vec<gerberus::rules::Finding>, gerberus::signal::Levels) {
+fn run(peak: f64) -> (Design, Vec<gerberus::finding::Finding>, gerberus::signal::Levels) {
     let d = stage();
     let lib = Library::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("parts")).unwrap();
     let i = inputs(peak);
@@ -124,7 +124,7 @@ fn run(peak: f64) -> (Design, Vec<gerberus::rules::Finding>, gerberus::signal::L
     (d.clone(), check(&d, &lib, &l), l)
 }
 
-fn clipping(f: &[gerberus::rules::Finding]) -> &gerberus::rules::Finding {
+fn clipping(f: &[gerberus::finding::Finding]) -> &gerberus::finding::Finding {
     f.iter().find(|f| f.rule == "clipping").expect("a clipping finding")
 }
 
@@ -174,7 +174,7 @@ fn a_signal_past_an_absolute_maximum_is_an_error() {
         .find(|f| f.rule == "signal-level" && f.message.starts_with("U1.+IN"))
         .unwrap();
     assert_eq!(plus.verdict, Verdict::Fail, "{}", plus.message);
-    assert_eq!(plus.severity, gerberus::rules::Severity::Error, "{}", plus.message);
+    assert_eq!(plus.severity, gerberus::finding::Severity::Error, "{}", plus.message);
 }
 
 #[test]
@@ -201,7 +201,7 @@ fn rewire(d: &mut Design, r: &str, pin: &str, to: &str) {
     d.nets[to].pins.push((r.into(), pin.into()));
 }
 
-fn run_on(d: &Design, i: &BoardInputs) -> (Vec<gerberus::rules::Finding>, gerberus::signal::Levels) {
+fn run_on(d: &Design, i: &BoardInputs) -> (Vec<gerberus::finding::Finding>, gerberus::signal::Levels) {
     let lib = Library::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("parts")).unwrap();
     let v = compute(d, &lib, i);
     let l = levels(d, &lib, i, &v).unwrap();

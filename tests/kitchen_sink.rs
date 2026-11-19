@@ -4,12 +4,13 @@ use std::time::Duration;
 
 use gerberus::bom::{self, Online, Options, Topic};
 use gerberus::design::Design;
+use gerberus::finding::{Finding, Verdict};
 use gerberus::inputs::BoardInputs;
 use gerberus::kicad;
 use gerberus::limits::Library;
 use gerberus::pinout;
 use gerberus::policy::Policy;
-use gerberus::rules::{self, Finding, Report, Verdict};
+use gerberus::rules::{self, Report};
 use gerberus::si;
 use gerberus::voltage::compute;
 

@@ -4,7 +4,8 @@ use std::fmt::Write as _;
 use serde::Serialize;
 
 use crate::design::{Component, Design};
-use crate::rules::{Finding, Report, Severity, Verdict};
+use crate::finding::{Finding, Severity, Verdict};
+use crate::rules::Report;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PartChange {

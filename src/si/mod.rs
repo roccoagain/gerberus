@@ -15,9 +15,9 @@ use self::eye::{Eye, USB2_TEMPLATE_1};
 use self::geometry::{Analyzer, Section};
 use self::route::{Route, Step};
 use crate::diag::{Diagnostic, Level, Show};
+use crate::finding::{Severity, Verdict};
 use crate::kicad::pcb::{Layout, PlacedFootprint};
 use crate::limits::Library;
-use crate::rules::{Severity, Verdict};
 
 mod cite {
     pub const SPRAAR7: &str = "TI SPRAAR7J High-Speed Interface Layout Guidelines, Table A-1, PDF page 16";

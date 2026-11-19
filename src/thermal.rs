@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::design::{Component, Design, PinKind};
+use crate::finding::{Finding, Severity, Verdict};
 use crate::inputs::BoardInputs;
 use crate::limits::{Bound, Class, DriveKind, Library, Lookup, Part, Range};
 use crate::policy::Policy;
-use crate::rules::{Finding, Severity, Verdict};
 use crate::voltage::{Driver, Hold, Voltages, resistance_range};
 
 #[derive(Debug, Clone, Default, PartialEq)]

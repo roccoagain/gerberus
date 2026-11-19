@@ -1,11 +1,13 @@
 use std::path::{Path, PathBuf};
 
 use gerberus::design::Design;
+use gerberus::finding::{Finding, Severity, Verdict};
 use gerberus::inputs::BoardInputs;
 use gerberus::kicad;
 use gerberus::limits::Library;
-use gerberus::rules::{Finding, Severity, Verdict};
-use gerberus::spice::{self, Measured, Rng, SpicePolicy, parse_farads, parse_henries};
+use gerberus::policy::SpicePolicy;
+use gerberus::spice::{self, Measured, Rng};
+use gerberus::units::{parse_farads, parse_henries};
 use gerberus::voltage::{Voltages, compute};
 
 fn root(rel: &str) -> PathBuf {

@@ -72,8 +72,11 @@ Every command reads a design into one design graph and checks that.
 
 - `src/kicad/` reads schematics and boards into the design graph (`src/design.rs`: parts, pins and
   the nets that join them). `src/sexpr.rs` is the S-expression reader for KiCad files.
-- `src/limits.rs` loads the part files (`parts/`, format in [`parts/README.md`](../parts/README.md)) and
-  `src/policy.rs` the derating policy (`policy.toml`). Both are built into the binary by `build.rs`.
+- `src/limits/` loads the part files (`parts/`, format in [`parts/README.md`](../parts/README.md)), with part
+  families in `src/limits/family.rs`, and `src/policy.rs` the derating policy (`policy.toml`), including the
+  `stress` and `traces` settings. Both are built into the binary by `build.rs`.
+- `src/finding.rs` holds what every checker reports (`Finding`, `Verdict`, `Severity`, `Waived`), and
+  `src/units.rs` reads component values (`10k`, `100nF`, `4.7uH`).
 - `src/inputs.rs` reads a board's `inputs.toml`.
 - `src/voltage.rs` works out every net's worst-case voltage range. `check` runs the rules in `src/rules.rs`
   against it, with the `esd` and `reverse-polarity` rules from `src/protection.rs` and the junction-temperature and
@@ -83,3 +86,5 @@ Every command reads a design into one design graph and checks that.
 - `src/pinout.rs` (`pinout`), `src/bom.rs` (`bom`), `src/si/` (`si`) and `src/datasheet.rs` (`datasheet`) each
   back one command.
 - `src/main.rs` is the command line. `src/lib.rs` declares the modules, so tests can use them.
+
+Modules depend on each other in one direction only: no two modules reach into each other.

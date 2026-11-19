@@ -1,9 +1,13 @@
+pub mod family;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 use crate::design::Component;
+
+pub const NOT_READ: &str = "not read from the datasheet yet";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -448,7 +452,7 @@ impl Part {
     }
 
     pub fn unread(&self) -> bool {
-        let unread = |r: &Range| matches!(r, Range::Unknown(why) if why == crate::part_new::NOT_READ);
+        let unread = |r: &Range| matches!(r, Range::Unknown(why) if why == NOT_READ);
         self.limits
             .iter()
             .any(|l| unread(&l.abs_max) || unread(&l.recommended) || l.breakdown.as_ref().is_some_and(unread))
@@ -796,20 +800,20 @@ pub fn builtin_text(path: &Path) -> Option<&'static str> {
 pub struct Library {
     pub parts: BTreeMap<String, Part>,
     pub files: BTreeMap<String, PathBuf>,
-    pub families: Vec<(PathBuf, crate::family::Family)>,
+    pub families: Vec<(PathBuf, family::Family)>,
     pub family_errors: BTreeMap<String, String>,
 }
 
 enum Entry {
     Part(Box<Part>),
-    Family(Box<crate::family::Family>),
+    Family(Box<family::Family>),
 }
 
 fn parse_entry(path: &Path, text: &str) -> Result<Entry, String> {
     let at = |e: String| format!("{}: {e}", path.display());
     let table: toml::Table = toml::from_str(text).map_err(|e| at(e.to_string()))?;
     if table.contains_key("family") {
-        let f: crate::family::Family = toml::from_str(text).map_err(|e| at(e.to_string()))?;
+        let f: family::Family = toml::from_str(text).map_err(|e| at(e.to_string()))?;
         let problems = f.problems();
         if !problems.is_empty() {
             return Err(at(problems.join("; ")));

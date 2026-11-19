@@ -1,12 +1,12 @@
 use gerberus::design::Component;
-use gerberus::family::{ValueKind, parse_value};
+use gerberus::limits::family::{ValueKind, parse_value};
 use gerberus::limits::{Library, Lookup, Quantity, Range};
 
 fn builtin() -> Library {
     Library::builtin().unwrap()
 }
 
-fn family<'a>(lib: &'a Library, name: &str) -> &'a gerberus::family::Family {
+fn family<'a>(lib: &'a Library, name: &str) -> &'a gerberus::limits::family::Family {
     &lib.families.iter().find(|(_, f)| f.family == name).unwrap().1
 }
 

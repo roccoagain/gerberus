@@ -11,8 +11,8 @@ pub struct Policy {
     pub derates: Vec<Derate>,
     pub esd: Option<EsdLevel>,
     pub junction: Option<JunctionMargin>,
-    pub spice: Option<crate::spice::SpicePolicy>,
-    pub traces: Option<crate::traces::TracePolicy>,
+    pub spice: Option<SpicePolicy>,
+    pub traces: Option<TracePolicy>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -86,4 +86,35 @@ impl Policy {
                     .find(|d| d.class == Some(part.class))
             })
     }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct SpicePolicy {
+    pub cable_inductance: [f64; 2],
+    pub cable_resistance: f64,
+    pub rise_time: f64,
+    pub duration: f64,
+    pub runs: usize,
+    pub reason: String,
+}
+
+impl Default for SpicePolicy {
+    fn default() -> SpicePolicy {
+        SpicePolicy {
+            cable_inductance: [0.1e-6, 1e-6],
+            cable_resistance: 0.1,
+            rise_time: 1e-6,
+            duration: 2e-3,
+            runs: 16,
+            reason: "a hot plug through about a metre of cable".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TracePolicy {
+    pub rise: f64,
+    pub reason: String,
 }
