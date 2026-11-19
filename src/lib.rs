@@ -14,6 +14,7 @@ pub mod design;
 pub mod diag;
 pub mod diff;
 pub mod doctor;
+pub mod drop;
 pub mod finding;
 pub mod init;
 pub mod inputs;

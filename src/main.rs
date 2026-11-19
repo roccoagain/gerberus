@@ -49,7 +49,8 @@ next to the schematic unless --inputs is given). --explain prints the reasoning 
 them out for one of the fault cases in the inputs instead of normal operation.
 
 `traces` checks that every track on the KiCad board (same name as the schematic, .kicad_pcb, unless --pcb names
-another) is wide enough for the worst-case current its net supplies, by IPC-2221 at policy.toml's temperature rise.
+another) is wide enough for the worst-case current its net supplies, by IPC-2221 at policy.toml's temperature rise,
+and that every power pin still gets its recommended minimum after the voltage drop in the copper from its supply.
 
 `diff` compares two revisions of a design, or one against a git revision with --rev: the parts added, removed or
 changed, the connections made or broken (nets matched by their pins, not their names), and the `check` findings
@@ -550,7 +551,10 @@ fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
     let tp = policy.traces.ok_or("policy.toml has no [traces]")?;
     let th = gerberus::thermal::compute(&design, &lib, &inputs, &v);
     let report = gerberus::rules::Report {
-        findings: gerberus::traces::check(&design, &layout, &th, &tp),
+        findings: gerberus::traces::check(&design, &layout, &th, &tp)
+            .into_iter()
+            .chain(gerberus::drop::check(&design, &lib, &inputs, &v, &layout, &th, &tp))
+            .collect(),
         ..Default::default()
     };
     if json {

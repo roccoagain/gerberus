@@ -846,7 +846,8 @@ impl Ctx<'_> {
                     }
                 }
             }
-            if !resistor || st.stack.contains(&other) {
+            // The resistor this net is fed through brings current in; it isn't a load.
+            if !resistor || st.stack.contains(&other) || self.fed_from(net, other) {
                 continue;
             }
             match (
