@@ -465,6 +465,10 @@ pub fn help(rule: &str) -> Option<&'static str> {
         "esd" => "add a TVS or ESD clamp next to the connector pin",
         "trace-current" => "widen the track, or move it to an outer layer or thicker copper",
         "voltage-drop" => "widen or shorten the tracks from the supply, or feed the pin from a plane",
+        "decoupling" => "move a decoupling capacitor next to the pin, or add one there",
+        "plane-split" => "route the track over one unbroken plane, or bridge the gap with a stitching capacitor",
+        "hot-loop" => "move the input capacitor right beside the regulator's supply and ground pins",
+        "line-length" => "add a series resistor beside the driver, or shorten the line",
         "hot-plug" => {
             "damp the plug-in ringing: a TVS at the input, a bulk electrolytic or RC snubber, or a load switch"
         }

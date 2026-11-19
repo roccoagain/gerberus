@@ -61,6 +61,7 @@ fn values_with_si_prefixes() {
     assert!(close(parse_farads("4.7µF 16V"), 4.7e-6));
     assert!(close(parse_farads("10p"), 10e-12));
     assert_eq!(parse_farads("DNP"), None);
+    assert!(close(parse_farads("100nF/50V"), 100e-9));
     assert_eq!(parse_farads("1u2u"), None);
     assert!(close(parse_henries("6.8uH"), 6.8e-6));
     assert!((parse_henries("4u7").unwrap() - 4.7e-6).abs() < 1e-18);

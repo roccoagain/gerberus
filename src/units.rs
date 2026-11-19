@@ -46,10 +46,11 @@ pub fn parse_henries(value: &str) -> Option<f64> {
 }
 
 /// A number with an SI prefix, as a value field writes it: the first word that holds a number, with the
-/// prefix either after it (`100n`, `100nF`) or in place of the decimal point (`4u7`).
+/// prefix either after it (`100n`, `100nF`) or in place of the decimal point (`4u7`). Words are split at spaces
+/// and slashes, so `100nF/50V` reads as 100 nF.
 fn parse_si(value: &str, unit: char) -> Option<f64> {
     let word = value
-        .split_whitespace()
+        .split(|c: char| c.is_whitespace() || c == '/')
         .find(|w| w.starts_with(|c: char| c.is_ascii_digit() || c == '.'))?;
     let word = word.trim_end_matches(unit).trim_end_matches(unit.to_ascii_lowercase());
     let prefix = |c: char| match c {

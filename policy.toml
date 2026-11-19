@@ -57,3 +57,25 @@ reason = "hot plug through up to 1 µH of cable (about a metre), 0.1 Ω, switche
 [traces]
 rise = 10
 reason = "a 10 °C rise, the usual design figure"
+
+# `gerberus traces`: how far a power pin's pad may be from the nearest decoupling capacitor to ground on its net,
+# pad centre to pad centre, and the largest capacitor that counts as decoupling (a bigger one is bulk storage for
+# slow load changes, which needn't be close). Project judgement, not datasheet figures: the further, the more
+# track inductance between them.
+[decoupling]
+distance = 5
+largest = 1e-6
+reason = "the usual layout guideline for a decoupling capacitor of 1 µF or less"
+
+# `gerberus traces`: the longest a switching regulator's input loop (supply pin, input capacitor, ground pin) may
+# be, round the pad centres. Project judgement, not datasheet figures: an input capacitor right beside a small
+# switcher's pins makes a loop of under 10 mm.
+[hot_loop]
+length = 15
+reason = "an input capacitor within a few millimetres of the switcher's supply and ground pins"
+
+# `gerberus traces`: the fastest edge a digital output pin is taken to make, as part files don't give output rise
+# times. Project judgement: fast enough to cover a modern microcontroller's fastest GPIO speed setting.
+[edges]
+rise = 1e-9
+reason = "1 ns, a microcontroller GPIO at its fastest speed setting"

@@ -42,6 +42,7 @@ fn zone(a: Point, b: Point) -> Zone {
         net: "GND".into(),
         layer: "B.Cu".into(),
         polygons: vec![vec![a, (b.0, a.1), b, (a.0, b.1)]],
+        outlines: vec![],
         clearance: 0.2,
         min_thickness: 0.2,
     }
