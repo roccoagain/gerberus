@@ -1,4 +1,4 @@
-# Trace current and voltage drop
+# Layout checks: trace current, voltage drop, decoupling, plane splits, hot loops and line length
 
 ```sh
 gerberus traces board.kicad_sch
@@ -41,5 +41,49 @@ current makes exactly that.
 | FAIL (warning) | the pin's own maximum current (a supply entry for that pin alone) times `Z`, with the thickest copper, vias counted as no resistance, at the coldest board, is already too much, and the net has no copper pour. |
 | UNKNOWN | anything between; a pin joined to its supply only through a pour, whose resistance isn't worked out; a ground return with no pour; a net whose voltage leaves no margin before any copper (the pin's own limit check reports that). |
 
-Not yet checked: vias' current, a pour's narrowest neck, and the other v0.5 rules (decoupling distance, traces
-crossing plane splits, loop area).
+## Decoupling distance
+
+`traces` also measures each power pin's pad (a `PowerIn` pin on a net that isn't ground) to the nearest pad of a
+decoupling capacitor on its net whose other pin is on ground, centre to centre. Within `[decoupling] distance` in
+`policy.toml` (5 mm) passes; further is a warning. A capacitor bigger than `[decoupling] largest` (1 µF) is bulk
+storage for slow load changes, which needn't be close, so it doesn't count; a pin with no decoupling capacitor on
+its net is UNKNOWN. Plug-in modules (`A1`) decouple their own chips, and connectors feed the board, so their pins
+are left out.
+
+## Plane splits
+
+A signal's return current flows in the plane next to its track. `traces` follows every track of each signal net (a
+net with no zone of its own) a quarter millimetre at a time and notes which filled piece of copper lies beneath on
+each neighbouring copper layer. Points over a hole in a piece (a via's or pad's clearance) are skipped, so a hole
+doesn't break the piece.
+
+| Result | When |
+|---|---|
+| PASS | every track has one piece beneath it, on some neighbouring layer. |
+| FAIL (warning) | a track runs over two or more separate pieces (ground islands, or a ground and a power pour) on every neighbouring layer with copper under it, so its return current detours around the gap. |
+| UNKNOWN | a track has no filled copper under it on any neighbouring layer. Refill zones in KiCad before checking: an unfilled zone has no copper in the file. |
+
+## Hot loop
+
+A switching regulator's input current turns on and off at every switch edge, in a loop from its input capacitor
+into its supply pin, through the switches, out of its ground pin and back. For each part with a switch node (a
+`switches` drive in its part file, which names the supply pin and the ground), `traces` draws that loop through the
+pad centres of the supply pin, a capacitor's two pads and the ground pin, and takes the smallest over the capacitors
+between those two nets. The tracks between them can only make the real loop larger. Within `[hot_loop] area` in
+`policy.toml` (25 mm²) passes; larger is a warning; no capacitor across the two nets is UNKNOWN.
+
+## SPI and I²S line length
+
+A track behaves as a lumped wire while a signal's edge is longer than about six times the track's delay; beyond
+that, a line driven straight from a push-pull output reflects off its far end and rings. `traces` finds SPI and I²S
+lines by their net names, as `si` finds USB pairs (a word such as SCK, SCLK, MOSI, MISO, COPI, CIPO, SDI, SDO, BCLK,
+BCK, LRCLK, LRCK, WS, MCLK, SDIN or SDOUT, or one starting SAI or I2S), and adds up each one's tracks. An edge is
+taken to be as fast as `[edges] rise` in `policy.toml` (1 ns), as part files don't give output rise times, travelling
+at `c / √εr` through the stackup's highest-εr dielectric.
+
+| Result | When |
+|---|---|
+| PASS | all of the net's tracks together are no longer than a sixth of the edge's length, so no path is. |
+| UNKNOWN | longer, so it may ring: whether it does depends on the driver's strength and the far end's load. A series resistor beside the driver damps it. |
+
+Not yet checked: vias' current and a pour's narrowest neck.

@@ -19,6 +19,12 @@ pub struct Policy {
     pub spice: Option<SpicePolicy>,
     /// The temperature rise a track may have, for `gerberus traces`.
     pub traces: Option<TracePolicy>,
+    /// How near a power pin its decoupling capacitor must be, for `gerberus traces`.
+    pub decoupling: Option<DecouplingPolicy>,
+    /// The largest input loop a switching regulator may have, for `gerberus traces`.
+    pub hot_loop: Option<HotLoopPolicy>,
+    /// How fast a digital output's edge is taken to be, for `gerberus traces`.
+    pub edges: Option<EdgePolicy>,
 }
 
 /// Keep every junction `margin` °C below its maximum temperature: reliability derating.
@@ -130,6 +136,35 @@ impl Default for SpicePolicy {
             reason: "a hot plug through about a metre of cable".into(),
         }
     }
+}
+
+/// How fast a digital output's edge is taken to be, from `policy.toml`'s `[edges]`.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EdgePolicy {
+    /// Seconds, 10 % to 90 %.
+    pub rise: f64,
+    pub reason: String,
+}
+
+/// The largest area a switching regulator's input loop may enclose, from `policy.toml`'s `[hot_loop]`.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HotLoopPolicy {
+    /// Square millimetres.
+    pub area: f64,
+    pub reason: String,
+}
+
+/// How near a power pin its nearest capacitor to ground must be, from `policy.toml`'s `[decoupling]`.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecouplingPolicy {
+    /// Millimetres between the centres of the pin's pad and the capacitor's pad on the same net.
+    pub distance: f64,
+    /// Farads: a bigger capacitor is a bulk capacitor, which needn't be close.
+    pub largest: f64,
+    pub reason: String,
 }
 
 /// The temperature rise a track may have, from `policy.toml`'s `[traces]`.
