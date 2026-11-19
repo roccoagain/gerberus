@@ -61,3 +61,7 @@ unimplemented = "warn"
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+# The tests run the field solver and the voltage engine on whole boards, which an unoptimised build makes slow.
+[profile.dev]
+opt-level = 1

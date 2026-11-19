@@ -371,7 +371,7 @@ fn conjugate_gradient(rows: &[Vec<(usize, f64)>], diag: &[f64], b: &[f64]) -> Ve
             x[k] += alpha * p[k];
             r[k] -= alpha * ap[k];
         }
-        if r.iter().map(|v| v * v).sum::<f64>().sqrt() < 1e-9 * b_norm {
+        if r.iter().map(|v| v * v).sum::<f64>().sqrt() < 1e-6 * b_norm {
             break;
         }
         precondition(&r, &mut z);

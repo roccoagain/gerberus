@@ -23,6 +23,8 @@ temperature, and an unpowered sensor. `tests/kitchen_sink.rs` asserts every FAIL
 Keep each piece of code to one clear job, with no rarely used options, unused flags or hedged wording. Edge cases that real
 boards need belong in a rule when they make its results more correct. See [CLAUDE.md](../CLAUDE.md).
 
+Modules form layers: `tests/module_layers.rs` fails if modules use each other in a loop.
+
 ## CI checks
 
 CI (`.github/workflows/ci.yml`) runs on pushes to main, on every pull request, and weekly for new advisories:

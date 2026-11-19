@@ -298,11 +298,15 @@ fn outline(z: &Zone) -> Vec<(Point, Point)> {
 /// through-hole pads).
 fn zone_edge(edges: &[(Point, Point)], p: Point, voids: &[(Point, f64)]) -> f64 {
     let hole = |q: Point| voids.iter().any(|(c, r)| dist(*c, q) <= *r);
-    edges
-        .iter()
-        .filter(|(a, b)| !(hole(*a) && hole(*b)))
-        .map(|(a, b)| seg_dist(p, *a, *b))
-        .fold(f64::INFINITY, f64::min)
+    let mut nearest = f64::INFINITY;
+    for (a, b) in edges {
+        // The hole test costs a pass over every void, so it only runs for an edge that would be the nearest.
+        let d = seg_dist(p, *a, *b);
+        if d < nearest && !(hole(*a) && hole(*b)) {
+            nearest = d;
+        }
+    }
+    nearest
 }
 
 fn seg_dist(p: Point, a: Point, b: Point) -> f64 {
