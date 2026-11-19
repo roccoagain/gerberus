@@ -1,8 +1,9 @@
 use gerberus::design::{Design, Net};
+use gerberus::finding::Verdict;
 use gerberus::kicad::pcb::{Layout, PlacedFootprint, PlacedPad, StackLayer, Track, Zone};
-use gerberus::rules::Verdict;
+use gerberus::policy::TracePolicy;
 use gerberus::thermal::{Load, Thermal};
-use gerberus::traces::{TracePolicy, check, ipc2221};
+use gerberus::traces::{check, ipc2221};
 
 #[test]
 fn ipc2221_matches_the_fit() {
@@ -53,7 +54,7 @@ fn board(width: f64) -> Layout {
     }
 }
 
-fn run(layout: &Layout, amps: f64, known: bool) -> gerberus::rules::Finding {
+fn run(layout: &Layout, amps: f64, known: bool) -> gerberus::finding::Finding {
     let design = Design {
         nets: vec![Net {
             name: "VIN".into(),

@@ -1,6 +1,7 @@
 use gerberus::design::{Component, Design, Net, Pin, PinKind};
 use gerberus::diff::{diff, render};
-use gerberus::rules::{Finding, Report, Severity, Verdict};
+use gerberus::finding::{Finding, Severity, Verdict};
+use gerberus::rules::Report;
 
 type PartSpec<'a> = (&'a str, &'a str, &'a [(&'a str, &'a str)]);
 
@@ -171,7 +172,7 @@ fn a_new_waiver_shows() {
     let f = finding("esd", "J1", Verdict::Fail, "J1.1 (SWDIO): no clamp");
     let old = report(vec![f.clone()]);
     let mut new = Report::default();
-    new.waived.push(gerberus::waivers::Waived {
+    new.waived.push(gerberus::finding::Waived {
         finding: f,
         reason: "bench only".into(),
         by: Some("Rocco".into()),

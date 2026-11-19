@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use gerberus::diag::Show;
+use gerberus::finding::{Severity, Verdict};
 use gerberus::kicad::pcb::{Layout, PlacedFootprint, PlacedPad, Point, StackLayer, Track, Zone};
 use gerberus::limits::Library;
-use gerberus::rules::{Severity, Verdict};
 use gerberus::si::{self, Report};
 
 const YP: f64 = 0.0;

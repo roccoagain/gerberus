@@ -1,11 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use super::{Rng, SpicePolicy, parse_farads, parse_henries, part_of, sig};
+use super::{Rng, part_of, sig};
 use crate::design::{Component, Design};
 use crate::inputs::BoardInputs;
 use crate::limits::{Bound, Class, DriveKind, Library, Part, Quantity, Range};
-use crate::voltage::{Voltages, parse_ohms, resistance_range};
+use crate::policy::SpicePolicy;
+use crate::units::{parse_farads, parse_henries, parse_ohms};
+use crate::voltage::{Voltages, resistance_range};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Value {

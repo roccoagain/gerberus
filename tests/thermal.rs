@@ -1,11 +1,12 @@
 use std::path::{Path, PathBuf};
 
 use gerberus::design::Design;
+use gerberus::finding::{Finding, Severity, Verdict};
 use gerberus::inputs::{BoardInputs, BoardTemperature};
 use gerberus::kicad;
 use gerberus::limits::Library;
 use gerberus::policy::Policy;
-use gerberus::rules::{Finding, Report, Severity, Verdict, check};
+use gerberus::rules::{Report, check};
 use gerberus::thermal::{self, Thermal};
 use gerberus::voltage::compute;
 

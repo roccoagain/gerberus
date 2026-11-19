@@ -4,7 +4,8 @@ use gerberus::design::Design;
 use gerberus::inputs::BoardInputs;
 use gerberus::kicad;
 use gerberus::limits::Library;
-use gerberus::voltage::{Span, Voltages, compute, parse_ohms};
+use gerberus::units::parse_ohms;
+use gerberus::voltage::{Span, Voltages, compute};
 
 fn root(rel: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)

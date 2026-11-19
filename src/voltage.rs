@@ -844,42 +844,6 @@ fn cite(part: &Part, range: &Range) -> String {
     }
 }
 
-pub fn parse_ohms(value: &str) -> Option<f64> {
-    let s: String = value
-        .trim()
-        .trim_end_matches("ohms")
-        .trim_end_matches("ohm")
-        .trim_end_matches('Ω')
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .collect();
-    let letter = s.char_indices().find_map(|(i, ch)| {
-        let m = match ch {
-            'R' | 'r' => 1.0,
-            'k' | 'K' => 1e3,
-            'M' => 1e6,
-            'G' => 1e9,
-            _ => return None,
-        };
-        Some((i, ch.len_utf8(), m))
-    });
-    let (digits, mult) = match letter {
-        None => (s.clone(), 1.0),
-        Some((i, len, m)) => {
-            let (whole, frac) = (&s[..i], &s[i + len..]);
-            if frac.is_empty() {
-                (whole.to_string(), m)
-            } else if whole.contains('.') || !frac.chars().all(|c| c.is_ascii_digit()) {
-                return None;
-            } else {
-                (format!("{whole}.{frac}"), m)
-            }
-        }
-    };
-    let v: f64 = digits.parse().ok()?;
-    (v.is_finite() && v >= 0.0).then_some(v * mult)
-}
-
 struct Plan<'a> {
     target: usize,
     deps: Vec<usize>,
@@ -1020,7 +984,7 @@ pub fn resistance_range(
     r: &str,
     c: &Component,
 ) -> Result<(f64, f64, String), String> {
-    let Some(ohms) = parse_ohms(&c.value).filter(|&v| v > 0.0) else {
+    let Some(ohms) = crate::units::parse_ohms(&c.value).filter(|&v| v > 0.0) else {
         return Err(format!("can't read a resistance from {r}'s value {:?}", c.value));
     };
     let Some(part) = lib.part_for(c) else {

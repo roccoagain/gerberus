@@ -2,11 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use crate::design::{Component, Design, PinKind};
+use crate::finding::{Finding, Severity, Verdict};
 use crate::inputs::{BoardInputs, Signal};
 use crate::limits::{Bound, Class, Library, Part, Quantity, Range};
-use crate::rules::{Finding, Severity, Verdict};
-use crate::spice::{parse_farads, parse_henries, simulate};
-use crate::voltage::{Driver, Span, Voltages, is_connector, parse_ohms};
+use crate::spice::simulate;
+use crate::units::{parse_farads, parse_henries, parse_ohms};
+use crate::voltage::{Driver, Span, Voltages, is_connector};
 
 const NO_SIGNAL: f64 = 1e-4;
 

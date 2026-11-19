@@ -1821,7 +1821,7 @@ pub fn lcsc_pdf_link(html: &str) -> Option<String> {
 pub const FOLDER: &str = "datasheets";
 
 pub fn saved_name(mpn: &str) -> String {
-    let toml = crate::doctor::file_name(mpn);
+    let toml = file_name(mpn);
     format!("{}.pdf", toml.strip_suffix(".toml").unwrap_or(&toml))
 }
 
@@ -1925,6 +1925,20 @@ pub fn fetch(url: &str, cache: &Path) -> Result<PathBuf, String> {
     std::fs::write(&tmp, &bytes).map_err(|e| format!("{}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path)
+}
+
+pub fn file_name(mpn: &str) -> String {
+    let safe: String = mpn
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || "-_.+".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!("{safe}.toml")
 }
 
 #[cfg(test)]

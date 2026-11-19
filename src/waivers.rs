@@ -1,10 +1,11 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::design::Design;
-use crate::rules::{Finding, Report, SUMMARY_RULES, Severity, Verdict};
+use crate::finding::{Finding, Severity, Verdict, Waived};
+use crate::rules::{Report, SUMMARY_RULES};
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -23,14 +24,6 @@ pub struct Waiver {
     pub reason: String,
     pub by: Option<String>,
     pub proposed: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Waived {
-    pub finding: Finding,
-    pub reason: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub by: Option<String>,
 }
 
 impl Waivers {

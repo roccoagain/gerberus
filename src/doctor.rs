@@ -4,10 +4,12 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::datasheet::file_name;
 use crate::design::Design;
 use crate::diag::{Diagnostic, Level, Show, plural};
+use crate::finding::Verdict;
 use crate::limits::{Coverage, Library, component_mpn, coverage};
-use crate::rules::{Report, Verdict};
+use crate::rules::Report;
 use crate::voltage::Voltages;
 
 pub struct Setup {
@@ -224,7 +226,7 @@ pub fn diagnose(
                     datasheet: datasheet.clone().filter(|u| !u.is_empty()),
                     file: file.clone(),
                     notes: vec![
-                        format!("it still has values marked \"{}\"", crate::part_new::NOT_READ),
+                        format!("it still has values marked \"{}\"", crate::limits::NOT_READ),
                         saved_note(
                             lib.files.get(m).map_or(&setup.parts.join(file_name(m)), |f| f),
                             lib.parts.get(m).map_or(m, |p| p.mpn.as_str()),
@@ -460,20 +462,6 @@ fn part_item(design: &Design, lib: &Library, setup: &Setup, m: &str, refs: Vec<S
             c.reference
         ),
     }
-}
-
-pub fn file_name(mpn: &str) -> String {
-    let safe: String = mpn
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || "-_.+".contains(c) {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    format!("{safe}.toml")
 }
 
 fn roots<'a>(volts: &'a Voltages, nets: &[usize]) -> Vec<&'a str> {

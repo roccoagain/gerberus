@@ -1,9 +1,8 @@
 use std::fmt::Write as _;
 
 use crate::design::{Component, Design};
+use crate::limits::NOT_READ;
 use crate::limits::component_mpn;
-
-pub const NOT_READ: &str = "not read from the datasheet yet";
 
 pub fn template(design: &Design, which: &str, source: &str) -> Result<(String, String), String> {
     let c = design

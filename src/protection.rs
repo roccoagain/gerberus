@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::design::{Design, PinKind};
+use crate::finding::{Finding, Severity, Verdict};
 use crate::inputs::BoardInputs;
 use crate::limits::{Bound, Class, DriveKind, EsdModel, Library, Lookup, Part, Quantity, Range};
 use crate::policy::Policy;
-use crate::rules::{Finding, Severity, Verdict};
 use crate::voltage::Voltages;
 
 fn part_of<'a>(design: &Design, lib: &'a Library, reference: &str) -> Option<&'a Part> {

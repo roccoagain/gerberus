@@ -86,12 +86,12 @@ impl Spec {
             s.kind = Some(Kind::Resistor);
             s.value = match r.trim().strip_suffix("mΩ") {
                 Some(m) => m.trim().parse::<f64>().ok().map(|v| v * 1e-3),
-                None => crate::voltage::parse_ohms(r),
+                None => crate::units::parse_ohms(r),
             };
             s.power = get("Power(Watts)").and_then(|p| si_number(p, "W"));
         } else if let Some(c) = get("Capacitance") {
             s.kind = Some(Kind::Capacitor);
-            s.value = crate::spice::parse_farads(c);
+            s.value = crate::units::parse_farads(c);
             if s.tolerance.is_none()
                 && let (Some(t), Some(v)) = (get("Tolerance"), s.value)
                 && let Some(pf) = t.trim().trim_start_matches('±').trim().strip_suffix("pF")
@@ -119,8 +119,8 @@ impl Spec {
         let mut s = Spec {
             kind: Some(kind),
             value: match kind {
-                Kind::Resistor => crate::voltage::parse_ohms(&c.value),
-                Kind::Capacitor => crate::spice::parse_farads(&c.value),
+                Kind::Resistor => crate::units::parse_ohms(&c.value),
+                Kind::Capacitor => crate::units::parse_farads(&c.value),
             },
             size: footprint_size(&c.footprint),
             ..Spec::default()

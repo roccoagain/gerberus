@@ -185,7 +185,7 @@ fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
         return Err(format!("the template has problems: {}", problems.join("; ")));
     }
     let dir = path.parent().unwrap_or(Path::new(".")).join("parts");
-    let file = dir.join(gerberus::doctor::file_name(&mpn));
+    let file = dir.join(gerberus::datasheet::file_name(&mpn));
 
     let mut flags = vec![];
     for d in &extra {
@@ -263,7 +263,7 @@ fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
     println!("wrote {}", file.display());
     println!(
         "next: fill in each \"{}\" from the datasheet (parts/README.md), then run `gerberus datasheet verify {}`",
-        gerberus::part_new::NOT_READ,
+        gerberus::limits::NOT_READ,
         file.display()
     );
     Ok(true)
@@ -963,7 +963,7 @@ fn datasheet(sub: &str, rest: &[String]) -> Result<bool, String> {
                     println!(
                         "{}: values still say \"{}\": read them from the datasheet first",
                         part.mpn,
-                        gerberus::part_new::NOT_READ
+                        gerberus::limits::NOT_READ
                     );
                 }
                 let saved = || datasheet::saved_for(f, &part.mpn);
