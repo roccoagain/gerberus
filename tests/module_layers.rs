@@ -14,7 +14,7 @@ fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The top-level module a file belongs to: `src/si/geometry.rs` is in `si`, `src/rules.rs` in `rules`.
+/// The top-level module a file belongs to: `src/si/geometry.rs` is in `si`, `src/pinout.rs` in `pinout`.
 fn top_module(src: &Path, file: &Path) -> String {
     let first = file.strip_prefix(src).unwrap().components().next().unwrap();
     first.as_os_str().to_string_lossy().trim_end_matches(".rs").to_string()
