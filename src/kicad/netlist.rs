@@ -380,6 +380,11 @@ impl Builder {
                     in_bom: sym.in_bom,
                     on_board: sym.on_board,
                     pins: BTreeMap::new(),
+                    placed: vec![],
+                });
+                c.placed.push(crate::design::Placed {
+                    sheet: name_path.to_string(),
+                    at: sym.at,
                 });
                 for (k, v) in &sym.fields {
                     c.fields.entry(k.clone()).or_insert_with(|| v.clone());

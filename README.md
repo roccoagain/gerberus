@@ -61,6 +61,9 @@ decide, usually because a part has no part file yet; it never counts as a pass. 
 passes too, and `--verbose` to see how each net got its voltage range. The sniffer's 2 errors
 are its supply connected backwards, which damages the regulator; its warnings are headers with no ESD protection.
 
+To see the findings on the drawings, add `--html report.html`: one web page with the schematic and board, each
+finding ringed on its part. It needs KiCad's `kicad-cli` on the PATH. [More](docs/html-report.md)
+
 On your own board, point it at the root schematic (`.kicad_sch`). `check` runs
 straight away, but without knowing what plugs into the board it can only take the net named GND as 0 V, so most
 nets come out unknown. Run `gerberus init` on the schematic to start an `inputs.toml` that says what voltages

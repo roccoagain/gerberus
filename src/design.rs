@@ -26,6 +26,17 @@ pub struct Component {
     pub on_board: bool,
     /// Pins keyed by pin number.
     pub pins: BTreeMap<String, Pin>,
+    /// Where each of its symbols (one per unit) sits in the schematic.
+    pub placed: Vec<Placed>,
+}
+
+/// A symbol's place in the schematic.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placed {
+    /// The sheet, as its path of sheet names: `/` for the root, `/Power/` for a sheet named Power on it.
+    pub sheet: String,
+    /// The symbol's anchor on the sheet, mm, Y down.
+    pub at: (f64, f64),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
