@@ -18,6 +18,7 @@ pub mod doctor;
 pub mod drop;
 pub mod edges;
 pub mod finding;
+pub mod html;
 pub mod init;
 pub mod inputs;
 pub mod kicad;

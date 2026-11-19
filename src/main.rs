@@ -15,7 +15,7 @@ const USAGE: &str = "usage:
   gerberus bringup <design> [--inputs FILE] [--parts DIR]...
   gerberus stress <design> [--inputs FILE] [--parts DIR]... [--runs N] [REPORT]
   gerberus signal <design> [--inputs FILE] [--parts DIR]... [--json] [REPORT]
-  gerberus check <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [REPORT]
+  gerberus check <design> [--inputs FILE] [--waivers FILE] [--html FILE] [--parts DIR]... [REPORT]
   gerberus init <design> [--parts DIR]... [--stdout] [--force]
   gerberus diff <old design> <new design> [--parts DIR]... [--json]
   gerberus diff <design> --rev REV [--parts DIR]... [--json]
@@ -71,6 +71,8 @@ absolute maximum ratings, TVS breakdown and capacitor ratings. FAILs cite the nu
 net got its range (with --verbose). It exits with status 1 when any error FAILs. A waivers.toml next to the
 schematic (or --waivers FILE) accepts findings the designers have looked at, each with a reason: those aren't
 counted, --all lists them, and a waiver that matches nothing is a warning. `doctor` reads it too.
+--html FILE also writes the findings as one web page, each ringed on its part in drawings of the schematic and
+the board next to it, which KiCad's kicad-cli makes.
 
 `init` writes a starter inputs.toml next to the schematic: an entry for every connector pin it can guess from
 the net's name (ground, USB VBUS, D+/D- and CC, a supply named by its voltage such as 12V or 3V3, a net the board
@@ -505,18 +507,63 @@ fn analyse(
 fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
     let (show, rest) = Show::parse(rest);
     let json = rest.iter().any(|a| a == "--json");
-    let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
+    let mut rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
+    let html = match rest.iter().position(|a| a == "--html") {
+        Some(i) if rest.get(i + 1).is_some_and(|a| !a.starts_with("--")) => {
+            Some(PathBuf::from(rest.drain(i..i + 2).nth(1).expect("two drained")))
+        }
+        Some(_) => return Err(format!("--html needs a file to write\n{USAGE}")),
+        None => None,
+    };
     let o = options(path, &rest, &["--inputs", "--waivers"])?;
     let (design, lib, inputs, v) = analyse(path, &o)?;
     let policy = gerberus::policy::Policy::builtin()?;
     let mut report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
     waive(path, &o, &design, &mut report)?;
+    if let Some(out) = html {
+        write_html(path, &design, &report, &out)?;
+    }
     if json {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
         print!("{}", gerberus::rules::render(&design, &v, &report, &show));
     }
     Ok(report.errors() == 0)
+}
+
+/// Writes `check --html`'s page: the findings, marked on drawings of the schematic and, when the board file sits
+/// next to it, the board. Without kicad-cli the page still lists the findings and says why it has no drawings.
+fn write_html(
+    path: &Path,
+    design: &gerberus::design::Design,
+    report: &gerberus::rules::Report,
+    out: &Path,
+) -> Result<(), String> {
+    // The board next to the schematic, when there is one and it reads.
+    let board = path.with_extension("kicad_pcb");
+    let (pcb, layout) = match board.exists().then(|| gerberus::kicad::pcb::load_layout(&board)) {
+        Some(Ok(layout)) => (Some(board), Some(layout)),
+        Some(Err(e)) => {
+            eprintln!("warning: the board isn't drawn: {e}");
+            (None, None)
+        }
+        None => (None, None),
+    };
+    let (drawings, note) = match gerberus::html::draw(design, path, pcb.as_deref()) {
+        Ok(d) => (d, None),
+        Err(e) => {
+            eprintln!("warning: {e}");
+            (vec![], Some(e))
+        }
+    };
+    let title = format!(
+        "Gerberus check of {}",
+        path.file_name().unwrap_or_default().to_string_lossy()
+    );
+    let page = gerberus::html::render(design, report, &drawings, layout.as_ref(), &title, note.as_deref());
+    std::fs::write(out, page).map_err(|e| format!("{}: {e}", out.display()))?;
+    eprintln!("wrote {}", out.display());
+    Ok(())
 }
 
 /// Applies `--waivers`, or a `waivers.toml` next to the design when there is one.
