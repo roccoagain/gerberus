@@ -811,8 +811,8 @@ fn esd_does_not_follow_pulls_onto_rails() {
     assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
 }
 
-/// A test point is touched by a probe at the bench, not by a person in the field, so naming it [[undriven]] doesn't
-/// make its net need an ESD clamp.
+/// A test point only a probe touches, at the bench, doesn't make its net need an ESD clamp; one named as an input
+/// does.
 #[test]
 fn esd_leaves_out_test_points() {
     let (mut d, mut inputs) = board("sniffer", "sniffer.kicad_sch");
@@ -837,6 +837,18 @@ fn esd_leaves_out_test_points() {
     let (_, r) = run_on(&d, &inputs);
     let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.contains("TP99")).collect();
     assert!(f.is_empty(), "{f:#?}");
+    // Named as an input, it is a landing for an off-board wire, so it is still checked.
+    inputs.undriven.pop();
+    let mut input = inputs.inputs.iter().find(|i| i.fault.is_none()).unwrap().clone();
+    input.pin = gerberus::inputs::PinRef {
+        reference: "TP99".into(),
+        pin: "1".into(),
+    };
+    input.reverse = Some("a wire".into());
+    inputs.inputs.push(input);
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.contains("TP99")).collect();
+    assert_eq!(f.len(), 1, "{f:#?}");
 }
 
 /// Parts with no part file that can't take the discharge into one pin don't hold a connector's net at UNKNOWN: a

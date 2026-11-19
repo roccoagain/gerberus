@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::design::{Design, PinKind};
 use crate::finding::{Finding, Severity, Verdict};
 use crate::inputs::BoardInputs;
-use crate::limits::{Bound, Class, DriveKind, EsdModel, Library, Lookup, Part, Quantity, Range, is_non_electrical};
+use crate::limits::{Bound, Class, DriveKind, EsdModel, Library, Lookup, Part, Quantity, Range, is_test_point};
 use crate::policy::Policy;
 use crate::voltage::Voltages;
 
@@ -30,7 +30,8 @@ fn pin_name<'a>(part: &'a Part, number: &'a str) -> &'a str {
 }
 
 /// The nets an external connector pin is on, with the pins that reach each, leaving out the inputs' reference
-/// (ground) nets and test points: a probe touches a test point at the bench, not a person in the field.
+/// (ground) nets and undriven test points: only a probe touches those, at the bench, not a person in the field.
+/// A test point named as an input is a landing for an off-board wire, so it still counts.
 fn external_nets(design: &Design, inputs: &BoardInputs) -> BTreeMap<usize, Vec<String>> {
     let net = |r: &str, p: &str| design.components.get(r)?.pins.get(p).map(|p| p.net);
     let grounds: BTreeSet<usize> = inputs
@@ -44,13 +45,12 @@ fn external_nets(design: &Design, inputs: &BoardInputs) -> BTreeMap<usize, Vec<S
         .iter()
         .filter(|i| i.fault.is_none())
         .map(|i| &i.pin)
-        .chain(inputs.undriven.iter().map(|u| &u.pin))
-        .filter(|p| {
+        .chain(inputs.undriven.iter().map(|u| &u.pin).filter(|p| {
             design
                 .components
                 .get(&p.reference)
-                .is_none_or(|c| !is_non_electrical(&p.reference, c))
-        });
+                .is_none_or(|c| !is_test_point(&p.reference, c))
+        }));
     for p in pins {
         if let Some(n) = net(&p.reference, &p.pin)
             && !grounds.contains(&n)
@@ -99,6 +99,10 @@ fn is_connector_like(design: &Design, lib: &Library, reference: &str, named: &BT
         .map(|c| c.to_ascii_uppercase())
         .collect();
     named.contains(reference)
+        || design
+            .components
+            .get(reference)
+            .is_some_and(|c| is_test_point(reference, c))
         || matches!(
             letters.as_str(),
             "J" | "P" | "TP" | "CN" | "CON" | "USB" | "JP" | "SJ" | "NT"

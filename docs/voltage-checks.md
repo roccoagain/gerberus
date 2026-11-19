@@ -70,7 +70,7 @@ minimum: pins on it come out UNKNOWN rather than PASS. `reverse-polarity` sums t
 findings that normal operation doesn't already have; the summary isn't counted again in the error total.
 
 The `esd` rule looks at every connector pin `inputs.toml` names (inputs and undriven pins, not their ground
-references). A TVS or ESD diode on the net passes it, if it breaks down below the absolute maximum of the IC
+references). An undriven test point is left out: only a probe touches it, at the bench. A TVS or ESD diode on the net passes it, if it breaks down below the absolute maximum of the IC
 pins beside it (an SMF26A on a 3.3 V logic pin doesn't count). A pull-up or pull-down isn't followed onto its
 rail. So does a clamp behind the one series part between the
 connector and the ICs it protects (VBUS → D1 → TVS). A part with no part file on the way (other than a connector, test point or jumper) makes the net UNKNOWN,
