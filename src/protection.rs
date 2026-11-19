@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::design::{Design, PinKind};
 use crate::finding::{Finding, Severity, Verdict};
 use crate::inputs::BoardInputs;
-use crate::limits::{Bound, Class, DriveKind, EsdModel, Library, Lookup, Part, Quantity, Range};
+use crate::limits::{Bound, Class, DriveKind, EsdModel, Library, Lookup, Part, Quantity, Range, is_non_electrical};
 use crate::policy::Policy;
 use crate::voltage::Voltages;
 
@@ -30,7 +30,7 @@ fn pin_name<'a>(part: &'a Part, number: &'a str) -> &'a str {
 }
 
 /// The nets an external connector pin is on, with the pins that reach each, leaving out the inputs' reference
-/// (ground) nets.
+/// (ground) nets and test points: a probe touches a test point at the bench, not a person in the field.
 fn external_nets(design: &Design, inputs: &BoardInputs) -> BTreeMap<usize, Vec<String>> {
     let net = |r: &str, p: &str| design.components.get(r)?.pins.get(p).map(|p| p.net);
     let grounds: BTreeSet<usize> = inputs
@@ -44,7 +44,13 @@ fn external_nets(design: &Design, inputs: &BoardInputs) -> BTreeMap<usize, Vec<S
         .iter()
         .filter(|i| i.fault.is_none())
         .map(|i| &i.pin)
-        .chain(inputs.undriven.iter().map(|u| &u.pin));
+        .chain(inputs.undriven.iter().map(|u| &u.pin))
+        .filter(|p| {
+            design
+                .components
+                .get(&p.reference)
+                .is_none_or(|c| !is_non_electrical(&p.reference, c))
+        });
     for p in pins {
         if let Some(n) = net(&p.reference, &p.pin)
             && !grounds.contains(&n)

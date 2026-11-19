@@ -811,6 +811,34 @@ fn esd_does_not_follow_pulls_onto_rails() {
     assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
 }
 
+/// A test point is touched by a probe at the bench, not by a person in the field, so naming it [[undriven]] doesn't
+/// make its net need an ESD clamp.
+#[test]
+fn esd_leaves_out_test_points() {
+    let (mut d, mut inputs) = board("sniffer", "sniffer.kicad_sch");
+    let swo = d.components["J2"].pins["6"].net;
+    add(
+        &mut d,
+        "TP99",
+        "Connector:TestPoint",
+        "TestPoint",
+        None,
+        vec![pin("1", PinKind::Passive, swo)],
+    );
+    inputs.inputs.retain(|i| i.pin.reference != "J2");
+    inputs.undriven.retain(|u| u.pin.reference != "J2");
+    inputs.undriven.push(gerberus::inputs::Undriven {
+        pin: gerberus::inputs::PinRef {
+            reference: "TP99".into(),
+            pin: "1".into(),
+        },
+        source: "a probe".into(),
+    });
+    let (_, r) = run_on(&d, &inputs);
+    let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.contains("TP99")).collect();
+    assert!(f.is_empty(), "{f:#?}");
+}
+
 /// Parts with no part file that can't take the discharge into one pin don't hold a connector's net at UNKNOWN: a
 /// generic pull-down to a rail, and a connector named by its symbol library rather than its reference.
 #[test]
