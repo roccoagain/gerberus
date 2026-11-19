@@ -47,14 +47,10 @@ pub struct Style {
 }
 
 impl Style {
-    pub fn detect(choice: Option<&str>) -> Result<Style, String> {
-        let color = match choice.unwrap_or("auto") {
-            "always" => true,
-            "never" => false,
-            "auto" => std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty()) && std::io::stdout().is_terminal(),
-            other => return Err(format!("--color takes auto, always or never, not {other:?}")),
-        };
-        Ok(Style { color })
+    pub fn detect() -> Style {
+        Style {
+            color: std::env::var_os("NO_COLOR").is_none_or(|v| v.is_empty()) && std::io::stdout().is_terminal(),
+        }
     }
 
     pub fn paint(self, code: &str, text: &str) -> String {
@@ -68,8 +64,7 @@ impl Style {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Show {
-    pub unknown: bool,
-    pub passes: bool,
+    pub all: bool,
     pub verbose: bool,
     pub style: Style,
     pub width: usize,
@@ -78,8 +73,7 @@ pub struct Show {
 impl Show {
     pub fn everything() -> Show {
         Show {
-            unknown: true,
-            passes: true,
+            all: true,
             verbose: true,
             style: Style::default(),
             width: 0,
@@ -90,34 +84,25 @@ impl Show {
         if self.width == 0 { 100 } else { self.width }
     }
 
-    pub fn parse(args: &[String]) -> Result<(Show, Vec<String>), String> {
+    pub fn parse(args: &[String]) -> (Show, Vec<String>) {
         let mut show = Show::default();
-        let mut color = None;
         let mut rest = vec![];
-        let mut it = args.iter();
-        while let Some(a) = it.next() {
+        for a in args {
             match a.as_str() {
-                "--all" => {
-                    show.passes = true;
-                    show.unknown = true;
-                }
-                "--unknown" => show.unknown = true,
+                "--all" => show.all = true,
                 "--verbose" | "-v" => show.verbose = true,
-                "--color" => color = Some(it.next().ok_or("--color takes auto, always or never")?.clone()),
-                s if s.starts_with("--color=") => color = Some(s["--color=".len()..].to_string()),
                 _ => rest.push(a.clone()),
             }
         }
-        show.style = Style::detect(color.as_deref())?;
+        show.style = Style::detect();
         show.width = width();
-        Ok((show, rest))
+        (show, rest)
     }
 
     pub fn lists(&self, level: Level) -> bool {
         match level {
             Level::Error | Level::Warning | Level::Todo => true,
-            Level::Unknown => self.unknown,
-            Level::Pass | Level::Waived => self.passes,
+            Level::Unknown | Level::Pass | Level::Waived => self.all,
         }
     }
 }
@@ -296,20 +281,17 @@ pub fn summary(out: &mut String, show: &Show, counts: [usize; 4], has_details: b
     let eq = style.paint(BLUE, "=");
     let note = style.paint(BOLD, "note");
     let mut hidden = vec![];
-    if unknown > 0 && !show.unknown {
-        hidden.push((format!("{unknown} unknown"), "--unknown"));
+    if unknown > 0 && !show.all {
+        hidden.push(format!("{unknown} unknown"));
     }
-    if passed > 0 && !show.passes {
-        hidden.push((format!("{passed} passed"), "--all"));
+    if passed > 0 && !show.all {
+        hidden.push(format!("{passed} passed"));
     }
     if !hidden.is_empty() {
-        let what: Vec<&str> = hidden.iter().map(|(w, _)| w.as_str()).collect();
-        let flags: Vec<&str> = hidden.iter().map(|(_, f)| *f).collect();
         let _ = writeln!(
             out,
-            "   {eq} {note}: {} not shown; {} lists them",
-            what.join(" and "),
-            flags.join(" or ")
+            "   {eq} {note}: {} not shown; --all lists them",
+            hidden.join(" and ")
         );
     }
     if has_details && !show.verbose {
@@ -633,10 +615,9 @@ mod tests {
 
     #[test]
     fn flags() {
-        let args: Vec<String> = ["--unknown", "-v", "x", "--color", "never"].map(String::from).to_vec();
-        let (show, rest) = Show::parse(&args).unwrap();
-        assert!(show.unknown && show.verbose && !show.passes && !show.style.color);
+        let args: Vec<String> = ["--all", "-v", "x"].map(String::from).to_vec();
+        let (show, rest) = Show::parse(&args);
+        assert!(show.all && show.verbose);
         assert_eq!(rest, ["x"]);
-        assert!(Show::parse(&["--color=sometimes".to_string()]).is_err());
     }
 }

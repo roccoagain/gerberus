@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use gerberus::bom::{self, Lcsc, Options, Topic};
+use gerberus::bom::{self, Online, Options, Topic};
 use gerberus::design::Design;
 use gerberus::inputs::BoardInputs;
 use gerberus::kicad;
@@ -274,7 +274,7 @@ fn si_passes_port_1_and_fails_port_2() {
 
 #[test]
 fn bom_finds_the_wrong_lcsc_number_and_empty_stock() {
-    let mut lcsc = Lcsc::new(Some(root("tests/fixtures/lcsc")), Duration::ZERO, true);
+    let mut lcsc = Online::new(Some(root("tests/fixtures/lcsc")), Duration::ZERO, true);
     let report = bom::check(design(), &mut lcsc, Options::default());
     let mut errors: Vec<(String, Topic)> = report
         .iter()
@@ -340,7 +340,7 @@ fn the_report_reads_like_rustc() {
         "warning[regulator-headroom]: U3 may not hold /power/+3V3A: /power/VAUX can fall to 3 V",
         "and 9 more like these (--verbose lists them)",
         "error: 18 errors, 9 warnings, 109 unknown, 402 passed\n   = note: 109 unknown and 402 passed not shown; \
-         --unknown or --all lists them\n",
+         --all lists them\n",
     ] {
         assert!(text.contains(want), "missing {want:?} in\n{text}");
     }

@@ -5,7 +5,7 @@ gerberus bringup path/to/board.kicad_sch
 ```
 
 `bringup` writes the checklist for powering a new board the first time. Everything in it comes from what
-`voltages` and `loads` already work out, so it needs the board's `inputs.toml`. It adds no new data.
+`voltages` and `check` already work out, so it needs the board's `inputs.toml`. It adds no new data.
 
 The plan has these steps:
 

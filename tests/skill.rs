@@ -6,7 +6,6 @@ fn run(dir: &Path, args: &[&str]) -> Output {
         .args(["skill", "install"])
         .args(args)
         .current_dir(dir)
-        .env("GERBERUS_NO_UPDATE_CHECK", "1")
         .output()
         .unwrap()
 }

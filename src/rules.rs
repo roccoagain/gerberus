@@ -1293,7 +1293,7 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -
         details |= !d.details.is_empty();
         d.render(&mut out, show.style, show.verbose, width);
     }
-    if show.passes {
+    if show.all {
         for w in &report.waived {
             let d = Diagnostic::line(
                 Level::Waived,
@@ -1319,7 +1319,7 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -
                 "{} waived in {}, not counted{}",
                 report.waived.len(),
                 report.waivers_file,
-                if show.passes { "" } else { " (--all lists them)" }
+                if show.all { "" } else { " (--all lists them)" }
             )
         );
     }

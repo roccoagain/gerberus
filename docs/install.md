@@ -28,18 +28,6 @@ nothing else beside it. `gerberus datasheet verify` also needs poppler's `pdftot
 
 ## Updating
 
-```sh
-gerberus update
-```
-
-fetches the latest release and installs it over the old one (on Windows, the running `gerberus.exe` is renamed
-`gerberus.exe.old` to make room, and the next update removes it). It runs `gerberus-update`, which the installer put
-next to `gerberus` and which reads the install receipt the installer left in your config folder, so it updates the
-copy you installed, where you installed it. A copy built with `cargo install` has no updater: run the same
-`cargo install` command again.
-
-Once a day, `gerberus` also asks GitHub for the latest release and, after a command finishes, prints a line on
-stderr when a newer one is out. It waits at most a second for GitHub, and only on the first run of the day; the
-answer is kept in `~/.cache/gerberus/latest-release` (`%LOCALAPPDATA%\gerberus` on Windows). It doesn't check when
-its output goes to a pipe or a file, or when `CI` is set. Set `GERBERUS_NO_UPDATE_CHECK=1` to turn it off.
+Run `gerberus-update`, which the installer put next to `gerberus`. A copy built with `cargo install` has no
+updater: run the same `cargo install` command again.
 `gerberus --version` prints the version you have.

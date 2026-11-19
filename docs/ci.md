@@ -31,7 +31,7 @@ compare with, so `diff` says so and passes.
 |---|---|---|
 | `design` | (required) | The design to check, relative to the repository. |
 | `version` | `latest` | The release to install, such as `v0.2.0`. Pin it, and the action (`roccoagain/gerberus@v0.2.0`), so a new release can't change the result by itself. |
-| `args` | none | Extra arguments for `gerberus check`, such as `--unknown`. |
+| `args` | none | Extra arguments for `gerberus check`, such as `--all`. |
 | `diff` | `true` | Run `gerberus diff` against the base branch on a pull request. |
 
 To check more than one board, add a step for each.

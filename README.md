@@ -1,8 +1,7 @@
 # Gerberus
 
 Gerberus checks a PCB design for electrical bugs before you order it: parts pushed past their datasheet limits,
-missing protection, swapped pins, parts you can't buy, and bad USB routing. It reads KiCad designs, and Altium
-schematics for the schematic checks.
+missing protection, swapped pins, parts you can't buy, and bad USB routing. It reads KiCad designs.
 
 ## Install
 
@@ -18,7 +17,7 @@ On Windows, paste this into PowerShell:
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.ps1 | iex"
 ```
 
-Then open a new terminal window, so it can find the `gerberus` command. Run `gerberus update` later to get the
+Then open a new terminal window, so it can find the `gerberus` command. Run `gerberus-update` later to get the
 latest version.
 
 Software developers who have [Rust](https://rustup.rs) installed can build it instead (you don't need this if you
@@ -58,11 +57,11 @@ error: 2 errors, 7 warnings, 29 unknown, 96 passed
 
 An **error** means a part can be damaged or the board won't work; a **warning** is a risk worth a look. Each one
 gives the numbers it compared, the datasheet page they came from, and a fix. **Unknown** means Gerberus couldn't
-decide, usually because a part has no part file yet; it never counts as a pass. Add `--unknown` to list those,
-`--all` to list the passes too, and `--verbose` to see how each net got its voltage range. The sniffer's 2 errors
+decide, usually because a part has no part file yet; it never counts as a pass. Add `--all` to list those and the
+passes too, and `--verbose` to see how each net got its voltage range. The sniffer's 2 errors
 are its supply connected backwards, which damages the regulator; its warnings are headers with no ESD protection.
 
-On your own board, point it at the root schematic (`.kicad_sch`) or the Altium project (`.PrjPcb`). `check` runs
+On your own board, point it at the root schematic (`.kicad_sch`). `check` runs
 straight away, but without knowing what plugs into the board it can only take the net named GND as 0 V, so most
 nets come out unknown. Run `gerberus init` on the schematic to start an `inputs.toml` that says what voltages
 arrive on each connector pin (for example, 3.6 to 5.5 V on J1 pin 1). It guesses what it can from net names and
@@ -82,7 +81,7 @@ settles. [More](docs/doctor.md)
 | `gerberus signal` | Audio and analog signals through the board in SPICE: where an op-amp clips, and what each IC pin sees. [More](docs/signal.md) |
 | `gerberus bringup` | A first-power checklist: which supply to connect first, the current limit to set, and the voltage to expect on each rail and where to probe it. [More](docs/bringup.md) |
 | `gerberus pinout` | Symbol pins, footprint pads and the datasheet pin table agree. [More](docs/pinout.md) |
-| `gerberus bom` | Every part is in stock at LCSC (or Mouser or DigiKey, with your API key), still made, and has a second source; `--csv` writes an order list. [More](docs/bom.md) |
+| `gerberus bom` | Every part is in stock at LCSC, still listed, and has a second source. [More](docs/bom.md) |
 | `gerberus traces` | Every track wide enough for its net's worst-case current (IPC-2221). [More](docs/traces.md) |
 | `gerberus si` | USB 2.0 pairs on the board: impedance, skew, vias, stubs, reference planes, and a simulated eye diagram. [More](docs/usb-si.md) |
 | `gerberus datasheet` | A part file against its datasheet, value by value. [More](docs/datasheets.md) |

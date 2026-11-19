@@ -178,7 +178,7 @@ fn a_pair_with_no_connector_is_shown_as_untraced() {
     l.footprints[1].reference = "U2".into();
     let r = check(&l);
     let unknown = Show {
-        unknown: true,
+        all: true,
         ..Show::default()
     };
     let text = si::render(&r, &unknown);

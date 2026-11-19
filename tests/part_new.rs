@@ -112,7 +112,6 @@ fn command_writes_the_file_once() {
             .args(["part", "new", "can-encoder.kicad_sch"])
             .args(args)
             .current_dir(&dir)
-            .env("GERBERUS_NO_UPDATE_CHECK", "1")
             .output()
             .unwrap()
     };
@@ -162,7 +161,6 @@ fn an_unread_tvs_clamps_nothing() {
         .args(["datasheet", "verify"])
         .arg(&tmp)
         .args(["--pdf", "/dev/null"])
-        .env("GERBERUS_NO_UPDATE_CHECK", "1")
         .output()
         .unwrap();
     std::fs::remove_file(&tmp).unwrap();
@@ -184,7 +182,6 @@ fn a_class_default_is_kept() {
             .args(["part", "new", "board.kicad_sch", "NO-SUCH-CAP", "--stdout"])
             .args(if force { &["--force"][..] } else { &[][..] })
             .current_dir(&dir)
-            .env("GERBERUS_NO_UPDATE_CHECK", "1")
             .output()
             .unwrap()
     };
