@@ -1209,19 +1209,29 @@ pub enum Coverage {
     NonElectrical,
 }
 
-/// A test point with no part file: a bare pad, so there is nothing to check it against. Found by its symbol
-/// (`Connector:TestPoint`), or by a `TP` reference on a one-pin part. A net tie (`Device:NetTie*`, `NT1`) is
-/// copper joining two nets, which the voltage engine follows, so it has nothing to check either.
-pub fn is_non_electrical(reference: &str, c: &Component) -> bool {
-    let letters: String = reference
+/// A test point: a bare pad, found by its symbol (`Connector:TestPoint`), or by a `TP` reference on a one-pin part.
+pub fn is_test_point(reference: &str, c: &Component) -> bool {
+    let symbol = c.lib_id.rsplit(':').next().unwrap_or("");
+    symbol.starts_with("TestPoint") || (letters(reference) == "TP" && c.pins.len() <= 1)
+}
+
+/// A net tie (`Device:NetTie*`, `NT1`): copper joining two nets, which the voltage engine follows.
+pub fn is_net_tie(reference: &str, c: &Component) -> bool {
+    let symbol = c.lib_id.rsplit(':').next().unwrap_or("");
+    symbol.starts_with("NetTie") || (letters(reference) == "NT" && c.pins.len() == 2)
+}
+
+fn letters(reference: &str) -> String {
+    reference
         .chars()
         .take_while(char::is_ascii_alphabetic)
         .map(|c| c.to_ascii_uppercase())
-        .collect();
-    let symbol = c.lib_id.rsplit(':').next().unwrap_or("");
-    let test_point = symbol.starts_with("TestPoint") || (letters == "TP" && c.pins.len() <= 1);
-    let net_tie = symbol.starts_with("NetTie") || (letters == "NT" && c.pins.len() == 2);
-    test_point || net_tie
+        .collect()
+}
+
+/// A test point or net tie with no part file: nothing to check it against.
+pub fn is_non_electrical(reference: &str, c: &Component) -> bool {
+    is_test_point(reference, c) || is_net_tie(reference, c)
 }
 
 /// How every component of a design is covered, keyed by reference.
