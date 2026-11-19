@@ -20,7 +20,7 @@ temperature, and an unpowered sensor. `tests/kitchen_sink.rs` asserts every FAIL
 
 ## Code style
 
-Keep each piece of code to one clear job, with no rarely used options or hedged wording. Edge cases that real
+Keep each piece of code to one clear job, with no rarely used options, unused flags or hedged wording. Edge cases that real
 boards need belong in a rule when they make its results more correct. See [CLAUDE.md](../CLAUDE.md).
 
 ## CI checks
