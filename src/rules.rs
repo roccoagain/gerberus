@@ -1,4 +1,4 @@
-//! The first ten schematic rules. Each compares a net's worst-case voltage (from [`crate::voltage`]) with a part's
+//! The schematic rules. Each compares a net's worst-case voltage (from [`crate::voltage`]) with a part's
 //! datasheet limits (from [`crate::limits`]), or checks that something drives a pin at all.
 //!
 //! Every check comes out PASS, FAIL or UNKNOWN. A FAIL cites the numbers it compared and their datasheet pages;

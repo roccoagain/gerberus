@@ -366,8 +366,8 @@ fn compute_with(design: &Design, lib: &Library, inputs: &BoardInputs, channels: 
         }
     }
 
-    // 3. Nets fed through a ferrite bead from a driven net: a bead is a DC short (well under an ohm), so the net
-    //    takes the driven net's range. Beads only: an inductor may be a switcher's, with a switch node on one side.
+    // 3. Nets fed through a ferrite bead, net tie or fuse from a driven net: each is a DC short (well under an ohm), so the net
+    //    takes the driven net's range. Not inductors: an inductor may be a switcher's, with a switch node on one side.
     let mut strong: Vec<bool> = (0..n).map(|i| fixed[i] || plans.contains_key(&i)).collect();
     let shorts = find_shorts(design);
     let beads = spread_through_shorts(&shorts, &mut strong);
@@ -586,7 +586,7 @@ fn mark_open_connector_pins(nv: &mut NetVoltage, design: &Design, lib: &Library,
     }
 }
 
-/// A part that joins two nets with next to no resistance: a ferrite bead.
+/// A part that joins two nets with next to no resistance: a ferrite bead, net tie or fuse.
 struct Short {
     /// `ferrite bead FB1`.
     via: String,

@@ -24,8 +24,8 @@ unused_qualifications = "warn"
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
-# Pedantic lints that are noise for this codebase. Part names, file formats and tool names (KiCad, SchDoc,
-# PcbDoc, LCSC) are everywhere in doc comments, the library has one user (the binary), and the checkers are
+# Pedantic lints that are noise for this codebase. Part names, file formats and tool names (KiCad, LCSC)
+# are everywhere in doc comments, the library has one user (the binary), and the checkers are
 # long, flat lists of rules that read better as one function than as many.
 doc_markdown = "allow"
 must_use_candidate = "allow"

@@ -34,7 +34,7 @@ pub struct Setup {
 /// One thing to add.
 #[derive(Debug, Clone, Serialize)]
 pub struct Item {
-    /// `inputs`, `part-file`, `fill-in`, `pin-limits` or `drive`.
+    /// `inputs`, `part-file`, `fill-in`, `pin-limits`, `drive` or `guess`.
     pub rule: &'static str,
     pub title: String,
     /// UNKNOWN findings that wait on this.
@@ -536,7 +536,7 @@ fn references_in(text: &str, design: &Design) -> BTreeSet<String> {
         .collect()
 }
 
-/// A transistor whose channel no [[drive]] can describe: a bipolar one, or a MOSFET whose symbol doesn't name
+/// A transistor whose channel no `[[drive]]` can describe: a bipolar one, or a MOSFET whose symbol doesn't name
 /// a single G, D and S (a dual part). A single MOSFET's part file can give a `channel` drive.
 fn is_transistor(c: &crate::design::Component) -> bool {
     let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();

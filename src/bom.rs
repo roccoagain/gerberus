@@ -1171,7 +1171,6 @@ fn floor_spec(want: &Spec, lcsc: &Spec) -> Spec {
     s
 }
 
-/// LCSC's similar parts that meet `floor` with `needed` in stock, basic parts first, then by stock.
 /// What [`equivalents`] found, and how far it looked.
 struct Equivalents {
     found: Vec<(Listing, Spec)>,
@@ -1181,6 +1180,7 @@ struct Equivalents {
     capped: bool,
 }
 
+/// LCSC's similar parts that meet `floor` with `needed` in stock, basic parts first, then by stock.
 fn equivalents(l: &Listing, floor: &Spec, needed: u64, source: &mut dyn Source) -> Equivalents {
     let candidates: Vec<&Similar> = l
         .similar

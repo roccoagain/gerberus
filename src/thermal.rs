@@ -131,7 +131,7 @@ fn forward(part: &Part) -> Option<(&str, &str, &Range)> {
         .map(|d| (d.pin.as_str(), d.to.as_str(), &d.range))
 }
 
-/// A regulator's own drive and whether it switches (a buck converter has a duty-cycle headroom below 1).
+/// A regulator's `regulates` drive on `pin`.
 fn regulator_drive<'a>(part: &'a Part, pin: &str) -> Option<&'a crate::limits::Drive> {
     part.drives
         .iter()

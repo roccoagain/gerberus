@@ -1,5 +1,5 @@
 //! A bring-up plan: the order to power a new board in, the current limit to set, and the voltage to expect on
-//! each rail, all from what `voltages` and `loads` already work out.
+//! each rail, all from what `voltages` and `thermal` already work out.
 //!
 //! Nothing here is new data. Each supply input is a step: set the bench supply inside its range, with a
 //! current limit just above what the board's parts can draw from it, when that is known. Then each rail fed

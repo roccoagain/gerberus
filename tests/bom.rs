@@ -1,6 +1,5 @@
 //! BOM health against a snapshot of LCSC's answers in `tests/fixtures/lcsc` (taken 2026-11-17, with LCSC's
-//! parameter tables), so these tests never touch the network. Refresh the snapshot with
-//! `gerberus bom <board> --cache tests/fixtures/lcsc --max-age 0` and update the expected findings.
+//! parameter tables), so these tests never touch the network.
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;

@@ -359,7 +359,7 @@ fn a_board_with_no_supply_input_is_an_error() {
     assert!(e.contains("no supply input"), "{e}");
 }
 
-/// The command line: a netlist file, JSON findings, and status 1 for an absolute maximum passed.
+/// The command line: JSON findings, and status 1 for an absolute maximum passed.
 #[test]
 fn stress_command() {
     let dir = root("tests/fixtures/sniffer");

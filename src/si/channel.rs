@@ -175,7 +175,7 @@ fn filter(x: &[f64], dt: f64, h: impl Fn(f64) -> Complex64) -> Vec<f64> {
     buf.iter().map(|c| c.re / n as f64).collect()
 }
 
-/// A level that steps between `levels` at each bit boundary with a raised-cosine edge of 10–90 % time `rise`.
+/// A level that steps between ±`amplitude` at each bit boundary with a raised-cosine edge of 10–90 % time `rise`.
 pub fn nrz(bits: &[bool], ui: f64, samples_per_ui: usize, rise: f64, amplitude: f64) -> Vec<f64> {
     // A raised cosine (1 − cos πx)/2 goes from 10 % to 90 % over 0.5903 of its length.
     let full = rise / 0.590_334;

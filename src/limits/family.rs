@@ -680,12 +680,12 @@ pub fn parse_value(kind: ValueKind, s: &str) -> Option<f64> {
     }
 }
 
-// Below 10 pF, tolerance codes are in picofarads, not a fraction of the value.
+/// Below 10 pF, tolerance codes are in picofarads, not a fraction of the value.
 const SMALLEST_CAPACITANCE_WITH_FRACTIONAL_TOLERANCE: f64 = 10e-12;
-// 10^0 to 10^7 pF; 8 and 9 are multipliers below 1 in the EIA code, which these series don't use.
+/// 10^0 to 10^7 pF; 8 and 9 are multipliers below 1 in the EIA code, which these series don't use.
 const LARGEST_EIA_CAPACITANCE_EXPONENT: i32 = 7;
 
-// Rounded to a picohm, so 10^-1 steps don't leave 4.7000000001.
+/// Rounded to a picohm, so 10^-1 steps don't leave 4.7000000001.
 fn round_to_picohm(ohms: f64) -> f64 {
     (ohms * 1e12).round() / 1e12
 }

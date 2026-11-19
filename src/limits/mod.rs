@@ -572,7 +572,7 @@ impl Part {
     }
 
     /// Pin names no voltage limit mentions, apart from `NC` and `DNC`. A checker must report these as
-    /// UNKNOWN; the coverage report lists them.
+    /// UNKNOWN; `check` reports them as `unchecked`.
     pub fn uncovered_pins(&self) -> Vec<&str> {
         let mut out: Vec<&str> = self
             .pins

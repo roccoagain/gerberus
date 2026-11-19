@@ -617,7 +617,6 @@ fn unit_word(chars: &[char], i: usize) -> Option<(Unit, f64, usize)> {
     Some((unit, scale, i + prefix + len))
 }
 
-/// Whether the text ends with a ground pin's name, so `VSS - 0.3` reads as -0.3 V.
 /// Whether the text ends with a pin name, such as `VIN` or `VDDIOx` or `V(BAT)`: a sign after it makes an offset
 /// (`VIN + 0.3`). Words like `to` and units (`-0.3 V – 6.0 V`) make a range instead.
 fn names_a_pin(chars: &[char]) -> bool {
@@ -634,6 +633,7 @@ fn names_a_pin(chars: &[char]) -> bool {
         && unit_word(&bare.chars().collect::<Vec<_>>(), 0).is_none_or(|(_, _, end)| end < bare.chars().count())
 }
 
+/// Whether the text ends with a ground pin's name, so `VSS - 0.3` reads as -0.3 V.
 fn ends_with_ground(chars: &[char]) -> bool {
     let text: String = chars.iter().collect();
     let word = text
@@ -1927,12 +1927,12 @@ pub fn default_cache_dir() -> Option<PathBuf> {
 
 const ARITHMETIC_CONSTANTS: [f64; 3] = [0.0, 1.0, 100.0];
 
-// Part files round worked-out values to four significant figures.
+/// Part files round worked-out values to four significant figures.
 fn differs_beyond_four_significant_figures(value: f64, want: f64) -> bool {
     (value - want).abs() > 5e-4 * value.abs().max(want.abs()) + 1e-12
 }
 
-// FNV-1a: stable across Rust versions, unlike the standard hasher.
+/// FNV-1a: stable across Rust versions, unlike the standard hasher.
 fn fnv1a_hash_stable_across_rust_versions(text: &str) -> u64 {
     const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
     const FNV_PRIME: u64 = 0x0100_0000_01b3;

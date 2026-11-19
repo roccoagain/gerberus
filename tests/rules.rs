@@ -1,4 +1,4 @@
-//! The first ten rules on the test boards. Rev 1's TVS is the golden test: its SMAJ18A sits on the 24 V bus
+//! The rules on the test boards. Rev 1's TVS is the golden test: its SMAJ18A sits on the 24 V bus
 //! and conducts. The other two boards must come out with no errors.
 use std::path::{Path, PathBuf};
 

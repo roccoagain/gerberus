@@ -5,7 +5,7 @@
 //! in the board's stackup. IPC-2221's curves are the conservative ones IPC-2152 later replaced; they suit a check
 //! that must not pass a track that could overheat.
 //!
-//! The current is what `loads` works out the net supplies: everything its parts draw. No track carries more, so a
+//! The current is what `thermal` works out the net supplies: everything its parts draw. No track carries more, so a
 //! net whose narrowest track takes that current passes. A narrower track fails only when it is sure to carry all
 //! of it: the net joins exactly two pads, has no copper pour, and the track is on every path between them.
 //! Otherwise the current through that track isn't known (it may feed only one branch, or a pour may carry it

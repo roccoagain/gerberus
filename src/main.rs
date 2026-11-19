@@ -362,7 +362,7 @@ struct Options {
     dirs: Vec<PathBuf>,
     /// `--pcb`, when the command takes it and it was given.
     pcb: Option<PathBuf>,
-    /// `--inputs` and `--explain`, for `voltages`.
+    /// `--inputs` and `--explain`, for the commands that work out voltages.
     inputs: Option<PathBuf>,
     explain: Vec<String>,
     /// `--fault`, for `voltages`: a fault case to work out instead of normal operation.
@@ -373,10 +373,9 @@ struct Options {
     waivers: Option<PathBuf>,
 }
 
-/// Reads `--parts` and whichever of `--pcb`, `--inputs` and `--explain` the command takes.
+/// Reads `--parts` and whichever of `--pcb`, `--inputs`, `--explain`, `--fault` and `--waivers` the command takes.
 fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, String> {
     let mut dirs: Vec<PathBuf> = vec![];
-    // Part files give resistors' and capacitors' ratings, to compare with LCSC's listing.
     let local = path.parent().unwrap_or(Path::new(".")).join("parts");
     if local.is_dir() {
         dirs.push(local);
@@ -784,6 +783,7 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
     let (show, rest) = Show::parse(rest);
     let mut opts = Options::default();
     let mut dirs: Vec<PathBuf> = vec![];
+    // Part files give resistors' and capacitors' ratings, to compare with LCSC's listing.
     let local = path.parent().unwrap_or(Path::new(".")).join("parts");
     if local.is_dir() {
         dirs.push(local);

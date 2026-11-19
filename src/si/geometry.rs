@@ -567,7 +567,7 @@ impl<'a> Analyzer<'a> {
         self.solve(i, width, None, &planes)
     }
 
-    /// Board thickness and the distance between two copper layers, mm, for via models.
+    /// The distance between two copper layers, mm, for via models.
     pub fn span(&self, a: &str, b: &str) -> Option<f64> {
         let (i, j) = (self.stack.index(a)?, self.stack.index(b)?);
         let (i, j) = (i.min(j), i.max(j));

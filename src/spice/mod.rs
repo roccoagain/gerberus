@@ -9,13 +9,12 @@
 //! past an absolute maximum is an error, past a passive's rating a warning.
 //!
 //! What is modelled: resistors, capacitors, inductors and ferrite beads, jumpers, fuses and net ties (closed),
-//! diodes,
-//! LEDs and TVS diodes from their forward drop, breakdown and clamp figure, transistor switches (a forward
+//! diodes, LEDs and TVS diodes from their forward drop, breakdown and clamp figure, transistor switches (a forward
 //! drive) as their channel switched on, step-down regulators as ideal sources that follow their supply when it
 //! is too low to hold them, and every IC's supply current. A limit relative to another pin is checked against
-//! that pin in the same run. IC signal pins are left open, so
-//! their internal clamps don't absorb anything: the result is on the pessimistic side there. Parts gerberus
-//! can't model are listed, and nets they touch come out UNKNOWN rather than PASS.
+//! that pin in the same run. IC signal pins are left open, so their internal clamps don't absorb anything: the
+//! result is on the pessimistic side there. Parts gerberus can't model are listed, and nets they touch come out
+//! UNKNOWN rather than PASS.
 mod netlist;
 mod run;
 

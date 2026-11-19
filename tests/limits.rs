@@ -320,8 +320,8 @@ fn coverage_reports_unchecked_parts() {
     assert_eq!(unchecked, ["JP1"]);
 }
 
-/// Test points are bare pads: nothing to check, so they aren't counted as unchecked. Net ties join two nets,
-/// which nothing follows yet, so they stay unchecked.
+/// Test points are bare pads: nothing to check, so they aren't counted as unchecked. Net ties are copper
+/// the voltage engine follows: nothing to check either.
 #[test]
 fn test_points_have_nothing_to_check() {
     use gerberus::limits::is_non_electrical;

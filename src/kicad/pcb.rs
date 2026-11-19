@@ -1,7 +1,5 @@
-//! Reads pad-to-net assignments from a `.kicad_pcb` file.
-//!
-//! Layout checks will need much more of the board later. For now this lets tests compare the schematic
-//! netlist with the one KiCad wrote into the board.
+//! Reads a `.kicad_pcb` file: its pad-to-net assignments, and the stackup, tracks, vias and zones that `si`
+//! and `traces` check.
 use std::path::Path;
 
 use crate::sexpr::{self, Sexp};

@@ -263,7 +263,8 @@ fn a_proposed_waiver_waits_for_a_person() {
     approved.apply(&mut r, "waivers.toml");
     assert!(!r.waived.is_empty());
     let empty: Waivers = toml::from_str(&text("proposed = \" \"\n")).unwrap();
-    assert!(!empty.problems(&design).is_empty()); // Both at once is a mistake: approving means deleting `proposed`.
+    assert!(!empty.problems(&design).is_empty());
+    // Both at once is a mistake: approving means deleting `proposed`.
     let both: Waivers = toml::from_str(&text("by = \"Rocco\"\nproposed = \"Claude\"\n")).unwrap();
     assert!(!both.problems(&design).is_empty());
 }
