@@ -120,15 +120,13 @@ pub fn simulate_all(netlists: &[&str]) -> Result<Vec<Measured>, String> {
     std::thread::scope(|scope| {
         let handles: Vec<_> = netlists
             .chunks(chunk)
-            .map(|part| scope.spawn(move || part.iter().map(|text| simulate(text)).collect::<Vec<_>>()))
+            .map(|part| scope.spawn(move || part.iter().map(|text| simulate(text)).collect::<Result<Vec<_>, _>>()))
             .collect();
-        handles
-            .into_iter()
-            .flat_map(|h| {
-                h.join()
-                    .unwrap_or_else(|_| vec![Err("an ngspice worker thread panicked".to_string())])
-            })
-            .collect()
+        let mut all = Vec::with_capacity(netlists.len());
+        for h in handles {
+            all.extend(h.join().expect("an ngspice worker thread panicked")?);
+        }
+        Ok(all)
     })
 }
 

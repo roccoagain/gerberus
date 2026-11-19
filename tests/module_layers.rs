@@ -20,7 +20,7 @@ fn top_module(src: &Path, file: &Path) -> String {
     first.as_os_str().to_string_lossy().trim_end_matches(".rs").to_string()
 }
 
-/// Every top-level module each module names through `crate::`, leaving out itself.
+/// Every top-level module each module names through `crate::` in its code (not its comments), leaving out itself.
 fn uses() -> BTreeMap<String, BTreeSet<String>> {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = vec![];
@@ -33,13 +33,21 @@ fn uses() -> BTreeMap<String, BTreeSet<String>> {
         }
         let text = std::fs::read_to_string(&file).unwrap();
         let used = graph.entry(module.clone()).or_default();
-        for (at, _) in text.match_indices("crate::") {
-            let name: String = text[at + "crate::".len()..]
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect();
-            if !name.is_empty() && name != module {
-                used.insert(name);
+        let code = text.lines().filter(|line| !line.trim_start().starts_with("//"));
+        for line in code {
+            for (at, _) in line.match_indices("crate::") {
+                let name: String = line[at + "crate::".len()..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                assert!(
+                    !name.is_empty(),
+                    "{}: name crate:: modules one at a time",
+                    file.display()
+                );
+                if name != module {
+                    used.insert(name);
+                }
             }
         }
     }
