@@ -158,3 +158,190 @@ fn an_unfilled_zone_counts_as_a_pour() {
     b.zone_nets.push("VIN".into());
     assert_eq!(run(&b, 1.0, true).verdict, Verdict::Unknown);
 }
+
+mod voltage_drop {
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::path::Path;
+
+    use gerberus::drop::Network;
+    use gerberus::finding::Verdict;
+    use gerberus::kicad::pcb::{Layout, PlacedPad, StackLayer, Track, Via};
+
+    fn pad(at: (f64, f64), layer: &str) -> PlacedPad {
+        PlacedPad {
+            number: "1".into(),
+            net: Some("VIN".into()),
+            at,
+            size: (0.5, 0.5),
+            rotation: 0.0,
+            layers: vec![layer.into()],
+        }
+    }
+
+    fn track(a: (f64, f64), b: (f64, f64), w: f64, layer: &str) -> Track {
+        Track {
+            net: "VIN".into(),
+            layer: layer.into(),
+            start: a,
+            end: b,
+            width: w,
+        }
+    }
+
+    fn layout(tracks: Vec<Track>, vias: Vec<Via>) -> Layout {
+        Layout {
+            stackup: vec![
+                StackLayer::Copper {
+                    name: "F.Cu".into(),
+                    thickness: 0.035,
+                },
+                StackLayer::Dielectric {
+                    thickness: 1.5,
+                    er: 4.5,
+                    loss_tangent: 0.02,
+                },
+                StackLayer::Copper {
+                    name: "B.Cu".into(),
+                    thickness: 0.035,
+                },
+            ],
+            tracks,
+            vias,
+            ..Default::default()
+        }
+    }
+
+    /// Resistance from the first pad to the second, at 1 Ω·mm.
+    fn z(l: &Layout, pads: &[PlacedPad]) -> Option<f64> {
+        let thick: BTreeMap<String, f64> = [("F.Cu".to_string(), 0.035), ("B.Cu".to_string(), 0.035)].into();
+        let refs: Vec<&PlacedPad> = pads.iter().collect();
+        let n = Network::build(l, "VIN", &refs, &thick, true).unwrap();
+        let from: BTreeSet<usize> = [n.pads[0]?].into();
+        n.resistance(&from, &[[n.pads[1]?].into()])[0]
+    }
+
+    fn close(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-6 * b.abs()
+    }
+
+    /// A 10 mm track 0.2 mm wide of 35 µm copper: 10 / (0.2 × 0.035) per Ω·mm.
+    #[test]
+    fn one_track() {
+        let l = layout(vec![track((0.0, 0.0), (10.0, 0.0), 0.2, "F.Cu")], vec![]);
+        let pads = [pad((0.0, 0.0), "F.Cu"), pad((10.0, 0.0), "F.Cu")];
+        assert!(close(z(&l, &pads).unwrap(), 10.0 / (0.2 * 0.035)));
+    }
+
+    /// Two tracks side by side halve it; a track in two pieces doesn't change it.
+    #[test]
+    fn parallel_and_series() {
+        let mut l = layout(
+            vec![
+                track((0.0, 0.0), (4.0, 0.0), 0.2, "F.Cu"),
+                track((4.0, 0.0), (10.0, 0.0), 0.2, "F.Cu"),
+            ],
+            vec![],
+        );
+        let pads = [pad((0.0, 0.0), "F.Cu"), pad((10.0, 0.0), "F.Cu")];
+        let one = 10.0 / (0.2 * 0.035);
+        assert!(close(z(&l, &pads).unwrap(), one));
+        l.tracks.push(track((0.0, 0.0), (0.0, 5.0), 0.2, "F.Cu"));
+        l.tracks.push(track((0.0, 5.0), (10.0, 5.0), 0.2, "F.Cu"));
+        l.tracks.push(track((10.0, 5.0), (10.0, 0.0), 0.2, "F.Cu"));
+        // The detour is 20 mm, twice the straight path: 1 ∥ 2 = 2/3.
+        assert!(close(z(&l, &pads).unwrap(), one * 2.0 / 3.0));
+    }
+
+    /// A branch leaving a track midway uses only the part of the track up to it.
+    #[test]
+    fn a_branch_midway_splits_the_track() {
+        let l = layout(
+            vec![
+                track((0.0, 0.0), (10.0, 0.0), 0.2, "F.Cu"),
+                track((5.0, 0.0), (5.0, 5.0), 0.2, "F.Cu"),
+            ],
+            vec![],
+        );
+        let pads = [pad((0.0, 0.0), "F.Cu"), pad((5.0, 5.0), "F.Cu")];
+        assert!(close(z(&l, &pads).unwrap(), 10.0 / (0.2 * 0.035)));
+    }
+
+    /// Two tracks crossing in an X are joined where they cross; a track running through a pad joins it there.
+    #[test]
+    fn crossings_and_pads_along_a_track_join() {
+        let l = layout(
+            vec![
+                track((0.0, 0.0), (10.0, 0.0), 0.2, "F.Cu"),
+                track((5.0, -5.0), (5.0, 5.0), 0.2, "F.Cu"),
+            ],
+            vec![],
+        );
+        let pads = [pad((0.0, 0.0), "F.Cu"), pad((5.0, 5.0), "F.Cu")];
+        assert!(close(z(&l, &pads).unwrap(), 10.0 / (0.2 * 0.035)));
+        let pads = [pad((0.0, 0.0), "F.Cu"), pad((7.0, 0.0), "F.Cu")];
+        assert!(close(z(&l, &pads).unwrap(), 7.0 / (0.2 * 0.035)));
+    }
+
+    /// A via adds its barrel; with no copper between them there is no resistance.
+    #[test]
+    fn a_via_adds_its_barrel_and_a_gap_is_none() {
+        let via = Via {
+            net: "VIN".into(),
+            at: (10.0, 0.0),
+            diameter: 0.6,
+            drill: 0.3,
+            layers: ("F.Cu".into(), "B.Cu".into()),
+        };
+        let l = layout(
+            vec![
+                track((0.0, 0.0), (10.0, 0.0), 0.2, "F.Cu"),
+                track((10.0, 0.0), (20.0, 0.0), 0.2, "B.Cu"),
+            ],
+            vec![via],
+        );
+        let pads = [pad((0.0, 0.0), "F.Cu"), pad((20.0, 0.0), "B.Cu")];
+        // Between the copper layers' centres, through the plating's ring inside the 0.3 mm hole.
+        let barrel = 1.535 / (std::f64::consts::PI * 0.28 * 0.02);
+        assert!(close(z(&l, &pads).unwrap(), 20.0 / (0.2 * 0.035) + barrel));
+        let gap = layout(vec![track((0.0, 0.0), (4.0, 0.0), 0.2, "F.Cu")], vec![]);
+        assert_eq!(z(&gap, &pads), None);
+    }
+
+    /// On can-encoder, U5's 3.3 V output reaches the MCU's supply pins through short tracks: a few mV. Made
+    /// a thousand times narrower, the drop can't be passed, and fails where a pin's own current is known.
+    #[test]
+    fn on_a_test_board() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/can-encoder");
+        let design = gerberus::kicad::load(&dir.join("can-encoder.kicad_sch")).unwrap();
+        let lib = gerberus::limits::Library::load_dir(&Path::new(env!("CARGO_MANIFEST_DIR")).join("parts")).unwrap();
+        let inputs = gerberus::inputs::BoardInputs::load(&dir.join("inputs.toml")).unwrap();
+        let v = gerberus::voltage::compute(&design, &lib, &inputs);
+        let th = gerberus::thermal::compute(&design, &lib, &inputs, &v);
+        let mut layout = gerberus::kicad::pcb::load_layout(&dir.join("can-encoder.kicad_pcb")).unwrap();
+        let policy = gerberus::policy::TracePolicy {
+            rise: 10.0,
+            reason: "test".into(),
+        };
+        let pin = |layout: &Layout, at: &str| {
+            gerberus::drop::check(&design, &lib, &inputs, &v, layout, &th, &policy)
+                .into_iter()
+                .find(|f| f.message.starts_with(at))
+                .unwrap()
+        };
+        let f = pin(&layout, "U2.17 ");
+        assert_eq!(f.verdict, Verdict::Pass, "{}", f.message);
+        assert!(f.message.contains("from U5"), "{}", f.message);
+        // The buck's output comes through its inductor, not its feedback pin.
+        let f = pin(&layout, "U5.3 ");
+        assert!(f.message.contains("from L1"), "{}", f.message);
+        for t in layout.tracks.iter_mut().filter(|t| t.net == "+3V3") {
+            t.width /= 1000.0;
+        }
+        // U2's supply current is given for several pins together, so its own share isn't known.
+        let f = pin(&layout, "U2.17 ");
+        assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
+        // U3 draws up to 28 mA through its one VDD pin, with only 234 mV to spare.
+        let f = pin(&layout, "U3.9 ");
+        assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
+    }
+}

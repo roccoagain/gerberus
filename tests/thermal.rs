@@ -397,3 +397,64 @@ fn an_ic_with_no_supply_current_is_unknown() {
     let th = thermal::compute(&d, &lib, &inputs, &v);
     assert!(th.loads[net(&d, "+5V")].missing.iter().any(|m| m.contains("U4")));
 }
+
+/// A net fed through a resistor from a rail doesn't count that resistor as a load back onto the rail: U5's input
+/// fed from +5V through R99 draws only U5's own load.
+#[test]
+fn the_resistor_a_net_is_fed_through_is_not_its_load() {
+    let (mut d, inputs) = board("can-encoder");
+    let vin = pin_of(&d, "U5", "VIN");
+    let fed = new_net(&mut d, "+5V_R");
+    move_pin(&mut d, "U5", &vin, fed);
+    let five = net(&d, "+5V");
+    add(&mut d, "R99", "Device:R", None, &[("1", five), ("2", fed)]);
+    assert_ne!(five, 0);
+    // Loads are worked out in net order: put the fed net first, so it is worked out before +5V.
+    d.nets.swap(fed, 0);
+    for c in d.components.values_mut() {
+        for p in c.pins.values_mut() {
+            if p.net == fed {
+                p.net = 0;
+            } else if p.net == 0 {
+                p.net = fed;
+            }
+        }
+    }
+    let fed = 0;
+    let (th, _) = analyse(&d, &inputs);
+    let load = &th.loads[fed];
+    assert!(
+        !load.parts.iter().chain(&load.missing).any(|p| p.starts_with("R99")),
+        "{load:?}"
+    );
+}
+
+/// A divider's midpoint is fed from both ends, so its top resistor still loads the rail: R98 from +3V3 to /MID,
+/// with R97 from /MID to GND.
+#[test]
+fn a_divider_still_loads_its_rail() {
+    let (mut d, inputs) = board("can-encoder");
+    let mid = new_net(&mut d, "/MID");
+    let (rail, gnd) = (net(&d, "+3V3"), net(&d, "GND"));
+    add(
+        &mut d,
+        "R98",
+        "Device:R",
+        Some("0402WGF1002TCE"),
+        &[("1", rail), ("2", mid)],
+    );
+    add(
+        &mut d,
+        "R97",
+        "Device:R",
+        Some("0402WGF1002TCE"),
+        &[("1", mid), ("2", gnd)],
+    );
+    let (th, _) = analyse(&d, &inputs);
+    let load = &th.loads[rail];
+    assert!(
+        load.parts.iter().any(|p| p.starts_with("R98 ") && p.contains("/MID")),
+        "{:?}",
+        load.parts
+    );
+}

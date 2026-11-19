@@ -82,7 +82,7 @@ settles. [More](docs/doctor.md)
 | `gerberus bringup` | A first-power checklist: which supply to connect first, the current limit to set, and the voltage to expect on each rail and where to probe it. [More](docs/bringup.md) |
 | `gerberus pinout` | Symbol pins, footprint pads and the datasheet pin table agree. [More](docs/pinout.md) |
 | `gerberus bom` | Every part is in stock at LCSC, still listed, and has a second source. [More](docs/bom.md) |
-| `gerberus traces` | Every track wide enough for its net's worst-case current (IPC-2221). [More](docs/traces.md) |
+| `gerberus traces` | Every track wide enough for its net's worst-case current (IPC-2221), and every power pin still at its minimum after the copper's voltage drop. [More](docs/traces.md) |
 | `gerberus si` | USB 2.0 pairs on the board: impedance, skew, vias, stubs, reference planes, and a simulated eye diagram. [More](docs/usb-si.md) |
 | `gerberus datasheet` | A part file against its datasheet, value by value. [More](docs/datasheets.md) |
 

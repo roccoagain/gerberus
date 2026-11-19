@@ -559,6 +559,12 @@ impl Ctx<'_> {
             })
     }
 
+    /// `net` gets its voltage from `other` alone, never rising above it: nothing else feeds it.
+    fn fed_only_from(&self, net: usize, other: usize) -> bool {
+        let nv = &self.volts.nets[net];
+        self.fed_from(net, other) && nv.why.iter().all(|w| w.bounded && w.from == [other])
+    }
+
     /// `net` is held at `volts` or above by its own source: a regulator that holds it, or a board input.
     fn held_at_or_above(&self, net: usize, volts: f64) -> bool {
         if self.volts.nets[net].span.min.is_some_and(|m| m >= volts) {
@@ -846,7 +852,8 @@ impl Ctx<'_> {
                     }
                 }
             }
-            if !resistor || st.stack.contains(&other) {
+            // The resistor this net is fed through, from `other` alone, brings current in; it isn't a load.
+            if !resistor || st.stack.contains(&other) || self.fed_only_from(net, other) {
                 continue;
             }
             match (

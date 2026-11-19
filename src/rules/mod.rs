@@ -463,6 +463,8 @@ pub fn help(rule: &str) -> Option<&'static str> {
         "junction-temperature" => "cut the part's dissipation, or give it a lower thermal resistance",
         "forward-current" => "raise the series resistor until the current is inside the rating",
         "esd" => "add a TVS or ESD clamp next to the connector pin",
+        "trace-current" => "widen the track, or move it to an outer layer or thicker copper",
+        "voltage-drop" => "widen or shorten the tracks from the supply, or feed the pin from a plane",
         "hot-plug" => {
             "damp the plug-in ringing: a TVS at the input, a bulk electrolytic or RC snubber, or a load switch"
         }
