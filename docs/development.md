@@ -18,6 +18,11 @@ protection, the CAN bus and its faults, debug and serial headers, two USB ports,
 temperature, and an unpowered sensor. `tests/kitchen_sink.rs` asserts every FAIL that `check`, `pinout`, `si` and
 `bom` report on it, and that each section's pass case passes; the board's README says what each part is for.
 
+## Code style
+
+Keep each piece of code to one clear job, with no rarely used options, unused flags or hedged wording. Edge cases that real
+boards need belong in a rule when they make its results more correct. See [CLAUDE.md](../CLAUDE.md).
+
 ## CI checks
 
 CI (`.github/workflows/ci.yml`) runs on pushes to main, on every pull request, and weekly for new advisories:
