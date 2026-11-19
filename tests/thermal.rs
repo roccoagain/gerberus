@@ -428,3 +428,33 @@ fn the_resistor_a_net_is_fed_through_is_not_its_load() {
         "{load:?}"
     );
 }
+
+/// A divider's midpoint is fed from both ends, so its top resistor still loads the rail: R98 from +3V3 to /MID,
+/// with R97 from /MID to GND.
+#[test]
+fn a_divider_still_loads_its_rail() {
+    let (mut d, inputs) = board("can-encoder");
+    let mid = new_net(&mut d, "/MID");
+    let (rail, gnd) = (net(&d, "+3V3"), net(&d, "GND"));
+    add(
+        &mut d,
+        "R98",
+        "Device:R",
+        Some("0402WGF1002TCE"),
+        &[("1", rail), ("2", mid)],
+    );
+    add(
+        &mut d,
+        "R97",
+        "Device:R",
+        Some("0402WGF1002TCE"),
+        &[("1", mid), ("2", gnd)],
+    );
+    let (th, _) = analyse(&d, &inputs);
+    let load = &th.loads[rail];
+    assert!(
+        load.parts.iter().any(|p| p.starts_with("R98 ") && p.contains("/MID")),
+        "{:?}",
+        load.parts
+    );
+}

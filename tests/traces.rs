@@ -215,9 +215,9 @@ mod voltage_drop {
     fn z(l: &Layout, pads: &[PlacedPad]) -> Option<f64> {
         let thick: BTreeMap<String, f64> = [("F.Cu".to_string(), 0.035), ("B.Cu".to_string(), 0.035)].into();
         let refs: Vec<&PlacedPad> = pads.iter().collect();
-        let n = Network::build(l, "VIN", &refs, &thick, 1.0);
+        let n = Network::build(l, "VIN", &refs, &thick, true).unwrap();
         let from: BTreeSet<usize> = [n.pads[0]?].into();
-        n.resistance(&from, &[n.pads[1]?])[0]
+        n.resistance(&from, &[[n.pads[1]?].into()])[0]
     }
 
     fn close(a: f64, b: f64) -> bool {
@@ -266,6 +266,22 @@ mod voltage_drop {
         assert!(close(z(&l, &pads).unwrap(), 10.0 / (0.2 * 0.035)));
     }
 
+    /// Two tracks crossing in an X are joined where they cross; a track running through a pad joins it there.
+    #[test]
+    fn crossings_and_pads_along_a_track_join() {
+        let l = layout(
+            vec![
+                track((0.0, 0.0), (10.0, 0.0), 0.2, "F.Cu"),
+                track((5.0, -5.0), (5.0, 5.0), 0.2, "F.Cu"),
+            ],
+            vec![],
+        );
+        let pads = [pad((0.0, 0.0), "F.Cu"), pad((5.0, 5.0), "F.Cu")];
+        assert!(close(z(&l, &pads).unwrap(), 10.0 / (0.2 * 0.035)));
+        let pads = [pad((0.0, 0.0), "F.Cu"), pad((7.0, 0.0), "F.Cu")];
+        assert!(close(z(&l, &pads).unwrap(), 7.0 / (0.2 * 0.035)));
+    }
+
     /// A via adds its barrel; with no copper between them there is no resistance.
     #[test]
     fn a_via_adds_its_barrel_and_a_gap_is_none() {
@@ -284,14 +300,15 @@ mod voltage_drop {
             vec![via],
         );
         let pads = [pad((0.0, 0.0), "F.Cu"), pad((20.0, 0.0), "B.Cu")];
-        let barrel = 1.57 / (std::f64::consts::PI * 0.32 * 0.02);
+        // Between the copper layers' centres, through the plating's ring inside the 0.3 mm hole.
+        let barrel = 1.535 / (std::f64::consts::PI * 0.28 * 0.02);
         assert!(close(z(&l, &pads).unwrap(), 20.0 / (0.2 * 0.035) + barrel));
         let gap = layout(vec![track((0.0, 0.0), (4.0, 0.0), 0.2, "F.Cu")], vec![]);
         assert_eq!(z(&gap, &pads), None);
     }
 
     /// On can-encoder, U5's 3.3 V output reaches the MCU's supply pins through short tracks: a few mV. Made
-    /// a thousand times narrower, the drop can't be passed.
+    /// a thousand times narrower, the drop can't be passed, and fails where a pin's own current is known.
     #[test]
     fn on_a_test_board() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/can-encoder");
@@ -305,19 +322,26 @@ mod voltage_drop {
             rise: 10.0,
             reason: "test".into(),
         };
-        let u2 = |layout: &Layout| {
+        let pin = |layout: &Layout, at: &str| {
             gerberus::drop::check(&design, &lib, &inputs, &v, layout, &th, &policy)
                 .into_iter()
-                .find(|f| f.message.starts_with("U2.17 "))
+                .find(|f| f.message.starts_with(at))
                 .unwrap()
         };
-        let f = u2(&layout);
+        let f = pin(&layout, "U2.17 ");
         assert_eq!(f.verdict, Verdict::Pass, "{}", f.message);
         assert!(f.message.contains("from U5"), "{}", f.message);
+        // The buck's output comes through its inductor, not its feedback pin.
+        let f = pin(&layout, "U5.3 ");
+        assert!(f.message.contains("from L1"), "{}", f.message);
         for t in layout.tracks.iter_mut().filter(|t| t.net == "+3V3") {
             t.width /= 1000.0;
         }
-        let f = u2(&layout);
+        // U2's supply current is given for several pins together, so its own share isn't known.
+        let f = pin(&layout, "U2.17 ");
         assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
+        // U3 draws up to 28 mA through its one VDD pin, with only 234 mV to spare.
+        let f = pin(&layout, "U3.9 ");
+        assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
     }
 }
