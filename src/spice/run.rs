@@ -113,6 +113,23 @@ impl Measured {
     }
 }
 
+/// Runs every netlist through ngspice, as many at once as there are cores, and gives the results in order.
+pub fn simulate_all(netlists: &[&str]) -> Result<Vec<Measured>, String> {
+    let workers = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
+    let chunk = netlists.len().div_ceil(workers).max(1);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = netlists
+            .chunks(chunk)
+            .map(|part| scope.spawn(move || part.iter().map(|text| simulate(text)).collect::<Result<Vec<_>, _>>()))
+            .collect();
+        let mut all = Vec::with_capacity(netlists.len());
+        for h in handles {
+            all.extend(h.join().expect("an ngspice worker thread panicked")?);
+        }
+        Ok(all)
+    })
+}
+
 /// Runs one netlist through `ngspice -b`, fed on its standard input.
 pub fn simulate(netlist: &str) -> Result<Measured, String> {
     let mut child = spawn()?;

@@ -30,7 +30,7 @@ use crate::design::{Component, Design, PinKind};
 use crate::finding::{Finding, Severity, Verdict};
 use crate::inputs::{BoardInputs, Signal};
 use crate::limits::{Bound, Class, Library, Part, Quantity, Range};
-use crate::spice::simulate;
+use crate::spice::simulate_all;
 use crate::units::{parse_farads, parse_henries, parse_ohms};
 use crate::voltage::{Driver, Span, Voltages, is_connector};
 
@@ -339,9 +339,11 @@ pub fn levels(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages
     let mut peak: BTreeMap<usize, f64> = BTreeMap::new();
     let mut pair_peak: BTreeMap<(usize, usize), f64> = BTreeMap::new();
     let mut gains: Vec<(String, BTreeMap<usize, f64>)> = vec![];
-    for (k, &(s, _, _)) in sources.iter().enumerate() {
-        let text = netlist(&ground, &rails, &nets, &elements, &sources, &pairs, k);
-        let m = simulate(&text)?;
+    let texts: Vec<String> = (0..sources.len())
+        .map(|k| netlist(&ground, &rails, &nets, &elements, &sources, &pairs, k))
+        .collect();
+    let measured = simulate_all(&texts.iter().map(String::as_str).collect::<Vec<_>>())?;
+    for (k, (&(s, _, _), m)) in sources.iter().zip(measured).enumerate() {
         if k == 0 {
             for &n in &nets {
                 let Some(b0) = m.get(&format!("v(n{n})")) else { continue };

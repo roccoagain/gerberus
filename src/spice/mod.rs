@@ -30,7 +30,7 @@ use crate::limits::{Bound, Class, Library, Lookup, Part, Quantity, Range};
 use crate::voltage::Voltages;
 
 pub use netlist::{Circuit, Pair, SWITCH_OHMS, TVS_OHMS, build};
-pub use run::{Measured, simulate};
+pub use run::{Measured, simulate, simulate_all};
 
 /// A small deterministic random number generator (xorshift64*), so a sweep is the same every time.
 #[derive(Debug, Clone)]
@@ -129,12 +129,17 @@ pub fn sweep(
     let pairs = circuit.with_nets(&limits);
     let mut rng = Rng::new(seed);
     let mut worst: BTreeMap<Pair, Worst> = BTreeMap::new();
+    let netlists: Vec<(String, String)> = (0..=policy.runs)
+        .map(|run| {
+            // Run 0 is nominal, with the largest cable inductance; the rest draw everything.
+            let draw = if run == 0 { None } else { Some(&mut rng) };
+            circuit.netlist(policy, &pairs, draw)
+        })
+        .collect();
+    let texts: Vec<&str> = netlists.iter().map(|(text, _)| text.as_str()).collect();
+    let measured = simulate_all(&texts)?;
     let mut runs = vec![];
-    for run in 0..=policy.runs {
-        // Run 0 is nominal, with the largest cable inductance; the rest draw everything.
-        let draw = if run == 0 { None } else { Some(&mut rng) };
-        let (text, about) = circuit.netlist(policy, &pairs, draw);
-        let measured = simulate(&text)?;
+    for (run, ((_, about), measured)) in netlists.into_iter().zip(measured).enumerate() {
         runs.push(about);
         for (i, &(a, b)) in pairs.iter().enumerate() {
             let Some(m) = measured.pair(i) else { continue };
