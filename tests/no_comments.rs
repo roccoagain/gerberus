@@ -134,7 +134,6 @@ fn rust_code_has_no_comments() {
     let mut files = vec![root.join("build.rs")];
     rust_sources(&root.join("src"), &mut files);
     rust_sources(&root.join("tests"), &mut files);
-    rust_sources(&root.join("examples"), &mut files);
     let offenders: Vec<String> = files
         .iter()
         .flat_map(|path| {

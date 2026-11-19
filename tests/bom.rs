@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gerberus::bom::{
-    Fixed, FixedByMpn, Health, Lcsc, Listing, Options, Severity, Similar, Source, Topic, check, lines, normalize_lcsc,
+    Fixed, Health, Listing, Online, Options, Severity, Similar, Source, Topic, check, lines, normalize_lcsc,
 };
 use gerberus::design::{Component, Design};
 use gerberus::kicad;
@@ -12,8 +12,8 @@ fn root(rel: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)
 }
 
-fn snapshot() -> Lcsc {
-    Lcsc::new(Some(root("tests/fixtures/lcsc")), Duration::ZERO, true)
+fn snapshot() -> Online {
+    Online::new(Some(root("tests/fixtures/lcsc")), Duration::ZERO, true)
 }
 
 fn board(rel: &str) -> Vec<Health> {
@@ -205,7 +205,6 @@ fn listing(code: &str, mpn: &str, maker: &str, stock: u64, status: &str, similar
         assembly: None,
         package: "SOT-23".into(),
         similar,
-        lifecycle: None,
         params: BTreeMap::new(),
     }
 }
@@ -390,7 +389,7 @@ fn temp_cache(name: &str) -> PathBuf {
 fn a_damaged_cache_file_is_reported_offline() {
     let dir = temp_cache("damaged");
     std::fs::write(dir.join("C1.json"), "{\"fetched\": 1, \"listing\": ").unwrap();
-    let mut s = Lcsc::new(Some(dir.clone()), Duration::ZERO, true);
+    let mut s = Online::new(Some(dir.clone()), Duration::ZERO, true);
     assert!(s.listing("C1").unwrap_err().contains("damaged"));
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -399,7 +398,7 @@ fn a_damaged_cache_file_is_reported_offline() {
 fn a_failed_lookup_falls_back_to_an_old_answer_with_a_warning() {
     let dir = temp_cache("stale");
     std::fs::copy(root("tests/fixtures/lcsc/C1525.json"), dir.join("C1525.json")).unwrap();
-    let mut s = Lcsc::new(Some(dir.clone()), Duration::ZERO, false);
+    let mut s = Online::new(Some(dir.clone()), Duration::ZERO, false);
     s.endpoint = "http://127.0.0.1:9/?productCode=".into();
     let l = s.listing("C1525").unwrap().unwrap();
     assert_eq!(l.mpn, "CL05B104KO5NNNC");
@@ -410,138 +409,6 @@ fn a_failed_lookup_falls_back_to_an_old_answer_with_a_warning() {
 
 fn json(rel: &str) -> serde_json::Value {
     serde_json::from_str(&std::fs::read_to_string(root(rel)).unwrap()).unwrap()
-}
-
-#[test]
-fn reads_a_mouser_answer() {
-    let raw = json("tests/fixtures/distributors/mouser-LM358DR2G.json");
-    let l = Listing::from_mouser_json(&raw, "LM358DR2G").unwrap().unwrap();
-    assert_eq!(l.code, "863-LM358DR2G");
-    assert_eq!(l.manufacturer, "onsemi");
-    assert_eq!(l.stock, 12345);
-    assert_eq!(l.lifecycle, None);
-    assert!(Listing::from_mouser_json(&raw, "LM324").unwrap().is_none());
-    let err = serde_json::json!({"Errors": [{"Code": "Invalid", "Message": "Invalid unique identifier."}]});
-    assert!(
-        Listing::from_mouser_json(&err, "X")
-            .unwrap_err()
-            .contains("Invalid unique identifier")
-    );
-    let text = serde_json::json!({"Errors": [], "SearchResults": {"Parts": [
-        {"ManufacturerPartNumber": "A-1", "Availability": "1,500 In Stock", "LifecycleStatus": "Obsolete"}
-    ]}});
-    let l = Listing::from_mouser_json(&text, "a1").unwrap().unwrap();
-    assert_eq!((l.stock, l.lifecycle.as_deref()), (1500, Some("Obsolete")));
-}
-
-#[test]
-fn reads_a_digikey_answer() {
-    let raw = json("tests/fixtures/distributors/digikey-AO3400A.json");
-    let l = Listing::from_digikey_json(&raw).unwrap().unwrap();
-    assert_eq!(l.code, "785-1000-1-ND");
-    assert_eq!(l.mpn, "AO3400A");
-    assert_eq!(l.manufacturer, "Alpha & Omega Semiconductor Inc.");
-    assert_eq!(l.stock, 81234);
-    assert_eq!(l.lifecycle.as_deref(), Some("Active"));
-    assert_eq!(l.package, "TO-236-3, SC-59, SOT-23-3");
-    let flat = serde_json::json!({"Product": {"ManufacturerProductNumber": "X", "QuantityAvailable": 0,
-        "Manufacturer": "Acme", "ProductStatus": "Obsolete"}});
-    let l = Listing::from_digikey_json(&flat).unwrap().unwrap();
-    assert_eq!(
-        (l.manufacturer.as_str(), l.lifecycle.as_deref()),
-        ("Acme", Some("Obsolete"))
-    );
-}
-
-fn by_mpn(parts: Vec<Component>, listings: Vec<(&str, Option<Listing>)>) -> Vec<Health> {
-    let design = Design {
-        components: parts.into_iter().map(|c| (c.reference.clone(), c)).collect(),
-        ..Default::default()
-    };
-    let mut src = FixedByMpn(listings.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-    check(&design, &mut src, Options::default())
-}
-
-fn mouser(mpn: &str, stock: u64, lifecycle: Option<&str>) -> Listing {
-    Listing {
-        code: format!("595-{mpn}"),
-        lifecycle: lifecycle.map(str::to_string),
-        package: String::new(),
-        ..listing("", mpn, "Acme", stock, "normal", vec![])
-    }
-}
-
-#[test]
-fn lookups_by_mpn_judge_lifecycle_and_need_an_mpn() {
-    let parts = vec![
-        part("U1", "X:Y", "OLD1", ""),
-        part("U2", "X:Y", "NRND1", ""),
-        part("U3", "X:Y", "GOOD1", "C5"),
-        part("R1", "Device:R", "", ""),
-    ];
-    let r = by_mpn(
-        parts,
-        vec![
-            ("OLD1", Some(mouser("OLD1", 100, Some("Obsolete")))),
-            (
-                "NRND1",
-                Some(mouser("NRND1", 100, Some("Not Recommended for New Designs"))),
-            ),
-            ("GOOD1", Some(mouser("GOOD1", 100, None))),
-        ],
-    );
-    assert_eq!(
-        findings(&r),
-        vec![
-            ("R1".to_string(), Severity::Unknown, Topic::Identity),
-            ("U1".to_string(), Severity::Error, Topic::Lifecycle),
-            ("U2".to_string(), Severity::Warning, Topic::Lifecycle),
-        ]
-    );
-    let u1 = r.iter().find(|h| h.line.references[0] == "U1").unwrap();
-    assert!(
-        u1.findings
-            .iter()
-            .any(|f| f.message.contains("595-OLD1") && f.message.contains("Obsolete"))
-    );
-    let u3 = r.iter().find(|h| h.line.references[0] == "U3").unwrap();
-    assert!(
-        u3.findings.iter().all(|f| f.severity == Severity::Info),
-        "{:#?}",
-        u3.findings
-    );
-}
-
-#[test]
-fn order_csv_lists_quantities_for_the_build() {
-    let mut a = part("U1", "X:Y", "LM358DR2G", "C7950");
-    a.fields.insert("Manufacturer".into(), "onsemi".into());
-    let b = part("U2", "X:Y", "LM358DR2G", "C7950");
-    let mut r = part("R1", "Device:R", "", "");
-    r.value = "10k, 1%".into();
-    let design = Design {
-        components: [a, b, r].into_iter().map(|c| (c.reference.clone(), c)).collect(),
-        ..Default::default()
-    };
-    let csv = gerberus::bom::order_csv(&design, 5);
-    assert_eq!(
-        csv,
-        "Quantity,Manufacturer Part Number,Manufacturer,Reference Designators,Value,LCSC Part Number\n\
-         5,,,R1,\"10k, 1%\",\n\
-         10,LM358DR2G,onsemi,U1 U2,x,C7950\n"
-    );
-}
-
-#[test]
-fn a_mouser_lookup_without_a_key_says_where_to_put_it() {
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_gerberus"))
-        .args(["bom", "tests/fixtures/sniffer/sniffer.kicad_sch", "--from", "mouser"])
-        .current_dir(root(""))
-        .env_remove("MOUSER_API_KEY")
-        .output()
-        .unwrap();
-    assert_eq!(out.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("MOUSER_API_KEY"));
 }
 
 #[test]
@@ -742,7 +609,6 @@ fn for_jlcpcb_a_missing_lcsc_number_is_an_error_with_a_search_link() {
             boards: 10,
             jlcpcb: true,
         },
-        "LCSC",
         &gerberus::diag::Show::everything(),
     );
     assert!(
@@ -864,7 +730,6 @@ fn every_part_of_a_line_and_every_unreadable_value_is_accounted_for() {
             boards: 10,
             jlcpcb: true,
         },
-        "LCSC",
         &gerberus::diag::Show::everything(),
     );
     assert!(

@@ -92,7 +92,6 @@ fn check_reads_the_file_next_to_the_schematic() {
             .args(["check", "kitchen-sink.kicad_sch", "--json"])
             .args(args)
             .current_dir(&dir)
-            .env("GERBERUS_NO_UPDATE_CHECK", "1")
             .output()
             .unwrap()
     };
@@ -115,9 +114,8 @@ fn check_reads_the_file_next_to_the_schematic() {
     let json: serde_json::Value = serde_json::from_slice(&run(&[]).stdout).unwrap();
     assert!(!json["waived"].as_array().unwrap().is_empty());
     let out = Command::new(env!("CARGO_BIN_EXE_gerberus"))
-        .args(["check", "kitchen-sink.kicad_sch", "--all", "--color", "never"])
+        .args(["check", "kitchen-sink.kicad_sch", "--all"])
         .current_dir(&dir)
-        .env("GERBERUS_NO_UPDATE_CHECK", "1")
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout);

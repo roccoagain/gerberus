@@ -16,9 +16,9 @@ The first run uses nominal values and the largest cable inductance. Each further
 - regulator outputs over their datasheet range;
 - the cable inductance over its range.
 
-`--seed` changes the draw. The peak, settled and lowest voltage across every pin limit, over all runs, is checked.
+The peak, settled and lowest voltage across every pin limit, over all runs, is checked.
 Past an absolute maximum is an error; past a passive's rating is a warning. A failure names the run and what it
-drew. `--netlist FILE` writes the nominal run's netlist, so it can be opened in any SPICE tool.
+drew.
 
 What is modelled:
 - resistors, capacitors and inductors from their values;

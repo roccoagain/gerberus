@@ -1,14 +1,13 @@
 ---
 name: check-board
-description: Check a KiCad or Altium schematic with Gerberus and settle its UNKNOWN results - start inputs.toml, list what is missing with doctor, add part files, confirm guesses. Use when asked to check a board's schematic or to make gerberus results complete.
+description: Check a KiCad schematic with Gerberus and settle its UNKNOWN results - start inputs.toml, list what is missing with doctor, add part files, confirm guesses. Use when asked to check a board's schematic or to make gerberus results complete.
 ---
 
 # Check a board with Gerberus
 
 `gerberus check` reads a schematic, works out the voltage range on every net, and checks each pin against its
 part's datasheet limits. A result it can't know is UNKNOWN, never a pass. This skill takes a board from no setup to
-a check with as few UNKNOWNs as the datasheets allow. `<design>` is a KiCad root `.kicad_sch`, an Altium
-`.PrjPcb`, or one `.SchDoc`. The board's own part files go in the `parts/` folder next to it, and its datasheet
+a check with as few UNKNOWNs as the datasheets allow. `<design>` is a KiCad root `.kicad_sch`. The board's own part files go in the `parts/` folder next to it, and its datasheet
 PDFs in `datasheets/` beside that.
 
 Where gerberus says to see `parts/README.md`, read `.claude/skills/datasheet-to-part/part-format.md`: it is the
@@ -52,7 +51,7 @@ memory, from a similar part, or from what would make a check pass. A value the d
 
 ```sh
 gerberus check <design>
-gerberus check <design> --unknown   # also lists what is still UNKNOWN
+gerberus check <design> --all       # also lists what is still UNKNOWN
 ```
 
 It exits with status 1 when a check fails with an error (warnings don't change it). Report each error and warning to the person as `check` gives it,

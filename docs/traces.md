@@ -7,7 +7,7 @@ gerberus traces board.kicad_sch
 `traces` checks that every track on the KiCad board (the `.kicad_pcb` with the schematic's name, or `--pcb`) is
 wide enough for the current its net carries. It is the first of the v0.5 layout checks.
 
-- **The current** is what [`loads`](thermal.md) works out the net supplies: everything its parts draw, at worst
+- **The current** is what `check` works out ([how](thermal.md)) the net supplies: everything its parts draw, at worst
   case. A net with a part whose current isn't known has only a lower bound, so its results are UNKNOWN.
 - **A track's safe current** comes from IPC-2221's fit, `I = k · ΔT^0.44 · A^0.725`, with A the cross-section
   in mil² and k = 0.048 on an outer layer and 0.024 on an inner one. ΔT is `[traces] rise` in `policy.toml`

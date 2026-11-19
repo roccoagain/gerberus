@@ -319,7 +319,7 @@ pub fn diagnose(
                 if p.len() == 1 { "has" } else { "have" },
                 setup.inputs.display()
             )];
-            if crate::limits::non_electrical(&r, &design.components[&r]).is_some() {
+            if crate::limits::is_non_electrical(&r, &design.components[&r]) {
                 notes.push(format!(
                     "{r} is a test point: if only a probe touches it, an [[undriven]] entry is enough"
                 ));
@@ -562,7 +562,7 @@ pub fn render(doctor: &Doctor, show: &Show) -> String {
             } else {
                 format!(
                     "the {} left wait on things doctor doesn't trace yet: limits or thermal data the part \
-                     files don't give, or circuits gerberus can't model; `gerberus check --unknown` lists them",
+                     files don't give, or circuits gerberus can't model; `gerberus check --all` lists them",
                     plural(doctor.unknown, "unknown result")
                 )
             }
@@ -588,7 +588,7 @@ pub fn render(doctor: &Doctor, show: &Show) -> String {
         let _ = writeln!(
             out,
             "   {} {}: the other {left} wait on things doctor doesn't trace yet: limits or thermal \
-             data the part files don't give, or circuits gerberus can't model; `gerberus check --unknown` lists \
+             data the part files don't give, or circuits gerberus can't model; `gerberus check --all` lists \
              them all",
             style.paint("1;34", "="),
             style.paint("1", "note"),

@@ -154,7 +154,7 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
     let cov = coverage(design, lib);
     part_rules(design, lib, policy, inputs, volts, false, &mut r);
     for (reference, c) in &design.components {
-        if c.dnp || !matches!(cov.get(reference), Some(Coverage::Datasheet { .. })) {
+        if c.dnp || !matches!(cov.get(reference), Some(Coverage::Datasheet)) {
             continue;
         }
         let Lookup::Datasheet(part) = lib.lookup(c) else {
@@ -1293,7 +1293,7 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -
         details |= !d.details.is_empty();
         d.render(&mut out, show.style, show.verbose, width);
     }
-    if show.passes {
+    if show.all {
         for w in &report.waived {
             let d = Diagnostic::line(
                 Level::Waived,
@@ -1319,7 +1319,7 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -
                 "{} waived in {}, not counted{}",
                 report.waived.len(),
                 report.waivers_file,
-                if show.passes { "" } else { " (--all lists them)" }
+                if show.all { "" } else { " (--all lists them)" }
             )
         );
     }

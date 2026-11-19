@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use crate::design::{Design, PinKind};
-use crate::limits::{Library, non_electrical};
+use crate::limits::{Library, is_non_electrical};
 use crate::voltage::is_connector;
 
 pub const GUESS: &str = "GUESS by gerberus init";
@@ -141,7 +141,7 @@ pub fn template(design: &Design, lib: &Library, board: &str) -> String {
         let mut pins: Vec<&str> = c.pins.keys().map(String::as_str).collect();
         pins.sort_by_key(|p| natural(p));
         let _ = writeln!(out, "\n# {r} ({}, {})", c.value, c.lib_id);
-        if non_electrical(r, c).is_some() {
+        if is_non_electrical(r, c) {
             for p in &pins {
                 if is_ground_net(&short(&net_name(r, p))) {
                     continue;

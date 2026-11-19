@@ -31,7 +31,6 @@ fn verify(dir: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_gerberus"))
         .args(["datasheet", "verify", "parts/0402WGF1001TCE.toml"])
         .current_dir(dir)
-        .env("GERBERUS_NO_UPDATE_CHECK", "1")
         .output()
         .unwrap()
 }
@@ -57,7 +56,6 @@ fn a_saved_pdf_is_found_in_any_letter_case() {
     let out = Command::new(env!("CARGO_BIN_EXE_gerberus"))
         .args(["datasheet", "verify", "0402WGF1001TCE.toml"])
         .current_dir(dir.join("parts"))
-        .env("GERBERUS_NO_UPDATE_CHECK", "1")
         .output()
         .unwrap();
     let all = format!(

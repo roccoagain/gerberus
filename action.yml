@@ -1,15 +1,15 @@
 name: Gerberus
-description: Check a KiCad or Altium schematic for electrical bugs, and list what a pull request changed.
+description: Check a KiCad schematic for electrical bugs, and list what a pull request changed.
 branding:
   icon: cpu
   color: green
 
 inputs:
   design:
-    description: The design to check, a KiCad root .kicad_sch, an Altium .PrjPcb or a single .SchDoc, relative to the repository.
+    description: The design to check, a KiCad root .kicad_sch, relative to the repository.
     required: true
   args:
-    description: Extra arguments for `gerberus check`, such as `--unknown`.
+    description: Extra arguments for `gerberus check`, such as `--all`.
     required: false
     default: ""
   version:
@@ -49,7 +49,7 @@ runs:
       run: |
         status=0
         # shellcheck disable=SC2086
-        gerberus check "$DESIGN" --color never $ARGS > gerberus-check.txt || status=$?
+        NO_COLOR=1 gerberus check "$DESIGN" $ARGS > gerberus-check.txt || status=$?
         cat gerberus-check.txt
         {
           echo '## Gerberus check'

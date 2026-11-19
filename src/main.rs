@@ -5,25 +5,21 @@ use std::process::ExitCode;
 
 use gerberus::diag::{Diagnostic, Level, Show};
 use gerberus::inputs::BoardInputs;
-use gerberus::limits::{Coverage, Library, coverage};
+use gerberus::limits::Library;
 use gerberus::pinout;
 
 const USAGE: &str = "usage:
-  gerberus netlist <design>
-  gerberus parts <design> [--parts DIR]...
-  gerberus pinout <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--parts DIR]... [--verbose] [--color WHEN]
+  gerberus pinout <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--parts DIR]... [--verbose]
   gerberus voltages <design> [--inputs FILE] [--parts DIR]... [--fault CASE] [--explain NET]...
-  gerberus loads <design> [--inputs FILE] [--parts DIR]...
   gerberus bringup <design> [--inputs FILE] [--parts DIR]...
-  gerberus stress <design> [--inputs FILE] [--parts DIR]... [--runs N] [--seed N] [--netlist FILE] [REPORT]
+  gerberus stress <design> [--inputs FILE] [--parts DIR]... [--runs N] [REPORT]
   gerberus signal <design> [--inputs FILE] [--parts DIR]... [--json] [REPORT]
   gerberus check <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [REPORT]
   gerberus init <design> [--parts DIR]... [--stdout] [--force]
   gerberus diff <old design> <new design> [--parts DIR]... [--json]
   gerberus diff <design> --rev REV [--parts DIR]... [--json]
-  gerberus doctor <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [--json] [--color WHEN]
-  gerberus bom <design> [--boards N] [--jlcpcb] [--from lcsc|mouser|digikey] [--offline] [--cache DIR] [--max-age HOURS] [REPORT]
-  gerberus bom <design> --csv FILE [--boards N]
+  gerberus doctor <design> [--inputs FILE] [--waivers FILE] [--parts DIR]... [--json]
+  gerberus bom <design> [--boards N] [--jlcpcb] [--parts DIR]... [REPORT]
   gerberus traces <design.kicad_sch> [--pcb BOARD.kicad_pcb] [--inputs FILE] [--parts DIR]... [REPORT]
   gerberus si <board.kicad_pcb> [--parts DIR]... [REPORT] [--plots DIR]
   gerberus part show <MPN> [--parts DIR]... [--out FILE] [--force]
@@ -31,32 +27,25 @@ const USAGE: &str = "usage:
   gerberus datasheet verify <part.toml>... [--pdf FILE] [--cache DIR] [--all]
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
-  gerberus mcp
   gerberus skill install [DIR] [--force]
-  gerberus update
   gerberus --version
 
-REPORT is any of --unknown, --all, --verbose (-v), --color auto|always|never and --json. Reports list errors
-then warnings, rustc-style. --unknown also lists UNKNOWNs, --all lists UNKNOWNs and passes, and --verbose adds the
-long explanations (how each net got its range). Colour is on for a terminal unless NO_COLOR is set. --json prints
-the findings as JSON instead.
+REPORT is any of --all, --verbose (-v) and --json. Reports list errors then warnings, rustc-style. --all also
+lists UNKNOWNs and passes, and --verbose adds the long explanations (how each net got its range). Colour is on
+for a terminal unless NO_COLOR is set. --json prints the findings as JSON instead.
 
-<design> is a KiCad root .kicad_sch, an Altium .PrjPcb project, or a single Altium .SchDoc. `pinout` reads
-KiCad designs only, since it compares against the KiCad board.
+<design> is a KiCad root .kicad_sch.
 
-`parts` reports where each part's limits come from. It reads the shared library (built into gerberus), then a
-`parts/` folder next to the schematic if there is one (its files override the shared ones), then any --parts
-folders in order.
+Part files come from the shared library (built into gerberus), then a `parts/` folder next to the schematic if
+there is one (its files override the shared ones), then any --parts folders in order.
 
-`pinout` checks that each part's symbol pins, footprint pads and datasheet pin table agree. It reads the board
-next to the schematic (same name, .kicad_pcb) unless --pcb names another, and the same part folders as
-`parts`. It exits with status 1 when it finds a pinout error.
+`pinout` checks that each part's symbol pins, footprint pads and datasheet pin table agree. It reads the board next
+to the schematic (same name, .kicad_pcb) unless --pcb names another. It exits with status 1 when it finds a pinout
+error.
 
 `voltages` works out the worst-case voltage range of every net, starting from the board inputs (`inputs.toml`
 next to the schematic unless --inputs is given). --explain prints the reasoning behind one net. --fault works
 them out for one of the fault cases in the inputs instead of normal operation.
-
-`mcp` serves the commands to an AI agent over the Model Context Protocol, on stdin and stdout (see docs/mcp.md).
 
 `traces` checks that every track on the KiCad board (same name as the schematic, .kicad_pcb, unless --pcb names
 another) is wide enough for the worst-case current its net supplies, by IPC-2221 at policy.toml's temperature rise.
@@ -65,13 +54,10 @@ another) is wide enough for the worst-case current its net supplies, by IPC-2221
 changed, the connections made or broken (nets matched by their pins, not their names), and the `check` findings
 whose verdict changed. It exits with status 1 when the new revision adds an error.
 
-`loads` lists the worst-case current each net supplies and what draws it, from the parts' `[[supply]]`
-currents, LED chains and resistors to ground. These are the currents the junction-temperature rule uses.
-
-`stress` switches each supply input in `inputs.toml` on through a cable (policy.toml's `[spice]`) in ngspice,
-once at nominal values and then --runs times (default from policy.toml) with every part value drawn from its
-tolerance, and checks the peak voltage on every pin against its limits. --netlist writes the nominal run's
-netlist. It needs ngspice installed, and exits with status 1 when an absolute maximum is passed.
+`stress` switches each supply input in `inputs.toml` on through a cable (policy.toml's `[spice]`) in ngspice, once
+at nominal values and then --runs times (default from policy.toml) with every part value drawn from its tolerance,
+and checks the peak voltage on every pin against its limits. It needs ngspice installed, and exits with status 1
+when an absolute maximum is passed.
 
 `check` runs the voltage rules: every pin against its datasheet limits at its net's worst-case voltage, TVS
 breakdown and stand-off, capacitor voltage and resistor power, undriven inputs and power pins, regulator
@@ -95,18 +81,14 @@ wait on it. --json prints the list as JSON.
 `bom` looks up every BOM line by its LCSC part number: stock for --boards boards (default 10), LCSC's listing
 status, and similar parts from other makers. Resistors and capacitors are checked by value, size and ratings
 against LCSC's listing, and short or wrongly rated ones get checked LCSC equivalents. --jlcpcb is for a board
-JLCPCB assembles: a part with no LCSC number is an error, and extended parts are counted. --from mouser or --from
-digikey looks lines up by their MPN field instead, which gives the manufacturer's lifecycle (active, NRND,
-obsolete) too; they need an API key in MOUSER_API_KEY, or DIGIKEY_CLIENT_ID and DIGIKEY_CLIENT_SECRET. Answers are
-cached in --cache (default ~/.cache/gerberus/<distributor>) for --max-age hours (default 24); --offline uses only
-the cache. It exits with status 1 when any line has an error. --csv FILE writes the BOM, with quantities for
---boards boards, as a CSV file for DigiKey's or Mouser's BOM upload, and looks nothing up.
+JLCPCB assembles: a part with no LCSC number is an error, and extended parts are counted. Answers are cached in
+~/.cache/gerberus/lcsc for 24 hours. It exits with status 1 when any line has an error.
 
 `si` checks every USB 2.0 pair on a KiCad board (nets ending in D+/D-, DP/DM or _P/_N with USB in the name):
 impedance from a 2D field solver run on the stackup, skew, vias, stubs, reference planes, length and the
 capacitance of parts on the lines, then simulates each pair at 480 Mb/s and checks the eye at the connector
 against the USB 2.0 Template 1 mask. --plots writes each pair's eye diagram and impedance profile (TDR) as SVG
-files into DIR. It reads part capacitance from the same part folders as `parts`, matched by footprint value.
+files into DIR. It reads part capacitance from the part files, matched by footprint value.
 It exits with status 1 when any error FAILs.
 `part show` prints the part file the library has for a part number: the file itself, or the one its part family
 writes for it (see parts/README.md, \"Part families\"). --out FILE writes it to a file instead, making its folder
@@ -129,12 +111,8 @@ fill in blind; `compare` lists every value where two readings disagree and exits
 
 `skill install` writes the agent skills that ship with gerberus into DIR/.claude/skills (DIR defaults to the
 current folder, the board's repository): check-board (init, doctor, part files, check) and datasheet-to-part
-(reading a datasheet into a part file, verified and read twice). Run it again after `gerberus update` to bring
+(reading a datasheet into a part file, verified and read twice). Run it again after updating gerberus to bring
 them up to date: it replaces the files it wrote, but not one someone has changed since, unless --force.
-
-`update` updates gerberus to the latest release with `gerberus-update`, which the installers put next to it.
-Once a day, gerberus also asks GitHub whether a newer release is out and says so after a command finishes; set
-GERBERUS_NO_UPDATE_CHECK=1 to turn that off. It never checks when its output isn't a terminal or in CI.
 
 Every command exits with status 2 when it can't run (bad arguments, unreadable files).";
 
@@ -146,31 +124,17 @@ fn main() -> ExitCode {
         println!("gerberus {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
-    if let [cmd] = args.as_slice()
-        && cmd == "update"
-    {
-        return update();
-    }
-    let check = UpdateCheck::start();
-    let code = run(&args);
-    if let Some(check) = check {
-        check.finish();
-    }
-    code
+    run(&args)
 }
 
 fn run(args: &[String]) -> ExitCode {
     let result = match args {
-        [cmd, path] if cmd == "netlist" => netlist(Path::new(path)),
-        [cmd, path, rest @ ..] if cmd == "parts" => parts(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "pinout" => pinout(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "voltages" => voltages(Path::new(path), rest),
-        [cmd, path, rest @ ..] if cmd == "loads" => loads(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "bringup" => bringup(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "stress" => stress(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "signal" => signal(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "check" => check(Path::new(path), rest),
-        [cmd] if cmd == "mcp" => mcp(),
         [cmd, path, rest @ ..] if cmd == "traces" => traces(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "diff" => diff(Path::new(path), rest),
         [cmd, path, rest @ ..] if cmd == "doctor" => doctor(Path::new(path), rest),
@@ -210,7 +174,7 @@ fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
             _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
         }
     }
-    let design = gerberus::load(path)?;
+    let design = load_design(path)?;
     let source = path
         .file_name()
         .map_or_else(|| path.display().to_string(), |f| f.to_string_lossy().into());
@@ -282,8 +246,8 @@ fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
             }
             gerberus::limits::Lookup::ClassDefault(_) => {
                 return Err(format!(
-                    "{} is already checked against the rating its schematic symbol gives (`gerberus parts` shows \
-                     it); a part file would replace that. --force writes one anyway",
+                    "{} is already checked against the rating its schematic symbol gives; a part file would replace \
+                     that. --force writes one anyway",
                     c.reference
                 ));
             }
@@ -385,114 +349,6 @@ fn part_text(lib: &Library, mpn: &str) -> Result<String, String> {
     Err(format!("no part file or part family has {mpn:?}"))
 }
 
-fn netlist(path: &Path) -> Result<bool, String> {
-    let design = gerberus::load(path)?;
-    for net in &design.nets {
-        let pins: Vec<String> = net.pins.iter().map(|(r, p)| format!("{r}.{p}")).collect();
-        println!("{}: {}", net.name, pins.join(" "));
-    }
-    for w in &design.warnings {
-        eprintln!("warning: {w}");
-    }
-    Ok(true)
-}
-
-struct UpdateCheck {
-    remembered: Option<String>,
-    fresh: Option<std::sync::mpsc::Receiver<Option<String>>>,
-    started: std::time::Instant,
-}
-
-impl UpdateCheck {
-    fn start() -> Option<UpdateCheck> {
-        use gerberus::update;
-        use std::io::IsTerminal;
-        let off = |v: &str| std::env::var_os(v).is_some_and(|x| !x.is_empty() && x != "0");
-        if off(update::OPT_OUT) || off("CI") || !std::io::stderr().is_terminal() || !std::io::stdout().is_terminal() {
-            return None;
-        }
-        let dir = update::default_cache_dir()?;
-        let (remembered, stale) = update::remembered(&dir);
-        let fresh = stale.then(|| {
-            let (tx, rx) = std::sync::mpsc::channel();
-            let _ = update::remember(&dir, remembered.as_deref().unwrap_or(""));
-            std::thread::spawn(move || {
-                if let Ok(tag) = update::fetch_latest() {
-                    let _ = update::remember(&dir, tag.as_deref().unwrap_or(""));
-                    let _ = tx.send(tag);
-                }
-            });
-            rx
-        });
-        Some(UpdateCheck {
-            remembered,
-            fresh,
-            started: std::time::Instant::now(),
-        })
-    }
-
-    fn finish(self) {
-        use gerberus::update;
-        let fresh = self.fresh.and_then(|rx| {
-            let left = update::WAIT.saturating_sub(self.started.elapsed());
-            rx.recv_timeout(left).ok().flatten()
-        });
-        let Some(latest) = fresh.or(self.remembered) else {
-            return;
-        };
-        let has_updater = std::env::current_exe()
-            .ok()
-            .and_then(|exe| update::updater_next_to(&exe))
-            .is_some();
-        if let Some(n) = update::notice(&latest, env!("CARGO_PKG_VERSION"), has_updater) {
-            eprintln!("\n{n}");
-        }
-    }
-}
-
-fn update() -> ExitCode {
-    let exe = std::env::current_exe().ok();
-    let Some(updater) = exe.as_deref().and_then(gerberus::update::updater_next_to) else {
-        eprintln!(
-            "error: gerberus-update isn't installed next to {}, so this copy of gerberus wasn't installed by its \
-             installer. Install the latest release as described at https://github.com/{}#install, or rebuild it \
-             the way you built it.",
-            exe.as_deref()
-                .map_or_else(|| "gerberus".to_string(), |e| e.display().to_string()),
-            gerberus::update::REPO
-        );
-        return ExitCode::from(gerberus::EXIT_CANNOT_RUN);
-    };
-    let aside = match exe.as_deref().filter(|_| cfg!(windows)) {
-        Some(exe) => match gerberus::update::set_aside(exe) {
-            Ok(aside) => Some((exe, aside)),
-            Err(e) => {
-                eprintln!("error: {e}");
-                return ExitCode::from(gerberus::EXIT_CANNOT_RUN);
-            }
-        },
-        None => None,
-    };
-    let (code, ok) = match std::process::Command::new(&updater).status() {
-        Ok(s) if s.success() => (ExitCode::SUCCESS, true),
-        Ok(s) => {
-            eprintln!("error: {} exited with {s}", updater.display());
-            (ExitCode::from(gerberus::EXIT_CHECK_FAILED), false)
-        }
-        Err(e) => {
-            eprintln!("error: {}: {e}", updater.display());
-            (ExitCode::from(gerberus::EXIT_CANNOT_RUN), false)
-        }
-    };
-    if let Some((exe, aside)) = aside
-        && !ok
-        && let Err(e) = gerberus::update::restore(exe, &aside)
-    {
-        eprintln!("error: {e}");
-    }
-    code
-}
-
 struct Options {
     dirs: Vec<PathBuf>,
     pcb: Option<PathBuf>,
@@ -533,6 +389,14 @@ fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, Stri
     })
 }
 
+fn load_design(path: &Path) -> Result<gerberus::design::Design, String> {
+    let design = gerberus::kicad::load(path)?;
+    for w in &design.warnings {
+        eprintln!("warning: {w}");
+    }
+    Ok(design)
+}
+
 fn load_library(dirs: &[PathBuf]) -> Result<Library, String> {
     let mut lib = Library::builtin()?;
     for dir in dirs {
@@ -554,7 +418,7 @@ fn analyse(
     String,
 > {
     let mut lib = load_library(&o.dirs)?;
-    let design = gerberus::load(path)?;
+    let design = load_design(path)?;
     lib.expand_families(&design);
     let inputs_path = o
         .inputs
@@ -617,7 +481,7 @@ fn analyse(
 }
 
 fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest)?;
+    let (show, rest) = Show::parse(rest);
     let json = rest.iter().any(|a| a == "--json");
     let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
     let o = options(path, &rest, &["--inputs", "--waivers"])?;
@@ -656,7 +520,7 @@ fn waive(
 }
 
 fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest)?;
+    let (show, rest) = Show::parse(rest);
     let json = rest.iter().any(|a| a == "--json");
     let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
     let o = options(path, &rest, &["--pcb", "--inputs"])?;
@@ -679,13 +543,6 @@ fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
         print!("{}", gerberus::rules::render(&design, &v, &report, &show));
     }
     Ok(report.errors() == 0)
-}
-
-fn mcp() -> Result<bool, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("can't find this program: {e}"))?;
-    let stdin = std::io::stdin();
-    gerberus::mcp::serve(&exe, stdin.lock(), std::io::stdout())?;
-    Ok(true)
 }
 
 fn report(path: &Path, rest: &[String]) -> Result<(gerberus::design::Design, gerberus::rules::Report), String> {
@@ -746,7 +603,7 @@ fn init(path: &Path, rest: &[String]) -> Result<bool, String> {
     }
     let o = options(path, &others, &[])?;
     let mut lib = load_library(&o.dirs)?;
-    let design = gerberus::load(path)?;
+    let design = load_design(path)?;
     lib.expand_families(&design);
     let board = path
         .file_stem()
@@ -778,7 +635,7 @@ fn init(path: &Path, rest: &[String]) -> Result<bool, String> {
 }
 
 fn doctor(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest)?;
+    let (show, rest) = Show::parse(rest);
     let json = rest.iter().any(|a| a == "--json");
     let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
     let mut o = options(path, &rest, &["--inputs", "--waivers"])?;
@@ -797,12 +654,12 @@ fn doctor(path: &Path, rest: &[String]) -> Result<bool, String> {
     Ok(true)
 }
 
+const STRESS_SEED: u64 = 1;
+
 fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest)?;
+    let (show, rest) = Show::parse(rest);
     let mut json = false;
     let mut runs = None;
-    let mut seed = 1;
-    let mut netlist = None;
     let mut others = vec![];
     let mut it = rest.iter();
     while let Some(a) = it.next() {
@@ -815,13 +672,6 @@ fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
                         .ok_or("--runs takes a number")?,
                 );
             }
-            "--seed" => {
-                seed = it
-                    .next()
-                    .and_then(|n| n.parse::<u64>().ok())
-                    .ok_or("--seed takes a number")?;
-            }
-            "--netlist" => netlist = Some(PathBuf::from(it.next().ok_or("--netlist takes a file")?)),
             _ => others.push(a.clone()),
         }
     }
@@ -832,13 +682,7 @@ fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
     if let Some(n) = runs {
         sp.runs = n;
     }
-    if let Some(file) = netlist {
-        let circuit = gerberus::spice::build(&design, &lib, &inputs, &v)?;
-        let pairs = circuit.pairs(&design, &lib);
-        let (text, _) = circuit.netlist(&sp, &pairs, None);
-        std::fs::write(&file, text).map_err(|e| format!("{}: {e}", file.display()))?;
-    }
-    let sweep = gerberus::spice::sweep(&design, &lib, &inputs, &v, &sp, seed)?;
+    let sweep = gerberus::spice::sweep(&design, &lib, &inputs, &v, &sp, STRESS_SEED)?;
     let report = gerberus::rules::Report {
         findings: gerberus::spice::check(&design, &lib, &sweep, &sp),
         waived: vec![],
@@ -855,7 +699,7 @@ fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
 }
 
 fn signal(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest)?;
+    let (show, rest) = Show::parse(rest);
     let mut json = false;
     let mut others = vec![];
     for a in rest {
@@ -911,69 +755,22 @@ fn bringup(path: &Path, rest: &[String]) -> Result<bool, String> {
     Ok(true)
 }
 
-fn loads(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let o = options(path, rest, &["--inputs"])?;
-    let (design, lib, inputs, v) = analyse(path, &o)?;
-    let th = gerberus::thermal::compute(&design, &lib, &inputs, &v);
-    print!("{}", gerberus::thermal::describe(&design, &th));
-    Ok(true)
-}
-
-fn parts(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let mut lib = load_library(&options(path, rest, &[])?.dirs)?;
-    let design = gerberus::load(path)?;
-    lib.expand_families(&design);
-    let cov = coverage(&design, &lib);
-    let (mut sheet, mut default, mut unchecked, mut bare) = (0, 0, 0, 0);
-    for (r, c) in &cov {
-        match c {
-            Coverage::Datasheet { mpn } => {
-                sheet += 1;
-                println!("{r}: datasheet limits ({mpn}, {})", lib.files[mpn].display());
-                let gaps = lib.parts[mpn].uncovered_pins();
-                if !gaps.is_empty() {
-                    println!("  no voltage limit on {}: these pins are UNKNOWN", gaps.join(", "));
-                }
-            }
-            Coverage::ClassDefault { note } => {
-                default += 1;
-                println!("{r}: class default ({note})");
-            }
-            Coverage::Unchecked { reason } => {
-                unchecked += 1;
-                println!("{r}: UNCHECKED ({reason})");
-            }
-            Coverage::NotFitted => println!("{r}: not fitted"),
-            Coverage::NonElectrical(what) => {
-                bare += 1;
-                println!("{r}: nothing to check ({what})");
-            }
-        }
-    }
-    println!(
-        "{sheet} with datasheet limits, {default} with class defaults, {unchecked} unchecked, {bare} with nothing to check"
-    );
-    Ok(true)
-}
-
 fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
-    use gerberus::bom::{Api, Online, Options, Severity, check_with_parts};
-    let (show, rest) = Show::parse(rest)?;
-    let rest = &rest[..];
+    use gerberus::bom::{Online, Options, Severity, check_with_parts};
+    const CACHE_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+    let (show, rest) = Show::parse(rest);
     let mut opts = Options::default();
-    let mut parts: Vec<PathBuf> = vec![];
-    let mut offline = false;
-    let mut cache = None;
-    let mut from = "lcsc".to_string();
-    let mut csv = None;
-    let mut max_age_hours: u64 = 24;
+    let mut dirs: Vec<PathBuf> = vec![];
+    let local = path.parent().unwrap_or(Path::new(".")).join("parts");
+    if local.is_dir() {
+        dirs.push(local);
+    }
     let mut it = rest.iter();
     while let Some(a) = it.next() {
         match (a.as_str(), it.clone().next()) {
-            ("--offline", _) => offline = true,
             ("--jlcpcb", _) => opts.jlcpcb = true,
             ("--parts", Some(dir)) => {
-                parts.push(PathBuf::from(dir));
+                dirs.push(PathBuf::from(dir));
                 it.next();
             }
             ("--boards", Some(n)) => {
@@ -984,102 +781,26 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
                     .ok_or(format!("--boards needs a positive number, not {n:?}"))?;
                 it.next();
             }
-            ("--from", Some(d)) => {
-                from = d.to_ascii_lowercase();
-                it.next();
-            }
-            ("--csv", Some(f)) => {
-                csv = Some(PathBuf::from(f));
-                it.next();
-            }
-            ("--cache", Some(dir)) => {
-                cache = Some(PathBuf::from(dir));
-                it.next();
-            }
-            ("--max-age", Some(h)) => {
-                max_age_hours = h
-                    .parse()
-                    .map_err(|_| format!("--max-age needs a number of hours, not {h:?}"))?;
-                it.next();
-            }
-            ("--boards" | "--cache" | "--max-age" | "--from" | "--csv" | "--parts", None) => {
-                return Err(format!("{a} needs a value\n{USAGE}"));
-            }
+            ("--boards" | "--parts", None) => return Err(format!("{a} needs a value\n{USAGE}")),
             _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
         }
     }
-    let max_age = max_age_hours
-        .checked_mul(3600)
-        .map(std::time::Duration::from_secs)
-        .ok_or(format!("--max-age {max_age_hours} is too large"))?;
-    let design = gerberus::load(path)?;
-    if let Some(file) = csv {
-        std::fs::write(&file, gerberus::bom::order_csv(&design, opts.boards))
-            .map_err(|e| format!("can't write {}: {e}", file.display()))?;
-        println!(
-            "wrote {} lines for {} boards to {}",
-            gerberus::bom::lines(&design).len(),
-            opts.boards,
-            file.display()
-        );
-        return Ok(true);
-    }
-    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
-    let key = |k: &str| -> Result<String, String> {
-        match env(k) {
-            Some(v) => Ok(v),
-            None if offline => Ok(String::new()),
-            None => Err(format!(
-                "--from {from} needs an API key in {k}; see docs/bom.md for how to get one"
-            )),
-        }
-    };
-    let api = match from.as_str() {
-        "lcsc" => Api::Lcsc,
-        "mouser" => Api::Mouser {
-            key: key("MOUSER_API_KEY")?,
-        },
-        "digikey" => Api::DigiKey {
-            client_id: key("DIGIKEY_CLIENT_ID")?,
-            client_secret: key("DIGIKEY_CLIENT_SECRET")?,
-        },
-        other => return Err(format!("--from takes lcsc, mouser or digikey, not {other:?}")),
-    };
-    let cache = match cache {
-        Some(dir) if from != "lcsc" => Some(dir.join(&from)),
-        Some(dir) => Some(dir),
-        None => Online::cache_dir_for(&from),
-    };
-    let mut source = Online::with_api(api, cache, max_age, offline);
-    let local = path.parent().unwrap_or(Path::new(".")).join("parts");
-    let mut dirs: Vec<PathBuf> = vec![];
-    if local.is_dir() {
-        dirs.push(local);
-    }
-    dirs.extend(parts);
-    let lib = match load_library(&dirs) {
-        Ok(mut lib) => {
-            lib.expand_families(&design);
-            Some(lib)
-        }
-        Err(e) => {
-            eprintln!("warning: part files not read, so resistor and capacitor ratings aren't compared: {e}");
-            None
-        }
-    };
-    let report = check_with_parts(&design, &mut source, opts, lib.as_ref());
-    let source_name = gerberus::bom::Source::name(&source).to_string();
-    print!("{}", gerberus::bom::render(&report, opts, &source_name, &show));
+    let design = load_design(path)?;
+    let mut lib = load_library(&dirs)?;
+    lib.expand_families(&design);
+    let mut source = Online::new(Online::default_cache_dir(), CACHE_MAX_AGE, false);
+    let report = check_with_parts(&design, &mut source, opts, Some(&lib));
+    print!("{}", gerberus::bom::render(&report, opts, &show));
     Ok(report
         .iter()
         .all(|h| h.findings.iter().all(|f| f.severity != Severity::Error)))
 }
 
 fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest)?;
+    let (show, rest) = Show::parse(rest);
     let opts = options(path, &rest, &["--pcb"])?;
     let mut lib = load_library(&opts.dirs)?;
-    let design = gerberus::kicad::load(path)?;
+    let design = load_design(path)?;
     lib.expand_families(&design);
     let pcb = opts
         .pcb
@@ -1152,9 +873,6 @@ fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
             no_sheet.join(" ")
         );
     }
-    for w in &design.warnings {
-        eprintln!("warning: {w}");
-    }
     Ok(report.errors() == 0)
 }
 
@@ -1163,7 +881,7 @@ fn count(n: usize, what: &str) -> String {
 }
 
 fn si(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest)?;
+    let (show, rest) = Show::parse(rest);
     let json = rest.iter().any(|a| a == "--json");
     let mut plots = None;
     let mut others = Vec::new();

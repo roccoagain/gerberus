@@ -218,8 +218,7 @@ page = 7
 note = "line capacitance CL, VIO = 2.5 V, f = 1 MHz"
 ```
 
-A pin no voltage limit mentions (other than `NC`/`DNC`) is reported by `gerberus parts` and must be treated
-as UNKNOWN by checkers.
+A pin no voltage limit mentions (other than `NC`/`DNC`) is UNKNOWN to every checker.
 
 ### ESD ratings
 
@@ -281,7 +280,7 @@ off on a file by hand, so a value that both readings and the page don't back sta
 
 ### Where limits come from
 
-`gerberus parts board.kicad_sch` reports, for every placed part, where its limits come from:
+Each placed part's limits come from the first of these that covers it:
 
 1. **A part file.** The shared `parts/` folder loads first, then a `parts/` folder next to the schematic, then
    any `--parts` folders. A later file for the same part number replaces the earlier one, so a board can
@@ -399,8 +398,8 @@ init", and a comment for each pin it can't guess. It also writes ground as a 0 V
 `pin` and `to` are the same ground pin, the one place that is allowed) and test points as `[[undriven]]`; both say
 "assumed by gerberus init" and aren't counted as guesses. Replace each guess's source
 with where the range really comes from; until then `check` says how many guesses its results rest on and
-`doctor` lists them first. It won't replace an existing file unless `--force`. Without an inputs.toml, `check`,
-`voltages` and `loads` still run but say so. A net named `GND`, `0V` or `VSS` is taken as 0 V, every net only a connector reaches is UNKNOWN,
+`doctor` lists them first. It won't replace an existing file unless `--force`. Without an inputs.toml, `check` and
+`voltages` still run but say so. A net named `GND`, `0V` or `VSS` is taken as 0 V, every net only a connector reaches is UNKNOWN,
 nothing is checked for ESD, reverse polarity or faults, and `stress` has no supply to switch on.
 
 ```toml

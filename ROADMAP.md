@@ -11,7 +11,7 @@ Each phase reads one more part of the design. It starts with the schematic, then
 ## v0.2 — Parts
 
 - [x] Check that symbol, footprint and datasheet pinouts agree (catches swapped or missing pins): `gerberus pinout`. *(Copies: Ultra Librarian / SnapEDA verification)*
-- [x] BOM health: end-of-life parts, stock, second sources. Stock, LCSC listing status and candidate second sources from LCSC are done; manufacturer lifecycle needs a distributor API key. *(Copies: SiliconExpert, Octopart / Supplyframe)*
+- [x] BOM health: stock, LCSC listing status and candidate second sources from LCSC. Manufacturer lifecycle (NRND, EOL) isn't checked: LCSC doesn't give it. *(Copies: SiliconExpert, Octopart / Supplyframe)*
 - [x] Datasheet → part model using an LLM, checked by a blind second reading and by finding every value on its cited page (`gerberus datasheet`). *(New: no paid tool does this)*
 
 ## v0.3 — Power and stress
@@ -46,7 +46,6 @@ Behaviour Gerberus doesn't model yet:
 - [x] Inputs that bias themselves: a `biases` drive in the part file with the cited bias range, for pins such as the AC-coupled inputs of the TPA3118 and TPA6130A2. The net then gets a voltage the other rules can check, and `floating-input` passes.
 - [x] MOSFET channels in the voltage engine: a part file's `channel` drive makes the part off (gate never past either end), fully on (always past the VGS RDS(on) is given at) or maybe on, and a channel that isn't off pulls each end toward the other, no further than its gate.
 - [x] Analog signal paths in SPICE (gain stages, filters), not only power: `gerberus signal` runs each `[[signal]]` from `inputs.toml` through the board with every rail at its lowest and its highest, and checks op-amp outputs against their rails less the datasheet's output swing (`clipping`) and every pin limit a signal reaches (`signal-level`).
-- [x] BOM health by manufacturer part number for DigiKey- or Mouser-sourced boards (`bom --from mouser|digikey`, with the user's API key), which also gives the manufacturer's lifecycle; and `bom --csv` writes an order list for their BOM upload tools. Not yet run against the live APIs.
 - [x] JLCPCB assembly check (`bom --jlcpcb`): every part needs an LCSC number; resistors and capacitors are checked against LCSC's parameters (value, size, tolerance, voltage, power, dielectric) rather than by part number, with checked LCSC equivalents offered for short or under-rated ones; extended parts counted. LCSC's keyword search is blocked from the cloud, so parts without a number get a search link, not a pick.
 
 ## v0.5 — Layout
@@ -64,7 +63,6 @@ Behaviour Gerberus doesn't model yet:
 ## v1.0 — Workflow
 
 - [x] Electrical diff between board revisions (`gerberus diff`). *(Copies: Altium / Cadence design compare)*
-- [x] MCP server so AI agents can query nets, run checks and explain findings. *(New: no paid tool is built for agents)*
 - [x] CI integration and a pass/fail badge for the README (`action.yml`, [docs/ci.md](docs/ci.md)).
 
 ## Signature features (new, not copies)

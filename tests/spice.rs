@@ -333,14 +333,10 @@ fn a_board_with_no_supply_input_is_an_error() {
 #[test]
 fn stress_command() {
     let dir = root("tests/fixtures/sniffer");
-    let out_dir = std::env::temp_dir().join(format!("gerberus-stress-{}", std::process::id()));
-    std::fs::create_dir_all(&out_dir).unwrap();
-    let netlist = out_dir.join("nominal.cir");
     let run = std::process::Command::new(env!("CARGO_BIN_EXE_gerberus"))
         .arg("stress")
         .arg(dir.join("sniffer.kicad_sch"))
-        .args(["--runs", "1", "--seed", "5", "--json", "--netlist"])
-        .arg(&netlist)
+        .args(["--runs", "1", "--json"])
         .output()
         .unwrap();
     assert_eq!(run.status.code(), Some(1), "{}", String::from_utf8_lossy(&run.stderr));
@@ -352,7 +348,6 @@ fn stress_command() {
             .iter()
             .any(|f| f["rule"] == "hot-plug")
     );
-    assert!(std::fs::read_to_string(&netlist).unwrap().contains(".tran"));
     let text = std::process::Command::new(env!("CARGO_BIN_EXE_gerberus"))
         .arg("stress")
         .arg(dir.join("sniffer.kicad_sch"))
@@ -368,5 +363,4 @@ fn stress_command() {
         .output()
         .unwrap();
     assert_eq!(bad.status.code(), Some(2));
-    let _ = std::fs::remove_dir_all(&out_dir);
 }

@@ -1,7 +1,7 @@
 # What to add first: `gerberus doctor`
 
 ```
-gerberus doctor <design> [--inputs FILE] [--parts DIR]... [--json] [--color WHEN]
+gerberus doctor <design> [--inputs FILE] [--parts DIR]... [--json]
 ```
 
 `check` marks a result UNKNOWN when it can't know a voltage or a limit. `doctor` runs the same checks and traces
@@ -24,7 +24,7 @@ todo[part-file]: write a part file for MAX9722AEUE+: 17 unknown results wait on 
    ...
 
 todo: 9 things to add; 39 of 53 unknown results wait on them
-   = note: the other 14 wait on things doctor doesn't trace yet: limits or thermal data the part files don't give, or circuits gerberus can't model; `gerberus check --unknown` lists them all
+   = note: the other 14 wait on things doctor doesn't trace yet: limits or thermal data the part files don't give, or circuits gerberus can't model; `gerberus check --all` lists them all
 ```
 
 On a board with no `inputs.toml`, the file itself usually comes first (the CAN encoder test board):
@@ -62,7 +62,7 @@ What it leaves out: results it doesn't trace yet. Some stay UNKNOWN whatever is 
 no limit (a MOSFET's recommended operating conditions, an LED's reverse voltage) or gerberus doesn't model the
 circuit yet (a bipolar transistor, a dual MOSFET, a bootstrap pin). Others need data doctor doesn't point at yet: a part's
 thermal resistance, the board's `temperature` in inputs.toml, or an `[[esd]]` rating. The closing note counts
-them; `gerberus check --unknown` lists every UNKNOWN.
+them; `gerberus check --all` lists every UNKNOWN.
 
 Without an `inputs.toml`, `check` skips reverse polarity, ESD and fault cases, so writing one settles more results
 than the count shows.

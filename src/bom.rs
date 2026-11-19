@@ -108,8 +108,6 @@ pub struct Listing {
     pub package: String,
     pub similar: Vec<Similar>,
     #[serde(default)]
-    pub lifecycle: Option<String>,
-    #[serde(default)]
     pub params: BTreeMap<String, String>,
 }
 
@@ -192,140 +190,15 @@ impl Listing {
             assembly,
             package: s(r, "encapStandard"),
             similar,
-            lifecycle: None,
             params,
-        }))
-    }
-}
-
-fn text(v: Option<&serde_json::Value>) -> String {
-    match v {
-        Some(serde_json::Value::String(t)) => t.trim().to_string(),
-        Some(serde_json::Value::Number(n)) => n.to_string(),
-        Some(serde_json::Value::Bool(b)) => b.to_string(),
-        _ => String::new(),
-    }
-}
-
-fn leading_count(t: &str) -> Option<u64> {
-    let digits: String = t
-        .trim_start()
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == ',')
-        .filter(char::is_ascii_digit)
-        .collect();
-    digits.parse().ok()
-}
-
-impl Listing {
-    pub fn from_mouser_json(json: &serde_json::Value, mpn: &str) -> Result<Option<Listing>, String> {
-        if let Some(errors) = json.get("Errors").and_then(|e| e.as_array())
-            && !errors.is_empty()
-        {
-            let msgs: Vec<String> = errors
-                .iter()
-                .map(|e| {
-                    let m = text(e.get("Message"));
-                    if m.is_empty() { e.to_string() } else { m }
-                })
-                .collect();
-            return Err(format!("Mouser answered with an error: {}", msgs.join("; ")));
-        }
-        let parts = json
-            .get("SearchResults")
-            .ok_or("Mouser's answer has no SearchResults")?
-            .get("Parts")
-            .and_then(|p| p.as_array())
-            .cloned()
-            .unwrap_or_default();
-        let want = squash(mpn);
-        let best = parts
-            .iter()
-            .filter(|p| squash(&text(p.get("ManufacturerPartNumber"))) == want)
-            .map(|p| {
-                let stock = leading_count(&text(p.get("AvailabilityInStock")))
-                    .or_else(|| leading_count(&text(p.get("Availability"))))
-                    .unwrap_or(0);
-                (stock, p)
-            })
-            .max_by_key(|(stock, _)| *stock);
-        let Some((stock, p)) = best else { return Ok(None) };
-        let mut lifecycle = Some(text(p.get("LifecycleStatus"))).filter(|l| !l.is_empty());
-        if lifecycle.is_none() && text(p.get("IsDiscontinued")).eq_ignore_ascii_case("true") {
-            lifecycle = Some("Discontinued".into());
-        }
-        Ok(Some(Listing {
-            code: text(p.get("MouserPartNumber")),
-            mpn: text(p.get("ManufacturerPartNumber")),
-            manufacturer: text(p.get("Manufacturer")),
-            stock,
-            status: "normal".into(),
-            assembly: None,
-            package: String::new(),
-            similar: vec![],
-            lifecycle,
-            params: BTreeMap::new(),
-        }))
-    }
-
-    pub fn from_digikey_json(json: &serde_json::Value) -> Result<Option<Listing>, String> {
-        let p = match json.get("Product") {
-            None | Some(serde_json::Value::Null) => return Ok(None),
-            Some(p) => p,
-        };
-        let named = |v: Option<&serde_json::Value>, k: &str| match v {
-            Some(o @ serde_json::Value::Object(_)) => text(o.get(k)),
-            other => text(other),
-        };
-        let mpn = text(p.get("ManufacturerProductNumber"));
-        if mpn.is_empty() {
-            return Err("DigiKey's answer has no ManufacturerProductNumber".into());
-        }
-        let stock = p
-            .get("QuantityAvailable")
-            .and_then(serde_json::Value::as_u64)
-            .ok_or("DigiKey's answer has no QuantityAvailable")?;
-        let code = p
-            .get("ProductVariations")
-            .and_then(|v| v.as_array())
-            .and_then(|v| v.first())
-            .map(|v| text(v.get("DigiKeyProductNumber")))
-            .unwrap_or_default();
-        let package = p
-            .get("Parameters")
-            .and_then(|v| v.as_array())
-            .and_then(|a| {
-                a.iter()
-                    .find(|x| text(x.get("ParameterText")) == "Package / Case")
-                    .map(|x| text(x.get("ValueText")))
-            })
-            .unwrap_or_default();
-        Ok(Some(Listing {
-            code,
-            mpn,
-            manufacturer: named(p.get("Manufacturer"), "Name"),
-            stock,
-            status: "normal".into(),
-            assembly: None,
-            package,
-            similar: vec![],
-            lifecycle: Some(named(p.get("ProductStatus"), "Status")).filter(|l| !l.is_empty()),
-            params: BTreeMap::new(),
         }))
     }
 }
 
 pub trait Source {
     fn listing(&mut self, code: &str) -> Result<Option<Listing>, String>;
-    fn name(&self) -> &str;
     fn caveat(&self, _code: &str) -> Option<String> {
         None
-    }
-    fn by_mpn(&self) -> bool {
-        false
-    }
-    fn lists_similar(&self) -> bool {
-        true
     }
 }
 
@@ -339,93 +212,35 @@ struct CacheEntry {
 
 const CACHE_VERSION: u32 = 2;
 
-#[derive(Debug, Clone)]
-pub enum Api {
-    Lcsc,
-    Mouser { key: String },
-    DigiKey { client_id: String, client_secret: String },
-}
-
-impl Api {
-    pub fn name(&self) -> &'static str {
-        match self {
-            Api::Lcsc => "LCSC",
-            Api::Mouser { .. } => "Mouser",
-            Api::DigiKey { .. } => "DigiKey",
-        }
-    }
-
-    fn default_endpoint(&self) -> &'static str {
-        match self {
-            Api::Lcsc => LCSC_DETAIL,
-            Api::Mouser { .. } => MOUSER_SEARCH,
-            Api::DigiKey { .. } => DIGIKEY_PRODUCTS,
-        }
-    }
-}
-
 pub struct Online {
-    pub api: Api,
     pub cache: Option<PathBuf>,
     pub max_age: Duration,
     pub offline: bool,
     pub endpoint: String,
     agent: Option<ureq::Agent>,
-    token: Option<String>,
-    last_request: Option<std::time::Instant>,
     caveats: BTreeMap<String, String>,
 }
 
-pub type Lcsc = Online;
-
 const LCSC_DETAIL: &str = "https://wmsc.lcsc.com/ftps/wm/product/detail?productCode=";
-const MOUSER_SEARCH: &str = "https://api.mouser.com/api/v1/search/partnumber";
-const DIGIKEY_PRODUCTS: &str = "https://api.digikey.com/products/v4/search";
-const MOUSER_SPACING_UNDER_30_PER_MINUTE: Duration = Duration::from_millis(2100);
-const DIGIKEY_TOKEN: &str = "https://api.digikey.com/v1/oauth2/token";
-
-fn encode(s: &str) -> String {
-    use std::fmt::Write;
-    let mut out = String::new();
-    for b in s.bytes() {
-        if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
-            out.push(b as char);
-        } else {
-            let _ = write!(out, "%{b:02X}");
-        }
-    }
-    out
-}
 
 impl Online {
     pub fn new(cache: Option<PathBuf>, max_age: Duration, offline: bool) -> Online {
-        Online::with_api(Api::Lcsc, cache, max_age, offline)
-    }
-
-    pub fn with_api(api: Api, cache: Option<PathBuf>, max_age: Duration, offline: bool) -> Online {
         Online {
-            endpoint: api.default_endpoint().to_string(),
-            api,
+            endpoint: LCSC_DETAIL.to_string(),
             cache,
             max_age,
             offline,
             agent: None,
-            token: None,
-            last_request: None,
             caveats: BTreeMap::new(),
         }
     }
 
     pub fn default_cache_dir() -> Option<PathBuf> {
-        Online::cache_dir_for("lcsc")
-    }
-
-    pub fn cache_dir_for(name: &str) -> Option<PathBuf> {
         let base = std::env::var_os("XDG_CACHE_HOME")
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".cache")))?;
-        Some(base.join("gerberus").join(name))
+        Some(base.join("gerberus").join("lcsc"))
     }
 
     fn cache_path(&self, code: &str) -> Option<PathBuf> {
@@ -493,115 +308,25 @@ impl Online {
     }
 
     fn fetch(&mut self, code: &str) -> Result<Option<Listing>, String> {
-        let name = self.api.name();
-        let agent = self.agent();
-        let (status, body) = match self.api.clone() {
-            Api::Lcsc => {
-                let url = format!("{}{code}", self.endpoint);
-                read(agent.get(&url).call(), name, code)?
-            }
-            Api::Mouser { key } => {
-                if let Some(t) = self.last_request {
-                    std::thread::sleep(MOUSER_SPACING_UNDER_30_PER_MINUTE.saturating_sub(t.elapsed()));
-                }
-                self.last_request = Some(std::time::Instant::now());
-                let url = format!("{}?apiKey={}", self.endpoint, encode(&key));
-                let body = serde_json::json!({
-                    "SearchByPartRequest": { "mouserPartNumber": code, "partSearchOptions": "Exact" }
-                });
-                read(
-                    agent
-                        .post(&url)
-                        .header("Content-Type", "application/json")
-                        .header("Accept", "application/json")
-                        .send(body.to_string()),
-                    name,
-                    code,
-                )?
-            }
-            Api::DigiKey {
-                client_id,
-                client_secret,
-            } => {
-                let token = self.digikey_token(&agent, &client_id, &client_secret)?;
-                let url = format!("{}/{}/productdetails", self.endpoint, encode(code));
-                read(
-                    agent
-                        .get(&url)
-                        .header("Authorization", format!("Bearer {token}"))
-                        .header("X-DIGIKEY-Client-Id", client_id.as_str())
-                        .header("X-DIGIKEY-Locale-Site", "US")
-                        .header("X-DIGIKEY-Locale-Language", "en")
-                        .header("X-DIGIKEY-Locale-Currency", "USD")
-                        .header("Accept", "application/json")
-                        .call(),
-                    name,
-                    code,
-                )?
-            }
-        };
-        if status == 404 && matches!(self.api, Api::DigiKey { .. }) {
-            return Ok(None);
-        }
+        let url = format!("{}{code}", self.endpoint);
+        let (status, body) = read(self.agent().get(&url).call(), code)?;
         if !(200..300).contains(&status) {
             let short: String = body.chars().take(300).collect();
-            return Err(format!("{name} answered HTTP {status} for {code}: {short}"));
+            return Err(format!("LCSC answered HTTP {status} for {code}: {short}"));
         }
         let json: serde_json::Value =
-            serde_json::from_str(&body).map_err(|e| format!("{name}'s answer for {code} is not JSON: {e}"))?;
-        match &self.api {
-            Api::Lcsc => Listing::from_lcsc_json(&json),
-            Api::Mouser { .. } => Listing::from_mouser_json(&json, code),
-            Api::DigiKey { .. } => Listing::from_digikey_json(&json),
-        }
-        .map_err(|e| format!("{code}: {e}"))
-    }
-
-    fn digikey_token(&mut self, agent: &ureq::Agent, id: &str, secret: &str) -> Result<String, String> {
-        if let Some(t) = &self.token {
-            return Ok(t.clone());
-        }
-        let form = format!(
-            "client_id={}&client_secret={}&grant_type=client_credentials",
-            encode(id),
-            encode(secret)
-        );
-        let (status, body) = read(
-            agent
-                .post(DIGIKEY_TOKEN)
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .send(form),
-            "DigiKey",
-            "an access token",
-        )?;
-        if status != 200 {
-            let short: String = body.chars().take(300).collect();
-            return Err(format!(
-                "DigiKey refused the client id and secret (HTTP {status}): {short}"
-            ));
-        }
-        let json: serde_json::Value =
-            serde_json::from_str(&body).map_err(|e| format!("DigiKey's token answer is not JSON: {e}"))?;
-        let token = text(json.get("access_token"));
-        if token.is_empty() {
-            return Err("DigiKey's token answer has no access_token".into());
-        }
-        self.token = Some(token.clone());
-        Ok(token)
+            serde_json::from_str(&body).map_err(|e| format!("LCSC's answer for {code} is not JSON: {e}"))?;
+        Listing::from_lcsc_json(&json).map_err(|e| format!("{code}: {e}"))
     }
 }
 
-fn read(
-    resp: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
-    name: &str,
-    what: &str,
-) -> Result<(u16, String), String> {
-    let mut resp = resp.map_err(|e| format!("asking {name} about {what}: {e}"))?;
+fn read(resp: Result<ureq::http::Response<ureq::Body>, ureq::Error>, code: &str) -> Result<(u16, String), String> {
+    let mut resp = resp.map_err(|e| format!("asking LCSC about {code}: {e}"))?;
     let status = resp.status().as_u16();
     let body = resp
         .body_mut()
         .read_to_string()
-        .map_err(|e| format!("reading {name}'s answer for {what}: {e}"))?;
+        .map_err(|e| format!("reading LCSC's answer for {code}: {e}"))?;
     Ok((status, body))
 }
 
@@ -610,30 +335,17 @@ fn now() -> u64 {
 }
 
 impl Source for Online {
-    fn name(&self) -> &'static str {
-        self.api.name()
-    }
-
-    fn by_mpn(&self) -> bool {
-        !matches!(self.api, Api::Lcsc)
-    }
-
-    fn lists_similar(&self) -> bool {
-        matches!(self.api, Api::Lcsc)
-    }
-
     fn caveat(&self, code: &str) -> Option<String> {
         self.caveats.get(code).cloned()
     }
 
     fn listing(&mut self, code: &str) -> Result<Option<Listing>, String> {
-        let name = self.api.name();
         self.caveats.remove(code);
         if self.offline {
             return self
                 .read_cache(code)?
                 .map(|c| c.listing)
-                .ok_or_else(|| format!("{code} is not in the {name} cache and lookups are offline"));
+                .ok_or_else(|| format!("{code} is not in the LCSC cache and lookups are offline"));
         }
         let cached = self.read_cache(code).ok().flatten();
         if let Some(c) = &cached
@@ -652,7 +364,7 @@ impl Source for Online {
                     let hours = now().saturating_sub(c.fetched) / 3600;
                     self.caveats.insert(
                         code.to_string(),
-                        format!("using {name}'s answer from {hours} h ago, because a fresh lookup failed: {e}"),
+                        format!("using LCSC's answer from {hours} h ago, because a fresh lookup failed: {e}"),
                     );
                     Ok(c.listing)
                 }
@@ -663,37 +375,9 @@ impl Source for Online {
 }
 
 #[derive(Debug, Default)]
-pub struct FixedByMpn(pub BTreeMap<String, Option<Listing>>);
-
-impl Source for FixedByMpn {
-    fn name(&self) -> &'static str {
-        "Mouser"
-    }
-
-    fn by_mpn(&self) -> bool {
-        true
-    }
-
-    fn lists_similar(&self) -> bool {
-        false
-    }
-
-    fn listing(&mut self, code: &str) -> Result<Option<Listing>, String> {
-        self.0
-            .get(code)
-            .cloned()
-            .ok_or_else(|| format!("no listing recorded for {code}"))
-    }
-}
-
-#[derive(Debug, Default)]
 pub struct Fixed(pub BTreeMap<String, Option<Listing>>);
 
 impl Source for Fixed {
-    fn name(&self) -> &'static str {
-        "LCSC"
-    }
-
     fn listing(&mut self, code: &str) -> Result<Option<Listing>, String> {
         self.0
             .get(code)
@@ -797,6 +481,19 @@ fn squash(s: &str) -> String {
         .collect()
 }
 
+fn encode(s: &str) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
+            out.push(b as char);
+        } else {
+            let _ = write!(out, "%{b:02X}");
+        }
+    }
+    out
+}
+
 pub fn lcsc_search_url(query: &str) -> String {
     format!("https://www.lcsc.com/search?q={}", encode(query))
 }
@@ -807,18 +504,9 @@ pub fn check(design: &Design, source: &mut dyn Source, opts: Options) -> Vec<Hea
 
 pub fn check_with_parts(design: &Design, source: &mut dyn Source, opts: Options, lib: Option<&Library>) -> Vec<Health> {
     let lines = lines(design);
-    let by_mpn = source.by_mpn();
-    let lcsc = !by_mpn && source.lists_similar();
-    let key = |l: &Line| -> Option<String> {
-        if by_mpn {
-            l.has_mpn_field.then(|| l.mpn.clone())
-        } else {
-            l.lcsc.clone()
-        }
-    };
     let mut per_code: BTreeMap<String, u64> = BTreeMap::new();
     for l in &lines {
-        if let Some(code) = key(l) {
+        if let Some(code) = l.lcsc.clone() {
             *per_code.entry(code).or_default() += l.references.len() as u64;
         }
     }
@@ -826,21 +514,9 @@ pub fn check_with_parts(design: &Design, source: &mut dyn Source, opts: Options,
         .into_iter()
         .map(|line| {
             let mut findings = Vec::new();
-            let code = key(&line);
+            let code = line.lcsc.clone();
             let listing = match (&code, &line.bad_lcsc) {
-                (None, _) if by_mpn => {
-                    findings.push(Finding::new(
-                        Severity::Unknown,
-                        Topic::Identity,
-                        format!(
-                            "no MPN field, so {} can't look up {}: add the manufacturer part number",
-                            source.name(),
-                            line.mpn
-                        ),
-                    ));
-                    None
-                }
-                (_, Some(bad)) if !by_mpn => {
+                (_, Some(bad)) => {
                     let mut f = Finding::new(
                         if opts.jlcpcb {
                             Severity::Error
@@ -892,10 +568,7 @@ pub fn check_with_parts(design: &Design, source: &mut dyn Source, opts: Options,
                         let mut f = Finding::new(
                             Severity::Warning,
                             Topic::Lifecycle,
-                            format!(
-                                "{} has no listing for {code}: it may be delisted, or the number is wrong",
-                                source.name()
-                            ),
+                            format!("LCSC has no listing for {code}: it may be delisted, or the number is wrong"),
                         );
                         if opts.jlcpcb {
                             f.severity = Severity::Error;
@@ -914,14 +587,8 @@ pub fn check_with_parts(design: &Design, source: &mut dyn Source, opts: Options,
             }
             if let Some(l) = &listing {
                 let per_board = code.as_ref().and_then(|c| per_code.get(c)).copied().unwrap_or(0);
-                let name = source.name().to_string();
-                let from = Judge {
-                    name: &name,
-                    lists_similar: source.lists_similar(),
-                    by_mpn,
-                };
-                let want = lcsc.then(|| want_spec(design, &line, lib)).flatten();
-                judge(&line, l, per_board, &from, opts, want.as_ref(), source, &mut findings);
+                let want = want_spec(design, &line, lib);
+                judge(&line, l, per_board, opts, want.as_ref(), source, &mut findings);
                 if let Some(w) = &want {
                     other_references(design, &line, l, w, &mut findings);
                 }
@@ -933,7 +600,7 @@ pub fn check_with_parts(design: &Design, source: &mut dyn Source, opts: Options,
             }
         })
         .collect();
-    if lcsc && opts.jlcpcb {
+    if opts.jlcpcb {
         let extended: Vec<&Health> = out
             .iter()
             .filter(|h| {
@@ -1011,54 +678,18 @@ fn want_spec(design: &Design, line: &Line, lib: Option<&Library>) -> Option<Spec
     s.kind.is_some().then_some(s)
 }
 
-struct Judge<'a> {
-    name: &'a str,
-    lists_similar: bool,
-    by_mpn: bool,
-}
-
-fn lifecycle_severity(status: &str) -> Option<(Severity, &'static str)> {
-    let s = status.to_ascii_lowercase();
-    let has = |w: &str| s.contains(w);
-    let word = |w: &str| s.split(|c: char| !c.is_ascii_alphanumeric()).any(|x| x == w);
-    if has("obsolete") {
-        Some((Severity::Error, "the manufacturer no longer makes it"))
-    } else if has("inactive") || has("not active") || has("not in production") {
-        Some((Severity::Warning, "it isn't in production"))
-    } else if has("discontinued") || has("end of life") || word("eol") || word("ltb") || has("last time buy") {
-        Some((Severity::Warning, "it is being discontinued"))
-    } else if has("not recommended") || has("not for new") || word("nrnd") {
-        Some((
-            Severity::Warning,
-            "the manufacturer doesn't recommend it for new designs",
-        ))
-    } else if has("preliminary") || has("preview") || has("sample") || has("pre-production") || has("preproduction") {
-        Some((Severity::Info, "it isn't in full production yet"))
-    } else if word("active") || has("new product") || has("new at") || has("in production") {
-        None
-    } else {
-        Some((Severity::Unknown, "gerberus doesn't know this lifecycle status"))
-    }
-}
-
 const EQUIVALENT_LOOKUPS: usize = 8;
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "unrelated inputs; a one-use struct would only rename them"
-)]
 fn judge(
     line: &Line,
     l: &Listing,
     per_board: u64,
-    from: &Judge<'_>,
     opts: Options,
     want: Option<&Spec>,
     source: &mut dyn Source,
     out: &mut Vec<Finding>,
 ) {
-    let src = from.name;
-    let code = if l.code.is_empty() { &l.mpn } else { &l.code };
+    let code = &l.code;
     let have = want.map(|_| Spec::from_lcsc(&l.params, &l.package));
     let mut spec_problem = false;
     let mut fix_rating = false;
@@ -1070,9 +701,7 @@ fn judge(
                 out,
                 Severity::Error,
                 Topic::Identity,
-                format!(
-                    "{src} {code} is not a plain resistor or capacitor: {src} gives it no resistance or capacitance"
-                ),
+                format!("LCSC {code} is not a plain resistor or capacitor: LCSC gives it no resistance or capacitance"),
             );
             identity = Some(i);
             out[i].help = Some(format!("find the right part at {}", lcsc_search_url(&line.mpn)));
@@ -1084,8 +713,8 @@ fn judge(
                 Severity::Unknown,
                 Topic::Identity,
                 format!(
-                    "{src}'s answer for {code} has no parameter table (it was cached by an older gerberus), so it \
-                     wasn't compared with the schematic's value, size and ratings: run without --offline to refresh it"
+                    "LCSC's answer for {code} has no parameter table (it was cached by an older gerberus), so it \
+                     wasn't compared with the schematic's value, size and ratings: delete ~/.cache/gerberus/lcsc to refresh it"
                 ),
             );
         }
@@ -1123,7 +752,7 @@ fn judge(
                     out,
                     Severity::Error,
                     Topic::Identity,
-                    format!("{src} {code} is a different part: {}", cmp.different.join("; ")),
+                    format!("LCSC {code} is a different part: {}", cmp.different.join("; ")),
                 );
                 identity = Some(i);
                 out[i].notes.push(format!("{code} is a {}", h.describe()));
@@ -1137,7 +766,7 @@ fn judge(
                     Severity::Error,
                     Topic::Identity,
                     format!(
-                        "{src} {code} is rated below the schematic's part: {}",
+                        "LCSC {code} is rated below the schematic's part: {}",
                         cmp.worse.join("; ")
                     ),
                 );
@@ -1152,7 +781,7 @@ fn judge(
                     Severity::Warning,
                     Topic::Identity,
                     format!(
-                        "{src} {code} is {} {}, another part than the MPN field's {}, with the same {}",
+                        "LCSC {code} is {} {}, another part than the MPN field's {}, with the same {}",
                         l.manufacturer,
                         l.mpn,
                         line.mpn,
@@ -1184,33 +813,10 @@ fn judge(
                     Severity::Error,
                     Topic::Identity,
                     format!(
-                        "{src} {code} is {} {}, but the MPN field says {}",
+                        "LCSC {code} is {} {}, but the MPN field says {}",
                         l.manufacturer, l.mpn, line.mpn
                     ),
                 );
-            }
-        }
-    }
-
-    if from.by_mpn {
-        match &l.lifecycle {
-            None => {
-                push(
-                    out,
-                    Severity::Info,
-                    Topic::Lifecycle,
-                    format!("{src} gives no lifecycle status for {code}"),
-                );
-            }
-            Some(status) => {
-                if let Some((sev, why)) = lifecycle_severity(status) {
-                    push(
-                        out,
-                        sev,
-                        Topic::Lifecycle,
-                        format!("{src} lists {code} as {status:?}: {why}"),
-                    );
-                }
             }
         }
     }
@@ -1220,7 +826,7 @@ fn judge(
             out,
             Severity::Warning,
             Topic::Lifecycle,
-            format!("{src} lists {code} as {:?}, not \"normal\"", l.status),
+            format!("LCSC lists {code} as {:?}, not \"normal\"", l.status),
         );
     }
 
@@ -1242,7 +848,7 @@ fn judge(
             out,
             short,
             Topic::Stock,
-            format!("{src} has none of {code} in stock"),
+            format!("LCSC has none of {code} in stock"),
         ));
     } else if l.stock < needed {
         stock = Some(push(
@@ -1250,7 +856,7 @@ fn judge(
             short,
             Topic::Stock,
             format!(
-                "{src} has {} of {code}; {} boards need {needed} ({per_board} each{shared})",
+                "LCSC has {} of {code}; {} boards need {needed} ({per_board} each{shared})",
                 l.stock, opts.boards
             ),
         ));
@@ -1283,9 +889,9 @@ fn judge(
             };
             let found = &looked.found;
             let scope = if looked.capped {
-                format!("the first {EQUIVALENT_LOOKUPS} of {src}'s similar parts")
+                format!("the first {EQUIVALENT_LOOKUPS} of LCSC's similar parts")
             } else {
-                format!("{src}'s similar parts")
+                "LCSC's similar parts".to_string()
             };
             let target = stock.or(identity.filter(|_| fix_rating));
             let basic: Vec<&(Listing, Spec)> = found
@@ -1321,7 +927,7 @@ fn judge(
                     ));
                 }
                 Some(i) if !missing.is_empty() => out[i].notes.push(format!(
-                    "no equivalents are offered: neither the MPN field's part file nor {src} gives the {}, so a \
+                    "no equivalents are offered: neither the MPN field's part file nor LCSC gives the {}, so a \
                      replacement can't be checked against it",
                     missing.join(" or ")
                 )),
@@ -1358,15 +964,6 @@ fn judge(
         }
     }
 
-    if !from.lists_similar {
-        push(
-            out,
-            Severity::Info,
-            Topic::SecondSource,
-            format!("{src} lists no similar parts, so second sources aren't checked"),
-        );
-        return;
-    }
     if l.package.is_empty() {
         let sev = if line.commodity {
             Severity::Info
@@ -1377,7 +974,7 @@ fn judge(
             out,
             sev,
             Topic::SecondSource,
-            format!("{src} gives no package for {code}, so similar parts can't be matched to it"),
+            format!("LCSC gives no package for {code}, so similar parts can't be matched to it"),
         );
         return;
     }
@@ -1407,14 +1004,14 @@ fn judge(
                 out,
                 Severity::Info,
                 Topic::SecondSource,
-                format!("{src} {why}, but a plain resistor or capacitor of this value and size is made by many others"),
+                format!("LCSC {why}, but a plain resistor or capacitor of this value and size is made by many others"),
             );
         } else {
             push(
                 out,
                 Severity::Warning,
                 Topic::SecondSource,
-                format!("single source: {src} {why}"),
+                format!("single source: LCSC {why}"),
             );
         }
     } else {
@@ -1513,33 +1110,23 @@ fn join_and(words: &[&str]) -> String {
     }
 }
 
-fn listing_note(h: &Health, source: &str) -> Option<String> {
-    Some(match &h.listing {
-        Some(l) if l.lifecycle.is_none() && source == "LCSC" => format!(
-            "LCSC {} is {} {}: {} in stock, LCSC status {}{}",
-            l.code,
-            l.manufacturer,
-            l.mpn,
-            l.stock,
-            l.status,
-            l.assembly
-                .as_deref()
-                .map(|a| format!(", JLCPCB {a}"))
-                .unwrap_or_default()
-        ),
-        Some(l) => format!(
-            "{source} {} is {} {}: {} in stock, lifecycle {}",
-            l.code,
-            l.manufacturer,
-            l.mpn,
-            l.stock,
-            l.lifecycle.as_deref().unwrap_or("not given")
-        ),
-        None => return None,
-    })
+fn listing_note(h: &Health) -> Option<String> {
+    let l = h.listing.as_ref()?;
+    Some(format!(
+        "LCSC {} is {} {}: {} in stock, LCSC status {}{}",
+        l.code,
+        l.manufacturer,
+        l.mpn,
+        l.stock,
+        l.status,
+        l.assembly
+            .as_deref()
+            .map(|a| format!(", JLCPCB {a}"))
+            .unwrap_or_default()
+    ))
 }
 
-pub fn render(report: &[Health], opts: Options, source: &str, show: &crate::diag::Show) -> String {
+pub fn render(report: &[Health], opts: Options, show: &crate::diag::Show) -> String {
     use crate::diag::{Diagnostic, Level};
     let mut out = String::new();
     let (mut errors, mut warnings, mut unknown, mut passed) = (0, 0, 0, 0);
@@ -1565,7 +1152,7 @@ pub fn render(report: &[Health], opts: Options, source: &str, show: &crate::diag
                 &format!("{}: {}", h.line.references[0], f.message),
             );
             d.location = Some(location.clone());
-            d.notes = listing_note(h, source).into_iter().collect();
+            d.notes = listing_note(h).into_iter().collect();
             d.render(&mut out, show.style, show.verbose, show.columns());
         }
         let mut any = false;
@@ -1579,7 +1166,7 @@ pub fn render(report: &[Health], opts: Options, source: &str, show: &crate::diag
             if !show.lists(level) {
                 continue;
             }
-            let mut notes: Vec<String> = listing_note(h, source).into_iter().collect();
+            let mut notes: Vec<String> = listing_note(h).into_iter().collect();
             notes.extend(f.notes.iter().cloned());
             notes.extend(infos.iter().map(|i| i.message.clone()));
             let d = Diagnostic {
@@ -1595,7 +1182,7 @@ pub fn render(report: &[Health], opts: Options, source: &str, show: &crate::diag
         }
         if !any && show.lists(Level::Pass) {
             {
-                let what = listing_note(h, source).unwrap_or_default();
+                let what = listing_note(h).unwrap_or_default();
                 let d = Diagnostic::line(Level::Pass, "bom", &format!("{location}: {what}"));
                 d.render(&mut out, show.style, show.verbose, show.columns());
                 for i in &infos {
@@ -1610,11 +1197,8 @@ pub fn render(report: &[Health], opts: Options, source: &str, show: &crate::diag
     for c in &closing {
         note(&mut out, c);
     }
-    if source == "LCSC" {
-        if opts.jlcpcb {
-            note(&mut out, JLCPCB_STOCK_NOTE);
-        }
-        note(&mut out, LIFECYCLE_NOTE);
+    if opts.jlcpcb {
+        note(&mut out, JLCPCB_STOCK_NOTE);
     }
     let _ = std::fmt::Write::write_fmt(
         &mut out,
@@ -1631,65 +1215,3 @@ pub fn render(report: &[Health], opts: Options, source: &str, show: &crate::diag
 
 pub const JLCPCB_STOCK_NOTE: &str = "stock is LCSC's; JLCPCB keeps its own assembly stock of the same C numbers, \
 which can differ, so check a part LCSC is short of in JLCPCB's parts library before replacing it.";
-
-pub const LIFECYCLE_NOTE: &str = "manufacturer lifecycle (active, NRND, EOL) is UNKNOWN for every part: LCSC only \
-says whether it still lists a part. --from mouser or --from digikey gives it, with an API key.";
-
-pub const MANUFACTURER_FIELDS: [&str; 4] = ["Manufacturer", "MFR", "Mfr", "Manufacturer_Name"];
-
-fn csv_cell(s: &str) -> String {
-    if s.contains([',', '"', '\n', '\r']) {
-        format!("\"{}\"", s.replace('"', "\"\""))
-    } else {
-        s.to_string()
-    }
-}
-
-pub fn order_csv(design: &Design, boards: u64) -> String {
-    let mut out =
-        String::from("Quantity,Manufacturer Part Number,Manufacturer,Reference Designators,Value,LCSC Part Number\n");
-    for l in lines(design) {
-        let first = &design.components[&l.references[0]];
-        let maker = MANUFACTURER_FIELDS
-            .iter()
-            .filter_map(|f| first.fields.get(*f))
-            .map(|s| s.trim())
-            .find(|s| !s.is_empty() && *s != "~")
-            .unwrap_or_default();
-        let row = [
-            (l.references.len() as u64).saturating_mul(boards).to_string(),
-            if l.has_mpn_field { l.mpn.clone() } else { String::new() },
-            maker.to_string(),
-            l.references.join(" "),
-            first.value.clone(),
-            l.lcsc.clone().unwrap_or_default(),
-        ];
-        let cells: Vec<String> = row.iter().map(|c| csv_cell(c)).collect();
-        out.push_str(&cells.join(","));
-        out.push('\n');
-    }
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Severity, lifecycle_severity};
-
-    #[test]
-    fn lifecycle_words() {
-        let sev = |s: &str| lifecycle_severity(s).map(|(s, _)| s);
-        assert_eq!(sev("Active"), None);
-        assert_eq!(sev("New Product"), None);
-        assert_eq!(sev("In Production"), None);
-        assert_eq!(sev("Obsolete"), Some(Severity::Error));
-        assert_eq!(sev("Inactive"), Some(Severity::Warning));
-        assert_eq!(sev("Not Active"), Some(Severity::Warning));
-        assert_eq!(sev("Not in Production"), Some(Severity::Warning));
-        assert_eq!(sev("Last Time Buy"), Some(Severity::Warning));
-        assert_eq!(sev("EOL"), Some(Severity::Warning));
-        assert_eq!(sev("Not Recommended for New Designs"), Some(Severity::Warning));
-        assert_eq!(sev("Pre-Production"), Some(Severity::Info));
-        assert_eq!(sev("Preliminary"), Some(Severity::Info));
-        assert_eq!(sev("Geolocated"), Some(Severity::Unknown));
-    }
-}

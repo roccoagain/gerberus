@@ -70,17 +70,16 @@ CI's `dist plan` step fails when the two disagree.
 
 Every command reads a design into one design graph and checks that.
 
-- `src/kicad/` and `src/altium/` read schematics and boards into the design graph (`src/design.rs`: parts, pins and
+- `src/kicad/` reads schematics and boards into the design graph (`src/design.rs`: parts, pins and
   the nets that join them). `src/sexpr.rs` is the S-expression reader for KiCad files.
 - `src/limits.rs` loads the part files (`parts/`, format in [`parts/README.md`](../parts/README.md)) and
   `src/policy.rs` the derating policy (`policy.toml`). Both are built into the binary by `build.rs`.
 - `src/inputs.rs` reads a board's `inputs.toml`.
 - `src/voltage.rs` works out every net's worst-case voltage range. `check` runs the rules in `src/rules.rs`
   against it, with the `esd` and `reverse-polarity` rules from `src/protection.rs` and the junction-temperature and
-  forward-current rules from `src/thermal.rs`, which also backs `loads`.
+  forward-current rules from `src/thermal.rs`.
 - `src/spice/` runs the hot-plug stress simulation in ngspice (`stress`).
 - `src/doctor.rs` (`doctor`) traces each UNKNOWN finding back to what it waits on.
-- `src/pinout.rs` (`pinout`), `src/bom.rs` (`bom`), `src/si/` (`si`), `src/datasheet.rs` (`datasheet`) and
-  `src/update.rs` (`update` and the daily release check) each back one command.
-- `src/main.rs` is the command line, and also holds the `parts` command (which reads `src/limits.rs`). `src/lib.rs`
-  declares the modules, so tests and `examples/` can use them.
+- `src/pinout.rs` (`pinout`), `src/bom.rs` (`bom`), `src/si/` (`si`) and `src/datasheet.rs` (`datasheet`) each
+  back one command.
+- `src/main.rs` is the command line. `src/lib.rs` declares the modules, so tests can use them.

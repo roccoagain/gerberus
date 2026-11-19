@@ -149,7 +149,6 @@ fn command_prints_json() {
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_gerberus"))
         .args(["doctor", "can-encoder.kicad_sch", "--json"])
         .current_dir(&dir)
-        .env("GERBERUS_NO_UPDATE_CHECK", "1")
         .output()
         .unwrap();
     std::fs::remove_dir_all(&dir).unwrap();

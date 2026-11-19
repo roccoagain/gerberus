@@ -21,13 +21,12 @@ error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V
    = help: add a divider, clamp or series resistor, or choose a part rated higher
 
 error: 18 errors, 9 warnings, 109 unknown, 402 passed
-   = note: 109 unknown and 402 passed not shown; --unknown or --all lists them
+   = note: 109 unknown and 402 passed not shown; --all lists them
    = note: --verbose shows how each net in a finding got its voltage range
 ```
 
-Errors come first, then warnings. UNKNOWNs and passes are only counted unless `--unknown` (UNKNOWNs) or `--all`
-(both) asks for them, and how each net got its range is printed only with `--verbose` (`-v`). Colour is on when
-the output is a terminal and `NO_COLOR` isn't set; `--color always|never|auto` overrides that. `stress`, `si` and
+Errors come first, then warnings. UNKNOWNs and passes are only counted unless `--all` asks for them, and how each net got its range is printed only with `--verbose` (`-v`). Colour is on when
+the output is a terminal and `NO_COLOR` isn't set. `stress`, `si` and
 `pinout` print the same way and take the same flags. The rules:
 
 | Rule | FAILs when | Severity |

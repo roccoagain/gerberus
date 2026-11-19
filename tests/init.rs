@@ -76,7 +76,6 @@ fn command_writes_and_check_says_guesses() {
         Command::new(env!("CARGO_BIN_EXE_gerberus"))
             .args(args)
             .current_dir(&dir)
-            .env("GERBERUS_NO_UPDATE_CHECK", "1")
             .output()
             .unwrap()
     };

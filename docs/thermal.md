@@ -1,12 +1,8 @@
 # Junction temperature and derating
 
-`gerberus loads` and the `junction-temperature`, `forward-current` and derating rules of `gerberus check`.
+The `junction-temperature`, `forward-current` and derating rules of `gerberus check`.
 
-```sh
-gerberus loads path/to/board.kicad_sch
-```
-
-`loads` adds up what each rail supplies:
+To find each part's dissipation, `check` adds up what each rail supplies:
 - every IC's `[[supply]]` maximum;
 - LED chains, at V / R min with VF taken as 0 V, since a datasheet's VF minimum holds only at its test current and
   25 °C. The current is charged to every supply rail of the IC that drives the LED, and the IC also dissipates it
