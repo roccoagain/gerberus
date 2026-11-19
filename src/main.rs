@@ -39,8 +39,9 @@ for a terminal unless NO_COLOR is set. --json prints the findings as JSON instea
 Part files come from the shared library (built into gerberus), then a `parts/` folder next to the schematic if
 there is one (its files override the shared ones), then any --parts folders in order.
 
-`pinout` checks that each part's symbol pins, footprint pads and datasheet pin table agree. It reads the board
-next to the schematic (same name, .kicad_pcb) unless --pcb names another. It exits with status 1 when it finds a pinout error.
+`pinout` checks that each part's symbol pins, footprint pads and datasheet pin table agree. It reads the board next
+to the schematic (same name, .kicad_pcb) unless --pcb names another. It exits with status 1 when it finds a pinout
+error.
 
 `voltages` works out the worst-case voltage range of every net, starting from the board inputs (`inputs.toml`
 next to the schematic unless --inputs is given). --explain prints the reasoning behind one net. --fault works
@@ -53,9 +54,10 @@ another) is wide enough for the worst-case current its net supplies, by IPC-2221
 changed, the connections made or broken (nets matched by their pins, not their names), and the `check` findings
 whose verdict changed. It exits with status 1 when the new revision adds an error.
 
-`stress` switches each supply input in `inputs.toml` on through a cable (policy.toml's `[spice]`) in ngspice,
-once at nominal values and then --runs times (default from policy.toml) with every part value drawn from its
-tolerance, and checks the peak voltage on every pin against its limits. It needs ngspice installed, and exits with status 1 when an absolute maximum is passed.
+`stress` switches each supply input in `inputs.toml` on through a cable (policy.toml's `[spice]`) in ngspice, once
+at nominal values and then --runs times (default from policy.toml) with every part value drawn from its tolerance,
+and checks the peak voltage on every pin against its limits. It needs ngspice installed, and exits with status 1
+when an absolute maximum is passed.
 
 `check` runs the voltage rules: every pin against its datasheet limits at its net's worst-case voltage, TVS
 breakdown and stand-off, capacitor voltage and resistor power, undriven inputs and power pins, regulator
@@ -172,7 +174,7 @@ fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
             _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
         }
     }
-    let design = gerberus::load(path)?;
+    let design = load_design(path)?;
     let source = path
         .file_name()
         .map_or_else(|| path.display().to_string(), |f| f.to_string_lossy().into());
@@ -387,6 +389,14 @@ fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, Stri
     })
 }
 
+fn load_design(path: &Path) -> Result<gerberus::design::Design, String> {
+    let design = gerberus::kicad::load(path)?;
+    for w in &design.warnings {
+        eprintln!("warning: {w}");
+    }
+    Ok(design)
+}
+
 fn load_library(dirs: &[PathBuf]) -> Result<Library, String> {
     let mut lib = Library::builtin()?;
     for dir in dirs {
@@ -408,7 +418,7 @@ fn analyse(
     String,
 > {
     let mut lib = load_library(&o.dirs)?;
-    let design = gerberus::load(path)?;
+    let design = load_design(path)?;
     lib.expand_families(&design);
     let inputs_path = o
         .inputs
@@ -593,7 +603,7 @@ fn init(path: &Path, rest: &[String]) -> Result<bool, String> {
     }
     let o = options(path, &others, &[])?;
     let mut lib = load_library(&o.dirs)?;
-    let design = gerberus::load(path)?;
+    let design = load_design(path)?;
     lib.expand_families(&design);
     let board = path
         .file_stem()
@@ -775,7 +785,7 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
             _ => return Err(format!("unexpected argument {a:?}\n{USAGE}")),
         }
     }
-    let design = gerberus::load(path)?;
+    let design = load_design(path)?;
     let mut lib = load_library(&dirs)?;
     lib.expand_families(&design);
     let mut source = Online::new(Online::default_cache_dir(), CACHE_MAX_AGE, false);
@@ -790,7 +800,7 @@ fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
     let (show, rest) = Show::parse(rest);
     let opts = options(path, &rest, &["--pcb"])?;
     let mut lib = load_library(&opts.dirs)?;
-    let design = gerberus::kicad::load(path)?;
+    let design = load_design(path)?;
     lib.expand_families(&design);
     let pcb = opts
         .pcb
@@ -862,9 +872,6 @@ fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
             "   {eq} {note}: no part file, so no datasheet pinout: {}",
             no_sheet.join(" ")
         );
-    }
-    for w in &design.warnings {
-        eprintln!("warning: {w}");
     }
     Ok(report.errors() == 0)
 }

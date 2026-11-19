@@ -504,10 +504,9 @@ pub fn check(design: &Design, source: &mut dyn Source, opts: Options) -> Vec<Hea
 
 pub fn check_with_parts(design: &Design, source: &mut dyn Source, opts: Options, lib: Option<&Library>) -> Vec<Health> {
     let lines = lines(design);
-    let key = |l: &Line| l.lcsc.clone();
     let mut per_code: BTreeMap<String, u64> = BTreeMap::new();
     for l in &lines {
-        if let Some(code) = key(l) {
+        if let Some(code) = l.lcsc.clone() {
             *per_code.entry(code).or_default() += l.references.len() as u64;
         }
     }
@@ -515,7 +514,7 @@ pub fn check_with_parts(design: &Design, source: &mut dyn Source, opts: Options,
         .into_iter()
         .map(|line| {
             let mut findings = Vec::new();
-            let code = key(&line);
+            let code = line.lcsc.clone();
             let listing = match (&code, &line.bad_lcsc) {
                 (_, Some(bad)) => {
                     let mut f = Finding::new(
@@ -690,8 +689,7 @@ fn judge(
     source: &mut dyn Source,
     out: &mut Vec<Finding>,
 ) {
-    let src = "LCSC";
-    let code = if l.code.is_empty() { &l.mpn } else { &l.code };
+    let code = &l.code;
     let have = want.map(|_| Spec::from_lcsc(&l.params, &l.package));
     let mut spec_problem = false;
     let mut fix_rating = false;
@@ -703,9 +701,7 @@ fn judge(
                 out,
                 Severity::Error,
                 Topic::Identity,
-                format!(
-                    "{src} {code} is not a plain resistor or capacitor: {src} gives it no resistance or capacitance"
-                ),
+                format!("LCSC {code} is not a plain resistor or capacitor: LCSC gives it no resistance or capacitance"),
             );
             identity = Some(i);
             out[i].help = Some(format!("find the right part at {}", lcsc_search_url(&line.mpn)));
@@ -717,8 +713,8 @@ fn judge(
                 Severity::Unknown,
                 Topic::Identity,
                 format!(
-                    "{src}'s answer for {code} has no parameter table (it was cached by an older gerberus), so it \
-                     wasn't compared with the schematic's value, size and ratings: run without --offline to refresh it"
+                    "LCSC's answer for {code} has no parameter table (it was cached by an older gerberus), so it \
+                     wasn't compared with the schematic's value, size and ratings: delete ~/.cache/gerberus/lcsc to refresh it"
                 ),
             );
         }
@@ -756,7 +752,7 @@ fn judge(
                     out,
                     Severity::Error,
                     Topic::Identity,
-                    format!("{src} {code} is a different part: {}", cmp.different.join("; ")),
+                    format!("LCSC {code} is a different part: {}", cmp.different.join("; ")),
                 );
                 identity = Some(i);
                 out[i].notes.push(format!("{code} is a {}", h.describe()));
@@ -770,7 +766,7 @@ fn judge(
                     Severity::Error,
                     Topic::Identity,
                     format!(
-                        "{src} {code} is rated below the schematic's part: {}",
+                        "LCSC {code} is rated below the schematic's part: {}",
                         cmp.worse.join("; ")
                     ),
                 );
@@ -785,7 +781,7 @@ fn judge(
                     Severity::Warning,
                     Topic::Identity,
                     format!(
-                        "{src} {code} is {} {}, another part than the MPN field's {}, with the same {}",
+                        "LCSC {code} is {} {}, another part than the MPN field's {}, with the same {}",
                         l.manufacturer,
                         l.mpn,
                         line.mpn,
@@ -817,7 +813,7 @@ fn judge(
                     Severity::Error,
                     Topic::Identity,
                     format!(
-                        "{src} {code} is {} {}, but the MPN field says {}",
+                        "LCSC {code} is {} {}, but the MPN field says {}",
                         l.manufacturer, l.mpn, line.mpn
                     ),
                 );
@@ -830,7 +826,7 @@ fn judge(
             out,
             Severity::Warning,
             Topic::Lifecycle,
-            format!("{src} lists {code} as {:?}, not \"normal\"", l.status),
+            format!("LCSC lists {code} as {:?}, not \"normal\"", l.status),
         );
     }
 
@@ -852,7 +848,7 @@ fn judge(
             out,
             short,
             Topic::Stock,
-            format!("{src} has none of {code} in stock"),
+            format!("LCSC has none of {code} in stock"),
         ));
     } else if l.stock < needed {
         stock = Some(push(
@@ -860,7 +856,7 @@ fn judge(
             short,
             Topic::Stock,
             format!(
-                "{src} has {} of {code}; {} boards need {needed} ({per_board} each{shared})",
+                "LCSC has {} of {code}; {} boards need {needed} ({per_board} each{shared})",
                 l.stock, opts.boards
             ),
         ));
@@ -893,9 +889,9 @@ fn judge(
             };
             let found = &looked.found;
             let scope = if looked.capped {
-                format!("the first {EQUIVALENT_LOOKUPS} of {src}'s similar parts")
+                format!("the first {EQUIVALENT_LOOKUPS} of LCSC's similar parts")
             } else {
-                format!("{src}'s similar parts")
+                "LCSC's similar parts".to_string()
             };
             let target = stock.or(identity.filter(|_| fix_rating));
             let basic: Vec<&(Listing, Spec)> = found
@@ -931,7 +927,7 @@ fn judge(
                     ));
                 }
                 Some(i) if !missing.is_empty() => out[i].notes.push(format!(
-                    "no equivalents are offered: neither the MPN field's part file nor {src} gives the {}, so a \
+                    "no equivalents are offered: neither the MPN field's part file nor LCSC gives the {}, so a \
                      replacement can't be checked against it",
                     missing.join(" or ")
                 )),
@@ -978,7 +974,7 @@ fn judge(
             out,
             sev,
             Topic::SecondSource,
-            format!("{src} gives no package for {code}, so similar parts can't be matched to it"),
+            format!("LCSC gives no package for {code}, so similar parts can't be matched to it"),
         );
         return;
     }
@@ -1008,14 +1004,14 @@ fn judge(
                 out,
                 Severity::Info,
                 Topic::SecondSource,
-                format!("{src} {why}, but a plain resistor or capacitor of this value and size is made by many others"),
+                format!("LCSC {why}, but a plain resistor or capacitor of this value and size is made by many others"),
             );
         } else {
             push(
                 out,
                 Severity::Warning,
                 Topic::SecondSource,
-                format!("single source: {src} {why}"),
+                format!("single source: LCSC {why}"),
             );
         }
     } else {

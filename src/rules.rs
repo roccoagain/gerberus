@@ -154,7 +154,7 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
     let cov = coverage(design, lib);
     part_rules(design, lib, policy, inputs, volts, false, &mut r);
     for (reference, c) in &design.components {
-        if c.dnp || !matches!(cov.get(reference), Some(Coverage::Datasheet { .. })) {
+        if c.dnp || !matches!(cov.get(reference), Some(Coverage::Datasheet)) {
             continue;
         }
         let Lookup::Datasheet(part) = lib.lookup(c) else {

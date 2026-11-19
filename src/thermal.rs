@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Write as _;
 
 use crate::design::{Component, Design, PinKind};
 use crate::inputs::BoardInputs;
@@ -971,28 +970,6 @@ pub fn junction(
         }
         r.push(f);
     }
-}
-
-pub fn describe(design: &Design, th: &Thermal) -> String {
-    let mut out = String::new();
-    for (i, l) in th.loads.iter().enumerate() {
-        if l.parts.is_empty() && l.missing.is_empty() {
-            continue;
-        }
-        let _ = write!(out, "{}: {}", design.nets[i].name, ma(l.amps));
-        if !l.missing.is_empty() {
-            let _ = write!(out, " at least");
-        }
-        if l.parts.is_empty() {
-            let _ = writeln!(out);
-        } else {
-            let _ = writeln!(out, " ({})", l.parts.join(", "));
-        }
-        for m in &l.missing {
-            let _ = writeln!(out, "  not counted: {m}");
-        }
-    }
-    out
 }
 
 pub fn forward_current(design: &Design, lib: &Library, policy: &Policy, th: &Thermal, r: &mut Vec<Finding>) {

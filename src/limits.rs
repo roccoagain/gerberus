@@ -1042,27 +1042,23 @@ fn parse_volts(s: &str) -> Option<f64> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Coverage {
-    Datasheet { mpn: String },
-    ClassDefault { note: String },
+    Datasheet,
+    ClassDefault,
     Unchecked { reason: String },
     NotFitted,
-    NonElectrical(&'static str),
+    NonElectrical,
 }
 
-pub fn non_electrical(reference: &str, c: &Component) -> Option<&'static str> {
+pub fn is_non_electrical(reference: &str, c: &Component) -> bool {
     let letters: String = reference
         .chars()
         .take_while(char::is_ascii_alphabetic)
         .map(|c| c.to_ascii_uppercase())
         .collect();
     let symbol = c.lib_id.rsplit(':').next().unwrap_or("");
-    if symbol.starts_with("TestPoint") || (letters == "TP" && c.pins.len() <= 1) {
-        Some("test point")
-    } else if symbol.starts_with("NetTie") || (letters == "NT" && c.pins.len() == 2) {
-        Some("net tie")
-    } else {
-        None
-    }
+    let test_point = symbol.starts_with("TestPoint") || (letters == "TP" && c.pins.len() <= 1);
+    let net_tie = symbol.starts_with("NetTie") || (letters == "NT" && c.pins.len() == 2);
+    test_point || net_tie
 }
 
 pub fn coverage(design: &crate::design::Design, lib: &Library) -> BTreeMap<String, Coverage> {
@@ -1074,21 +1070,10 @@ pub fn coverage(design: &crate::design::Design, lib: &Library) -> BTreeMap<Strin
                 Coverage::NotFitted
             } else {
                 match lib.lookup(c) {
-                    Lookup::Datasheet(p) => Coverage::Datasheet { mpn: p.mpn.clone() },
-                    Lookup::ClassDefault(p) => Coverage::ClassDefault {
-                        note: match &p.limits[0].recommended {
-                            Range::Known {
-                                note: Some(n),
-                                max: Bound::Value(v),
-                                ..
-                            } => format!("{v} V; {n}"),
-                            _ => String::new(),
-                        },
-                    },
-                    Lookup::Unchecked(reason) => match non_electrical(r, c) {
-                        Some(what) => Coverage::NonElectrical(what),
-                        None => Coverage::Unchecked { reason },
-                    },
+                    Lookup::Datasheet(_) => Coverage::Datasheet,
+                    Lookup::ClassDefault(_) => Coverage::ClassDefault,
+                    Lookup::Unchecked(_) if is_non_electrical(r, c) => Coverage::NonElectrical,
+                    Lookup::Unchecked(reason) => Coverage::Unchecked { reason },
                 }
             };
             (r.clone(), cov)

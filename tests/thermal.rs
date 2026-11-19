@@ -192,16 +192,28 @@ fn board_temperature_sets_the_verdict() {
 }
 
 #[test]
-fn loads_summary_lists_each_rail() {
+fn each_rail_adds_up_its_loads() {
     let (d, inputs) = board("sniffer");
     let (th, _) = analyse(&d, &inputs);
-    let text = thermal::describe(&d, &th);
-    assert!(text.contains("+3V3: 33.32 mA (U2 11.19 mA (p44)"), "{text}");
-    assert!(text.contains("R2 344.5 µA to /I2C_SDA"), "{text}");
-    assert!(text.contains("+5V: 33.32 mA at least"), "{text}");
+    let load = |name: &str| &th.loads[d.nets.iter().position(|n| n.name == name).unwrap()];
+    let rail_3v3 = load("+3V3");
+    assert!((rail_3v3.amps * 1e3 - 33.32).abs() < 0.01, "{rail_3v3:?}");
     assert!(
-        text.contains("not counted: U1 (ME6211C33M5G-N gives no supply current"),
-        "{text}"
+        rail_3v3.parts.iter().any(|p| p.starts_with("U2 11.19 mA (p44)")),
+        "{rail_3v3:?}"
+    );
+    assert!(
+        rail_3v3.parts.iter().any(|p| p.contains("R2 344.5 µA to /I2C_SDA")),
+        "{rail_3v3:?}"
+    );
+    let rail_5v = load("+5V");
+    assert!((rail_5v.amps * 1e3 - 33.32).abs() < 0.01, "{rail_5v:?}");
+    assert!(
+        rail_5v
+            .missing
+            .iter()
+            .any(|m| m.starts_with("U1 (ME6211C33M5G-N gives no supply current")),
+        "{rail_5v:?}"
     );
 }
 

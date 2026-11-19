@@ -30,5 +30,3 @@ pub mod thermal;
 pub mod traces;
 pub mod voltage;
 pub mod waivers;
-
-pub use kicad::load;

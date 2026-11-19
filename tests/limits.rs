@@ -292,7 +292,7 @@ fn coverage_reports_unchecked_parts() {
     let cov = coverage(&design, &lib);
     assert!(matches!(cov["JP1"], Coverage::Unchecked { .. }), "{:?}", cov["JP1"]);
     assert_eq!(cov["J3"], Coverage::NotFitted);
-    assert_eq!(cov["D2"], Coverage::Datasheet { mpn: "SMAJ18A".into() });
+    assert_eq!(cov["D2"], Coverage::Datasheet);
     let unchecked: Vec<&String> = cov
         .iter()
         .filter(|(_, c)| matches!(c, Coverage::Unchecked { .. }))
@@ -303,7 +303,7 @@ fn coverage_reports_unchecked_parts() {
 
 #[test]
 fn test_points_have_nothing_to_check() {
-    use gerberus::limits::non_electrical;
+    use gerberus::limits::is_non_electrical;
     let part = |lib_id: &str, pins: usize| {
         let mut c = Component {
             lib_id: lib_id.into(),
@@ -324,14 +324,11 @@ fn test_points_have_nothing_to_check() {
         }
         c
     };
-    assert_eq!(non_electrical("TP1", &part("Seed3:TP_HP_DET", 1)), Some("test point"));
-    assert_eq!(
-        non_electrical("X3", &part("Connector:TestPoint_Probe", 1)),
-        Some("test point")
-    );
-    assert_eq!(non_electrical("TP2", &part("Custom:Thing", 3)), None);
-    assert_eq!(non_electrical("NT1", &part("Device:NetTie_2", 2)), Some("net tie"));
-    assert_eq!(non_electrical("JP1", &part("Jumper:SolderJumper_2_Open", 2)), None);
+    assert!(is_non_electrical("TP1", &part("Seed3:TP_HP_DET", 1)));
+    assert!(is_non_electrical("X3", &part("Connector:TestPoint_Probe", 1)));
+    assert!(!is_non_electrical("TP2", &part("Custom:Thing", 3)));
+    assert!(is_non_electrical("NT1", &part("Device:NetTie_2", 2)));
+    assert!(!is_non_electrical("JP1", &part("Jumper:SolderJumper_2_Open", 2)));
 }
 
 fn scratch_dir(name: &str) -> PathBuf {

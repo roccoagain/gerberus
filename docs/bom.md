@@ -15,8 +15,7 @@ field at LCSC and reports:
 - **UNKNOWN** when there is no LCSC number to look up.
 
 Similar parts are LCSC's suggestions and are shown as candidates only: nobody has checked their pinout or
-ratings. LCSC needs no API key, but it can't tell whether the manufacturer has marked a part NRND or EOL, so
-manufacturer lifecycle is reported as unknown. Answers are cached in `~/.cache/gerberus/lcsc` for 24 hours;
+ratings. LCSC needs no API key. It doesn't give manufacturer lifecycle (NRND, EOL), so gerberus doesn't check it. Answers are cached in `~/.cache/gerberus/lcsc` for 24 hours;
 when a fresh lookup fails, an older cached answer is used with a warning. The
 command exits with status 1 when any line has an error and 2 when it can't run.
 

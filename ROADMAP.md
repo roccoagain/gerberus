@@ -11,7 +11,7 @@ Each phase reads one more part of the design. It starts with the schematic, then
 ## v0.2 — Parts
 
 - [x] Check that symbol, footprint and datasheet pinouts agree (catches swapped or missing pins): `gerberus pinout`. *(Copies: Ultra Librarian / SnapEDA verification)*
-- [x] BOM health: end-of-life parts, stock, second sources. Stock, LCSC listing status and candidate second sources from LCSC are done; manufacturer lifecycle needs a distributor API key. *(Copies: SiliconExpert, Octopart / Supplyframe)*
+- [x] BOM health: stock, LCSC listing status and candidate second sources from LCSC. Manufacturer lifecycle (NRND, EOL) isn't checked: LCSC doesn't give it. *(Copies: SiliconExpert, Octopart / Supplyframe)*
 - [x] Datasheet → part model using an LLM, checked by a blind second reading and by finding every value on its cited page (`gerberus datasheet`). *(New: no paid tool does this)*
 
 ## v0.3 — Power and stress
