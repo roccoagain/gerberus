@@ -38,7 +38,9 @@ It lists the things to add, the ones that settle the most UNKNOWN results first,
 - `guess`, `inputs`: step 1.
 - `part-file`: run the command its help gives (`gerberus part new <design> <reference>`), then fill the file in
   with the datasheet-to-part skill. The note names the file to save the PDF as in `datasheets/`; save it there.
-- `fill-in`: a file `part new` started; fill it in with the datasheet-to-part skill.
+- `fill-in`: values the file marks not known yet; fill them in with the datasheet-to-part skill.
+- `part-data`: a supply current, efficiency, thermal resistance, ESD or current rating a check needs; add it
+  from the datasheet. If the datasheet doesn't give it, the results waiting on it go to the person (step 4).
 - `pin-limits`, `drive`: add the limit or `[[drive]]` from the datasheet to the part file it names. For a
   built-in file, its help gives the `gerberus part show <MPN> --out <file>` command that copies it next to the
   schematic first; use the path it gives.
@@ -58,8 +60,8 @@ It exits with status 1 when a check fails with an error (warnings don't change i
 with the pins and the numbers. Don't change a part file or inputs.toml to make an error go away; an error is a
 finding about the board unless the file it rests on is wrong against its datasheet.
 
-Run `gerberus doctor` again after each round: what it says is left, and the UNKNOWNs it can't trace (a circuit
-gerberus doesn't model, a limit no datasheet gives), are what to tell the person is still unchecked.
+Run `gerberus doctor` again after each round. What it still lists, and its `review` item (circuits gerberus
+can't work out, with the nets whose range is UNKNOWN), are what to tell the person is still unchecked.
 
 ## 4. Waivers
 

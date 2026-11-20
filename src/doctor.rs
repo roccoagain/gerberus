@@ -34,7 +34,7 @@ pub struct Setup {
 /// One thing to add.
 #[derive(Debug, Clone, Serialize)]
 pub struct Item {
-    /// `inputs`, `part-file`, `fill-in`, `pin-limits`, `drive` or `guess`.
+    /// `inputs`, `part-file`, `fill-in`, `pin-limits`, `drive`, `part-data`, `review` or `guess`.
     pub rule: &'static str,
     pub title: String,
     /// UNKNOWN findings that wait on this.
@@ -59,8 +59,6 @@ pub struct Doctor {
     pub items: Vec<Item>,
     /// UNKNOWN findings in all.
     pub unknown: usize,
-    /// UNKNOWN findings some item waits on.
-    pub settled: usize,
     /// Pins whose inputs.toml entry is still a guess from `gerberus init`.
     pub guesses: Vec<String>,
 }
@@ -75,8 +73,14 @@ enum Key {
     Pins(String),
     /// A part whose power output no part file says the voltage of, by reference.
     Drive(String),
-    /// A part number whose part file, started by `part new`, still has values not read from the datasheet.
+    /// A part number whose part file still has values not known yet: not read from the datasheet, or marked
+    /// `{ unknown = "..." }`.
     Fill(String),
+    /// A part number whose part file lacks data a check needs beyond its limits: a supply current, a thermal
+    /// resistance, an ESD rating.
+    Data(String),
+    /// Nothing to add settles it: a circuit gerberus can't work out, or a datasheet that gives too little.
+    Review,
 }
 
 pub fn diagnose(
@@ -98,10 +102,20 @@ pub fn diagnose(
             .and_then(|c| lib.part_for(c))
             .is_some_and(crate::limits::Part::unread)
     };
+    // A part whose file has values marked unknown, not known yet.
+    let gaps = |r: &str| {
+        design
+            .components
+            .get(r)
+            .and_then(|c| lib.part_for(c))
+            .is_some_and(|p| !p.unknowns().is_empty())
+    };
     let mut waits: BTreeMap<Key, BTreeSet<usize>> = BTreeMap::new();
+    // Why each finding that only a review settles stays UNKNOWN: its rule, and the nets gerberus can't work out.
+    let mut review_rules: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut stuck_nets: BTreeSet<String> = BTreeSet::new();
     let mut pins: BTreeMap<Key, BTreeSet<String>> = BTreeMap::new();
     let mut unknown = 0;
-    let mut settled = 0;
     for (i, f) in report.findings.iter().enumerate() {
         // `check` counts summary findings (reverse polarity) apart from the rest, so they aren't counted here.
         if f.verdict != Verdict::Unknown || crate::rules::SUMMARY_RULES.contains(&f.rule) {
@@ -121,8 +135,13 @@ pub fn diagnose(
             pins.entry(k.clone()).or_default().insert(pin.to_string());
             keys.insert(k);
         }
-        if unread(&f.reference) {
+        if unread(&f.reference) || (f.message.contains("isn't known yet") && gaps(&f.reference)) {
             keys.insert(Key::Fill(mpn(&f.reference)));
+        }
+        for (m, what) in data_gaps(&f.message, lib) {
+            let k = Key::Data(m);
+            pins.entry(k.clone()).or_default().insert(what);
+            keys.insert(k);
         }
         if design.components.contains_key(&f.reference) && unchecked(&f.reference) {
             keys.insert(Key::Part(mpn(&f.reference)));
@@ -169,8 +188,17 @@ pub fn diagnose(
                 keys.insert(k);
             }
         }
-        if !keys.is_empty() {
-            settled += 1;
+        if keys.is_empty() {
+            *review_rules.entry(f.rule).or_default() += 1;
+            for &n in &f.nets {
+                if v.nets
+                    .get(n)
+                    .is_some_and(|nv| nv.span.min.is_none() || nv.span.max.is_none())
+                {
+                    stuck_nets.insert(design.nets[n].name.clone());
+                }
+            }
+            keys.insert(Key::Review);
         }
         for k in keys {
             waits.entry(k).or_default().insert(i);
@@ -256,7 +284,12 @@ pub fn diagnose(
                     datasheet: datasheet.clone().filter(|u| !u.is_empty()),
                     file: file.clone(),
                     notes: vec![
-                        format!("it still has values marked \"{}\"", crate::limits::NOT_READ),
+                        match lib.parts.get(m) {
+                            Some(p) if !p.unread() => {
+                                format!("values not known yet: {}", p.unknowns().join("; "))
+                            }
+                            _ => format!("it still has values marked \"{}\"", crate::limits::NOT_READ),
+                        },
                         saved_note(
                             lib.files.get(m).map_or(&setup.parts.join(file_name(m)), |f| f),
                             lib.parts.get(m).map_or(m, |p| p.mpn.as_str()),
@@ -270,6 +303,72 @@ pub fn diagnose(
                             .map(|u| format!(" ({u})"))
                             .unwrap_or_default()
                     ),
+                });
+            }
+            Key::Data(m) => {
+                let file = lib.files.get(m).map(|f| f.display().to_string()).unwrap_or_default();
+                let what: Vec<String> = pins[k].iter().cloned().collect();
+                items.push(Item {
+                    rule: "part-data",
+                    title: format!("give {m} its {}: {}", list(&what, "and"), waiting(found.len())),
+                    unknown: found.len(),
+                    references: refs_of(m),
+                    mpn: Some(m.clone()),
+                    pins: vec![],
+                    datasheet: lib
+                        .parts
+                        .get(m)
+                        .and_then(|p| p.datasheet.as_ref())
+                        .map(|d| d.url.clone())
+                        .filter(|u| !u.is_empty()),
+                    file: file.clone(),
+                    notes: vec![format!("its part file is {file}")],
+                    help: format!(
+                        "read it from the datasheet into the part file (see parts/README.md){}; if the datasheet \
+                         doesn't give it, check those results by hand and waive each one that holds (see docs/waivers.md)",
+                        if file.ends_with("(built in)") {
+                            format!(
+                                ", copying the built-in file first with `gerberus part show {m} --out {}`",
+                                setup.parts.join(file_name(m)).display()
+                            )
+                        } else {
+                            String::new()
+                        }
+                    ),
+                });
+            }
+            Key::Review => {
+                let mut notes: Vec<String> = vec![format!(
+                    "by rule: {}",
+                    review_rules
+                        .iter()
+                        .map(|(r, n)| format!("{r} {n}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )];
+                if !stuck_nets.is_empty() {
+                    let nets: Vec<String> = stuck_nets.iter().cloned().collect();
+                    notes.push(format!(
+                        "nets whose range gerberus can't work out (`gerberus voltages --explain NET` says why): {}",
+                        list(&nets, "and")
+                    ));
+                }
+                items.push(Item {
+                    rule: "review",
+                    title: format!(
+                        "check by hand what gerberus can't settle, and waive each result that holds: {}",
+                        waiting(found.len())
+                    ),
+                    unknown: found.len(),
+                    references: vec![],
+                    mpn: None,
+                    pins: vec![],
+                    datasheet: None,
+                    file: setup.parts.with_file_name("waivers.toml").display().to_string(),
+                    notes,
+                    help: "`gerberus check --all` lists them; add a [[waiver]] with the reason for each one you have \
+                           checked (see docs/waivers.md)"
+                        .into(),
                 });
             }
             Key::Pins(m) => {
@@ -393,7 +492,13 @@ pub fn diagnose(
             ));
         }
     }
-    items.sort_by(|a, b| b.unknown.cmp(&a.unknown).then_with(|| a.title.cmp(&b.title)));
+    // Things to add first, most results first; the review of what nothing settles comes last.
+    items.sort_by(|a, b| {
+        (a.rule == "review")
+            .cmp(&(b.rule == "review"))
+            .then_with(|| b.unknown.cmp(&a.unknown))
+            .then_with(|| a.title.cmp(&b.title))
+    });
     // Guesses come first whatever they settle: every result that rests on one is only as good as the guess.
     let guesses = crate::init::guesses(inputs);
     if !guesses.is_empty() {
@@ -426,7 +531,6 @@ pub fn diagnose(
     Doctor {
         items,
         unknown,
-        settled,
         guesses,
     }
 }
@@ -586,17 +690,8 @@ pub fn render(doctor: &Doctor, show: &Show) -> String {
     if doctor.items.is_empty() {
         let _ = writeln!(
             out,
-            "{}: nothing to add: {}",
+            "{}: nothing to add: check knows every range and limit it needs",
             style.paint("1;32", "ok"),
-            if doctor.unknown == 0 {
-                "check knows every range and limit it needs".to_string()
-            } else {
-                format!(
-                    "the {} left wait on things doctor doesn't trace yet: limits or thermal data the part \
-                     files don't give, or circuits gerberus can't model; `gerberus check --all` lists them",
-                    plural(doctor.unknown, "unknown result")
-                )
-            }
         );
         return out;
     }
@@ -607,24 +702,12 @@ pub fn render(doctor: &Doctor, show: &Show) -> String {
         style.paint(
             "1",
             &format!(
-                "{} to add; {} of {} wait on them",
+                "{} to do; {} wait on them",
                 plural(doctor.items.len(), "thing"),
-                doctor.settled,
                 plural(doctor.unknown, "unknown result")
             )
         )
     );
-    let left = doctor.unknown - doctor.settled;
-    if left > 0 {
-        let _ = writeln!(
-            out,
-            "   {} {}: the other {left} wait on things doctor doesn't trace yet: limits or thermal \
-             data the part files don't give, or circuits gerberus can't model; `gerberus check --all` lists \
-             them all",
-            style.paint("1;34", "="),
-            style.paint("1", "note"),
-        );
-    }
     out
 }
 
@@ -638,4 +721,23 @@ pub fn setup(design: &Path, inputs: Option<&Path>) -> Setup {
         parts: dir.join("parts"),
         design: design.display().to_string(),
     }
+}
+
+/// Each part number a message says gives no data a check needs, and what: `(TLV9061, supply current)` from
+/// `TLV9061 gives no supply current`. Only part numbers with a part file count, so `inputs.toml gives no board
+/// temperature` doesn't.
+fn data_gaps(text: &str, lib: &Library) -> Vec<(String, String)> {
+    let mut out = vec![];
+    let mut rest = text;
+    while let Some(at) = rest.find(" gives no ") {
+        let mpn = rest[..at].rsplit([' ', '(']).next().unwrap_or("");
+        let after = &rest[at + " gives no ".len()..];
+        let end = after.find([')', ';', ',', '.', ':']).unwrap_or(after.len());
+        let what = after[..end].split(" for ").next().unwrap_or("").trim();
+        if lib.parts.contains_key(mpn) && !what.is_empty() {
+            out.push((mpn.to_string(), what.to_string()));
+        }
+        rest = after;
+    }
+    out
 }

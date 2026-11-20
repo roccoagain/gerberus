@@ -226,7 +226,10 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
                 let mut how = vec![];
                 let mut missing = vec![];
                 let mut covered: BTreeSet<&str> = BTreeSet::new();
-                if part.supply.is_empty() {
+                if part.drives.iter().any(|d| d.kind == DriveKind::Channel) {
+                    // A MOSFET dissipates its channel current times RDS(on), not a supply current.
+                    missing.push("the current through its channel isn't worked out".into());
+                } else if part.supply.is_empty() {
                     missing.push(format!("{} gives no supply current", part.mpn));
                 }
                 for s in &part.supply {

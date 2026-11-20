@@ -27,7 +27,8 @@ fn doctor(design: &Design, lib: &Library, inputs: &BoardInputs, missing: bool) -
     };
     let d = diagnose(design, lib, &setup, inputs, &report, &v);
     assert_eq!(d.unknown, report.unknowns());
-    assert!(d.settled <= d.unknown);
+    // Every UNKNOWN waits on some item: at least the review of what nothing settles.
+    assert!(d.unknown == 0 || d.items.iter().any(|i| i.unknown > 0));
     d
 }
 
@@ -54,7 +55,7 @@ fn missing_inputs_come_first() {
     assert!(first.unknown > 100, "{}", first.unknown);
     assert_eq!(d.items.iter().filter(|i| i.rule == "inputs").count(), 1);
     // Most of the board's unknowns wait on it.
-    assert!(d.settled * 2 > d.unknown, "{} of {}", d.settled, d.unknown);
+    assert!(first.unknown * 2 > d.unknown, "{} of {}", first.unknown, d.unknown);
 }
 
 /// A part with no part file is a thing to add, with every reference that uses it and its datasheet link.
@@ -95,7 +96,14 @@ fn missing_part_file_is_listed_with_its_references() {
     // With inputs.toml there, connectors it describes aren't listed.
     assert!(d.items.iter().all(|i| i.rule != "inputs"), "{:?}", d.items);
     // Ranked: most unknown results first.
-    assert!(d.items.windows(2).all(|w| w[0].unknown >= w[1].unknown));
+    let adds: Vec<&gerberus::doctor::Item> = d.items.iter().filter(|i| i.rule != "review").collect();
+    assert!(adds.windows(2).all(|w| w[0].unknown >= w[1].unknown));
+    assert!(
+        d.items
+            .iter()
+            .position(|i| i.rule == "review")
+            .is_none_or(|p| p == d.items.len() - 1)
+    );
 }
 
 /// The kitchen sink: a built-in part file with pins it gives no limit for.
@@ -122,19 +130,37 @@ fn kitchen_sink_gaps_in_part_files() {
         text.contains("todo[pin-limits]: give FNR4030S6R8MT a voltage limit for 1 and 2"),
         "{text}"
     );
-    assert!(text.contains("wait on things doctor doesn't trace yet"), "{text}");
+    // What no addition settles is one review item, naming the nets gerberus can't work out.
+    let review = d.items.iter().find(|i| i.rule == "review").expect("review");
+    assert!(
+        review.notes.iter().any(|n| n.starts_with("by rule: ")),
+        "{:?}",
+        review.notes
+    );
+    assert_eq!(review.file, "board/waivers.toml");
 }
 
-/// A board whose every unknown waits on nothing a user can add says so.
+/// Data a part file lacks beyond its limits (a thermal resistance, an ESD rating) is a thing to add, and what
+/// nothing settles is a review: every UNKNOWN is listed somewhere.
 #[test]
-fn nothing_to_add() {
+fn every_unknown_is_listed() {
     let dir = root("tests/fixtures/sniffer");
     let design = kicad::load(&dir.join("sniffer.kicad_sch")).unwrap();
     let inputs = BoardInputs::load(&dir.join("inputs.toml")).unwrap();
     let lib = Library::load_dir(&root("parts")).unwrap();
     let d = doctor(&design, &lib, &inputs, false);
-    assert!(d.items.is_empty(), "{:?}", d.items);
-    assert!(render(&d, &Show::everything()).starts_with("ok: nothing to add"));
+    let data: Vec<&str> = d
+        .items
+        .iter()
+        .filter(|i| i.rule == "part-data")
+        .map(|i| i.title.as_str())
+        .collect();
+    assert!(
+        data.contains(&"give SCD41-D-R2 its junction-to-ambient thermal resistance: 1 unknown result waits on it"),
+        "{data:?}"
+    );
+    assert!(d.items.iter().any(|i| i.rule == "review"), "{:?}", d.items);
+    assert!(!render(&d, &Show::everything()).contains("nothing to add"));
 }
 
 /// With no inputs.toml, writing one is always listed, even when no unknown traces to a connector pin.
@@ -170,5 +196,5 @@ fn command_prints_json() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["items"][0]["rule"], "inputs");
     assert_eq!(v["items"][0]["file"], "inputs.toml");
-    assert!(v["settled"].as_u64().unwrap() <= v["unknown"].as_u64().unwrap());
+    assert!(v.get("settled").is_none());
 }
