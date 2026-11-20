@@ -5,43 +5,27 @@ missing protection, swapped pins, parts you can't buy, and bad USB routing. It r
 
 ## Install
 
-On macOS or Linux, paste this into a terminal:
+Gerberus is built from source. With [Rust](https://rustup.rs) and git installed:
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.sh | sh
+git clone https://github.com/roccoagain/gerberus
+cd gerberus
+cargo install --locked --path .
 ```
 
-On Windows, paste this into PowerShell:
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.ps1 | iex"
-```
-
-Then open a new terminal window, so it can find the `gerberus` command. Run `gerberus-update` later to get the
-latest version.
-
-Software developers who have [Rust](https://rustup.rs) installed can build it instead (you don't need this if you
-used the installer above; to update a copy built this way, run the same command again):
-
-```sh
-cargo install --locked --git https://github.com/roccoagain/gerberus
-```
+That puts the `gerberus` command in `~/.cargo/bin`. To update, run `git pull` and the same `cargo install` again.
 
 Three commands need another program installed: `gerberus stress` and `gerberus signal` need [ngspice](https://ngspice.sourceforge.io/),
 and `gerberus datasheet verify` needs poppler's `pdftotext`. More in [docs/install.md](docs/install.md).
 
 ## Quick start
 
-Try it on one of the example boards. Download them with git:
+Try it on one of the example boards in the clone:
 
 ```sh
-git clone https://github.com/roccoagain/gerberus
-cd gerberus/tests/fixtures/sniffer
+cd tests/fixtures/sniffer
 gerberus check sniffer.kicad_sch
 ```
-
-(No git? On the [GitHub page](https://github.com/roccoagain/gerberus) click **Code → Download ZIP**, unzip it, and
-`cd` into `gerberus-main/tests/fixtures/sniffer` instead.)
 
 It prints each problem it found, then a count:
 
@@ -107,5 +91,5 @@ Run `gerberus --help` for every command and option.
 - [Docs](docs/README.md): every check in detail.
 - [Part file format](parts/README.md).
 - [Roadmap](ROADMAP.md).
-- [Developing Gerberus](docs/development.md): tests, CI and releases.
+- [Developing Gerberus](docs/development.md): tests and CI.
 - [Example boards](https://github.com/roccoagain/hardware).

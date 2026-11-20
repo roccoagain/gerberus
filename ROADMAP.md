@@ -63,7 +63,7 @@ Behaviour Gerberus doesn't model yet:
 ## v1.0 — Workflow
 
 - [x] Electrical diff between board revisions (`gerberus diff`). *(Copies: Altium / Cadence design compare)*
-- [x] CI integration and a pass/fail badge for the README (`action.yml`, [docs/ci.md](docs/ci.md)).
+- [ ] CI integration and a pass/fail badge for the README. A GitHub Action shipped with v0.1.0 and was removed with the releases; it needs a release to install from.
 
 ## Signature features (new, not copies)
 
