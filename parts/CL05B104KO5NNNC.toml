@@ -17,5 +17,5 @@ url = "https://www.lcsc.com/datasheet/C1525.pdf"
 [[limit]]
 pins = ["1"]
 to = "2"
-abs_max = { unknown = "the datasheet gives a rated voltage and a short withstanding-voltage test, not an absolute maximum" }
+abs_max = { none = "the datasheet gives a rated voltage and a short withstanding-voltage test, not an absolute maximum" }
 recommended = { min = -16, max = 16, page = 4, note = "CL05B104KO5NNNC0" }

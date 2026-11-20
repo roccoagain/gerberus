@@ -17,14 +17,14 @@ url = "https://www.lcsc.com/datasheet/C5446.pdf"
 [[limit]]
 pins = ["VIN"]
 to = "VSS"
-abs_max = { min = { unknown = "the absolute maximum ratings table gives only a maximum for VIN" }, max = 7.0, page = 3 }
+abs_max = { min = { none = "the absolute maximum ratings table gives only a maximum for VIN" }, max = 7.0, page = 3 }
 recommended = { min = 1.8, max = 6.0, page = 4, note = "electrical characteristics: input voltage VIN" }
 
 [[limit]]
 pins = ["VOUT"]
 to = "VSS"
 abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 3 }
-recommended = { unknown = "VOUT is the regulated output; no separate operating range is given" }
+recommended = { none = "VOUT is the regulated output; no separate operating range is given" }
 
 [[drive]]
 kind = "regulates"

@@ -17,14 +17,14 @@ url = "https://www.lcsc.com/datasheet/C551416.pdf"
 [[limit]]
 pins = ["D"]
 to = "S"
-abs_max = { min = { unknown = "a negative VDS forward-biases the source-drain diode; it is limited by current (IS), not voltage" }, max = 60, page = 3, note = "VDS drain-source voltage, Tj = 25 °C" }
-recommended = { unknown = "no recommended operating conditions are given" }
+abs_max = { min = { none = "a negative VDS forward-biases the source-drain diode; it is limited by current (IS), not voltage" }, max = 60, page = 3, note = "VDS drain-source voltage, Tj = 25 °C" }
+recommended = { none = "no recommended operating conditions are given" }
 
 [[limit]]
 pins = ["G"]
 to = "S"
 abs_max = { min = -20, max = 20, page = 3, note = "VGS gate-source voltage" }
-recommended = { unknown = "no recommended operating conditions are given" }
+recommended = { none = "no recommended operating conditions are given" }
 
 # No [[drive]] for the source-drain diode: gerberus reads a forward drive as setting the cathode net, which is
 # right for a series diode but not for a low-side switch, whose drain other parts pull anywhere up to 60 V.

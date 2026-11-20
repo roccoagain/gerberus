@@ -20,8 +20,8 @@ url = "https://www.ti.com/lit/ds/symlink/tvs0500.pdf"
 [[limit]]
 pins = ["IN"]
 to = "GND"
-abs_max = { unknown = "the maximum ratings table gives only surge ratings and a 50 mA DC breakdown current; there is no DC voltage maximum" }
-recommended = { min = { unknown = "the datasheet gives no negative operating limit" }, max = 5, page = 5, note = "reverse stand-off voltage VRWM, printed in the NOM column with no MAX; taken as the highest working voltage" }
+abs_max = { none = "the maximum ratings table gives only surge ratings and a 50 mA DC breakdown current; there is no DC voltage maximum" }
+recommended = { min = { none = "the datasheet gives no negative operating limit" }, max = 5, page = 5, note = "reverse stand-off voltage VRWM, printed in the NOM column with no MAX; taken as the highest working voltage" }
 breakdown = { min = 7.5, max = 8.4, page = 6, note = "VBR at IIN = 1 mA from IO to GND" }
 
 [[capacitance]]

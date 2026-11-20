@@ -42,19 +42,19 @@ recommended = { min = -12, max = 12, page = 7, note = "receiver common-mode rang
 pins = ["CANH"]
 to = "CANL"
 abs_max = { min = -45, max = 45, page = 4 }
-recommended = { unknown = "the datasheet gives no recommended differential bus voltage range" }
+recommended = { none = "the datasheet gives no recommended differential bus voltage range" }
 
 [[limit]]
 pins = ["TXD", "STB"]
 to = "GND"
 abs_max = { min = -0.3, max = 6, page = 4 }
-recommended = { unknown = "the recommended operating conditions table lists no logic input range; only VIH min 0.7 VIO and VIL max 0.3 VIO (page 7)" }
+recommended = { none = "the recommended operating conditions table lists no logic input range; only VIH min 0.7 VIO and VIL max 0.3 VIO (page 7)" }
 
 [[limit]]
 pins = ["RXD"]
 to = "GND"
 abs_max = { min = -0.3, max = 6, page = 4 }
-recommended = { unknown = "RXD is an output; the recommended operating conditions table lists only its output current" }
+recommended = { none = "RXD is an output; the recommended operating conditions table lists only its output current" }
 
 [[esd]]
 model = "hbm"

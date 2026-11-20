@@ -544,7 +544,7 @@ fn reversed_polarised_capacitor_fails() {
         dir.join("POLCAP.toml"),
         "mpn = \"POLCAP\"\nmanufacturer = \"M\"\ndescription = \"test polarised cap\"\nclass = \"capacitor\"\n\
          [datasheet]\ntitle = \"t\"\ndocument = \"d\"\nurl = \"u\"\n[pins]\n1 = \"+\"\n2 = \"-\"\n\
-         [[limit]]\npins = [\"+\"]\nto = \"-\"\nabs_max = { unknown = \"none\" }\n\
+         [[limit]]\npins = [\"+\"]\nto = \"-\"\nabs_max = { none = \"only a rated voltage\" }\n\
          recommended = { min = 0, max = 16, page = 1 }\n",
     )
     .unwrap();
@@ -570,6 +570,59 @@ fn reversed_polarised_capacitor_fails() {
         "{}",
         f.message
     );
+}
+
+/// A limit the datasheet gives none of has nothing to check, so it makes no finding; one end given is checked on
+/// its own. A limit not known yet is UNKNOWN.
+#[test]
+fn limits_the_datasheet_gives_none_of_are_not_checked() {
+    let dir = std::env::temp_dir().join(format!("gerberus-none-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("NONEIC.toml"),
+        "mpn = \"NONEIC\"\nmanufacturer = \"M\"\ndescription = \"test IC\"\nclass = \"ic\"\n\
+         [datasheet]\ntitle = \"t\"\ndocument = \"d\"\nurl = \"u\"\n[pins]\n1 = \"OUT\"\n2 = \"GND\"\n3 = \"IN\"\n\
+         [[limit]]\npins = [\"OUT\"]\nto = \"GND\"\nabs_max = { none = \"an output\" }\n\
+         recommended = { none = \"an output\" }\n\
+         [[limit]]\npins = [\"IN\"]\nto = \"GND\"\n\
+         abs_max = { min = { none = \"only a maximum\" }, max = 6, page = 1 }\n\
+         recommended = { unknown = \"the page is unreadable\" }\n",
+    )
+    .unwrap();
+    let lib = Library::load_dirs(&[&root("parts"), &dir]).unwrap();
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    let (v5, gnd) = (net(&d, "+5V"), net(&d, "GND"));
+    let out = new_net(&mut d, "/NONE_OUT");
+    add(
+        &mut d,
+        "U97",
+        "Test:IC",
+        "X",
+        Some("NONEIC"),
+        vec![
+            pin("1", PinKind::Output, out),
+            pin("2", PinKind::PowerIn, gnd),
+            pin("3", PinKind::Input, v5),
+        ],
+    );
+    let policy = Policy::load(&root("policy.toml")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    let r = check(&d, &lib, &policy, &inputs, &v);
+    std::fs::remove_dir_all(&dir).unwrap();
+    let mine = |rule: &str| -> Vec<(Verdict, String)> {
+        r.by_rule(rule)
+            .filter(|f| f.reference == "U97" && f.case.is_none())
+            .map(|f| (f.verdict, f.message.clone()))
+            .collect()
+    };
+    let abs = mine("abs-max");
+    assert_eq!(abs.len(), 1, "{abs:?}");
+    assert!(abs[0].1.starts_with("U97.IN"), "{abs:?}");
+    assert_eq!(abs[0].0, Verdict::Pass);
+    let rec = mine("recommended");
+    assert_eq!(rec.len(), 1, "{rec:?}");
+    assert_eq!(rec[0].0, Verdict::Unknown);
+    assert!(rec[0].1.contains("isn't known yet: the page is unreadable"), "{rec:?}");
 }
 
 /// An input reached only by an open-drain output isn't proven driven.

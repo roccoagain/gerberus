@@ -17,7 +17,7 @@ url = "https://www.onsemi.com/download/data-sheet/pdf/nup2105l-d.pdf"
 pins = ["IO1", "IO2"]
 to = "COM"
 bidirectional = true
-abs_max = { unknown = "the maximum ratings table gives only pulse ratings (350 W peak, 8 x 20 us); there is no DC voltage maximum" }
+abs_max = { none = "the maximum ratings table gives only pulse ratings (350 W peak, 8 x 20 us); there is no DC voltage maximum" }
 recommended = { min = -24, max = 24, page = 2, note = "reverse working voltage VRWM, each line, either polarity" }
 breakdown = { min = 26.2, max = 32, page = 2, note = "VBR at IT = 1 mA; clamps at 40 V max at IPP = 5 A" }
 clamp = { volts = 40, current = 5, page = 2, note = "VC maximum clamping voltage at IPP = 5 A, 8/20 us, read as per line to COM; the table also gives 44 V max at 8 A" }

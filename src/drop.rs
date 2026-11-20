@@ -535,7 +535,7 @@ pub fn check(
                 .limits_for(Quantity::Voltage, name)
                 .find_map(|l| match &l.recommended {
                     Range::Known { min, .. } => number(min).map(|m| (l, m)),
-                    Range::Unknown(_) => None,
+                    Range::Unknown(_) | Range::None(_) => None,
                 })
             else {
                 continue;

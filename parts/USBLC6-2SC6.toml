@@ -25,17 +25,17 @@ url = "https://datasheet.lcsc.com/datasheet/pdf/0d3a2ab954b34651a0695e7ccf534db0
 [[limit]]
 pins = ["I/O1", "I/O2"]
 to = "GND"
-abs_max = { unknown = "the absolute ratings give only ESD pulse ratings; there is no DC voltage maximum" }
-recommended = { min = { unknown = "no negative operating limit is given" }, max = 5.25, page = 2, note = "VRM, the voltage the leakage current IRM (150 nA max) is specified at" }
-breakdown = { unknown = "only VBUS to GND has a breakdown voltage; a line reaches it through the diode to VBUS" }
+abs_max = { none = "the absolute ratings give only ESD pulse ratings; there is no DC voltage maximum" }
+recommended = { min = { none = "no negative operating limit is given" }, max = 5.25, page = 2, note = "VRM, the voltage the leakage current IRM (150 nA max) is specified at" }
+breakdown = { none = "only VBUS to GND has a breakdown voltage; a line reaches it through the diode to VBUS" }
 clamp = { volts = 17, current = 5, page = 2, note = "VCL, IPP = 5 A 8/20 µs, any I/O pin to GND (12 V at 1 A)" }
 
 [[limit]]
 pins = ["VBUS"]
 to = "GND"
-abs_max = { unknown = "the absolute ratings give only ESD pulse ratings; there is no DC voltage maximum" }
-recommended = { min = { unknown = "no negative operating limit is given" }, max = 5.25, page = 2, note = "VRM, the voltage the leakage current IRM (150 nA max) is specified at" }
-breakdown = { min = 6, max = { unknown = "only a minimum is given" }, page = 2, note = "VBR between VBUS and GND, IR = 1 mA" }
+abs_max = { none = "the absolute ratings give only ESD pulse ratings; there is no DC voltage maximum" }
+recommended = { min = { none = "no negative operating limit is given" }, max = 5.25, page = 2, note = "VRM, the voltage the leakage current IRM (150 nA max) is specified at" }
+breakdown = { min = 6, max = { none = "only a minimum is given" }, page = 2, note = "VBR between VBUS and GND, IR = 1 mA" }
 
 [[capacitance]]
 pins = ["I/O1", "I/O2"]

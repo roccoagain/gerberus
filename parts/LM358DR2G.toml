@@ -25,7 +25,7 @@ url = "https://datasheet.lcsc.com/datasheet/pdf/6e027cbb78e54e6f93d2bb9049a549fd
 [[limit]]
 pins = ["VCC"]
 to = "GND"
-abs_max = { min = { unknown = "the maximum ratings give only the supply's maximum" }, max = 32, page = 3, note = "power supply voltage, single supply VCC" }
+abs_max = { min = { none = "the maximum ratings give only the supply's maximum" }, max = 32, page = 3, note = "power supply voltage, single supply VCC" }
 recommended = { min = 3, max = 32, page = 1, note = "features: single supply operation 3.0 V to 32 V" }
 
 # Note 2: below a 32 V supply, the input's absolute maximum is the supply voltage. VIDR (±32 V between an
@@ -39,8 +39,8 @@ recommended = { min = 0, max = { pin = "VCC", plus = -2 }, page = 4, derived = "
 [[limit]]
 pins = ["OUTA", "OUTB"]
 to = "GND"
-abs_max = { unknown = "no output voltage rating is given; the output is short-circuit protected" }
-recommended = { unknown = "the output is driven by the part; no separate operating range is given" }
+abs_max = { none = "no output voltage rating is given; the output is short-circuit protected" }
+recommended = { none = "the output is driven by the part; no separate operating range is given" }
 
 [[supply]]
 pins = ["VCC"]

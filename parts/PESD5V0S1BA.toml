@@ -16,7 +16,7 @@ url = "https://www.lcsc.com/datasheet/C19224.pdf"
 pins = ["K1"]
 to = "K2"
 bidirectional = true
-abs_max = { unknown = "the limiting values rate pulses (PPPM, IPPM), not a voltage" }
+abs_max = { none = "the limiting values rate pulses (PPPM, IPPM), not a voltage" }
 recommended = { min = -5, max = 5, page = 4, note = "VRWM reverse standoff voltage 5 V; bidirectional, so ±5 V" }
 breakdown = { min = 5.5, max = 9.5, page = 4, note = "VBR at IR = 1 mA, Tamb = 25 °C" }
 

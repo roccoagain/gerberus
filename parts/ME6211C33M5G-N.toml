@@ -18,20 +18,20 @@ url = "https://www.lcsc.com/datasheet/C82942.pdf"
 [[limit]]
 pins = ["VIN"]
 to = "VSS"
-abs_max = { min = { unknown = "the absolute maximum ratings table gives only a maximum for VIN" }, max = 6.5, page = 5 }
+abs_max = { min = { none = "the absolute maximum ratings table gives only a maximum for VIN" }, max = 6.5, page = 5 }
 recommended = { min = 2, max = 6.0, page = 1, note = "features list: operating voltage range" }
 
 [[limit]]
 pins = ["CE"]
 to = "VSS"
 abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 5 }
-recommended = { unknown = "no CE operating range is given; only VCEH min 1.0 V and VCEL max 0.5 V (page 8, ME6211C33 table)" }
+recommended = { none = "no CE operating range is given; only VCEH min 1.0 V and VCEL max 0.5 V (page 8, ME6211C33 table)" }
 
 [[limit]]
 pins = ["VOUT"]
 to = "VSS"
 abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 5 }
-recommended = { unknown = "VOUT is the regulated output; no separate operating range is given" }
+recommended = { none = "VOUT is the regulated output; no separate operating range is given" }
 
 [[drive]]
 kind = "regulates"

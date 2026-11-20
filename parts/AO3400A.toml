@@ -20,14 +20,14 @@ url = "https://datasheet.lcsc.com/datasheet/pdf/130876b936da464599428c58fd8de8f6
 [[limit]]
 pins = ["D"]
 to = "S"
-abs_max = { min = { unknown = "a negative VDS forward-biases the body diode; it is limited by current (IS), not voltage" }, max = 30, page = 1, note = "VDS drain-source voltage, TA = 25 °C" }
-recommended = { unknown = "no recommended operating conditions are given" }
+abs_max = { min = { none = "a negative VDS forward-biases the body diode; it is limited by current (IS), not voltage" }, max = 30, page = 1, note = "VDS drain-source voltage, TA = 25 °C" }
+recommended = { none = "no recommended operating conditions are given" }
 
 [[limit]]
 pins = ["G"]
 to = "S"
 abs_max = { min = -12, max = 12, page = 1, note = "VGS ±12 V" }
-recommended = { unknown = "no recommended operating conditions are given" }
+recommended = { none = "no recommended operating conditions are given" }
 
 # No [[drive]] for the body diode: gerberus reads a forward drive as setting the cathode net, which is right for
 # a series diode but not for a low-side switch. The channel drive below models the switch. VSD is at most 1 V at

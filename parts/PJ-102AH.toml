@@ -24,17 +24,17 @@ url = "https://www.sameskydevices.com/product/resource/pj-102ah.pdf"
 # measurement, so it is read as the rating (as for any connector's rated voltage).
 [[limit]]
 pins = ["1", "2", "3"]
-abs_max = { unknown = "the sheet gives a rated voltage and a 500 Vac one-minute withstand test, not an absolute maximum" }
+abs_max = { none = "the sheet gives a rated voltage and a 500 Vac one-minute withstand test, not an absolute maximum" }
 recommended = { min = -24, max = 24, page = 1, note = "Specifications: rated input voltage 24 Vdc (printed in the typ column)" }
 
 [[limit]]
 quantity = "current"
 pins = ["1", "2"]
-abs_max = { unknown = "the sheet gives only a rated current" }
+abs_max = { none = "the sheet gives only a rated current" }
 recommended = { min = -5.0, max = 5.0, page = 1, note = "Specifications: rated input current 5.0 A max" }
 
 [[limit]]
 quantity = "current"
 pins = ["3"]
-abs_max = { unknown = "the sheet gives only a rated current" }
-recommended = { unknown = "the rated input current (5.0 A) is the jack's rating; the sheet doesn't say it covers the switch contact" }
+abs_max = { none = "the sheet gives only a rated current" }
+recommended = { none = "the rated input current (5.0 A) is the jack's rating; the sheet doesn't say it covers the switch contact" }

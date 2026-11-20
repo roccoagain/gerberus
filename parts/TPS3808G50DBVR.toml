@@ -59,7 +59,7 @@ recommended = { min = 0.0000003, max = 0.005, page = 5, note = "IRESET RESET pin
 pins = ["CT"]
 to = "GND"
 abs_max = { min = -0.3, max = { pin = "VDD", plus = 0.3 }, page = 5, derived = "-0.3 .. VDD + 0.3; VCT, -0.3 to VDD + 0.3 as printed" }
-recommended = { min = { unknown = "the recommended operating conditions give no minimum for V(Ct)" }, max = { pin = "VDD" }, page = 5, note = "V(Ct) CT pin voltage, max VDD" }
+recommended = { min = { none = "the recommended operating conditions give no minimum for V(Ct)" }, max = { pin = "VDD" }, page = 5, note = "V(Ct) CT pin voltage, max VDD" }
 
 # No [[drive]]: RESET is open drain (page 4), so it only pulls low; VOL max 0.4 V at IOL = 1 mA for
 # 1.8 V ≤ VDD ≤ 6.5 V (page 6). The symbol's pin type says open drain to the checkers.

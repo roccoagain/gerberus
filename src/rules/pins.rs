@@ -105,7 +105,7 @@ pub(super) fn undriven_pins(design: &Design, lib: &Library, volts: &Voltages, r:
                 Driver::Weak => (
                     Verdict::Unknown,
                     format!(
-                        "{reference}.{name} is on {net}, which only open-drain or tri-state outputs, connector pins \
+                        "{reference}.{name} is on {net}, which only open-drain or tri-state outputs, switches, connector pins \
                          or parts gerberus can't model reach, so nothing proves it is driven"
                     ),
                 ),

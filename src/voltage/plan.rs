@@ -324,7 +324,7 @@ impl Plan<'_> {
                             None => (0.0, hi, "; the smallest drop isn't given, so it is taken as 0 V".into()),
                         }
                     }
-                    Range::Unknown(_) => (0.0, None, "; the drop isn't given".into()),
+                    Range::Unknown(_) | Range::None(_) => (0.0, None, "; the drop isn't given".into()),
                 };
                 let raw_min = a.min.zip(vf_hi).map(|(v, d)| v - d);
                 // A diode only lets its anode pull the cathode up: with the anode below 0 V (a supply connected
@@ -358,13 +358,13 @@ impl Plan<'_> {
                 let sup = self.drive.supply.as_deref().unwrap_or("");
                 let (min, max) = match &self.drive.range {
                     Range::Known { min, max, .. } => (bound_at(min, sup, s.min), bound_at(max, sup, s.max)),
-                    Range::Unknown(_) => (None, None),
+                    Range::Unknown(_) | Range::None(_) => (None, None),
                 };
                 let mut min_note = String::new();
                 if let Range::Known { min: lo, max: hi, .. } = &self.drive.range {
                     for (end, b, v) in [("lowest", lo, min), ("highest", hi, max)] {
                         match b {
-                            Bound::Unknown(r) => {
+                            Bound::Unknown(r) | Bound::None(r) => {
                                 let _ = write!(min_note, "; {end} point UNKNOWN: {r}");
                             }
                             _ if v.is_none() => {

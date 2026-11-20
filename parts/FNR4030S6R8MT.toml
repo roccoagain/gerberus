@@ -18,5 +18,5 @@ url = "https://www.lcsc.com/datasheet/C167876.pdf"
 quantity = "current"
 pins = ["1"]
 to = "2"
-abs_max = { unknown = "the datasheet gives saturation and heat-rating currents, not an absolute maximum" }
+abs_max = { none = "the datasheet gives saturation and heat-rating currents, not an absolute maximum" }
 recommended = { min = -1.60, max = 1.60, page = 10, note = "FNR4030S series table: heat rating current Irms 1.60 A max; saturation current Isat 2.75 A max" }

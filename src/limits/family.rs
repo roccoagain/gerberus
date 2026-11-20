@@ -501,11 +501,11 @@ impl Family {
                 let _ = writeln!(t, "\n[pins]\n1 = \"1\"\n2 = \"2\"\n");
                 let _ = writeln!(
                     t,
-                    "[[limit]]\npins = [\"1\"]\nto = \"2\"\nabs_max = {{ unknown = \"the datasheet gives an overload test, not an absolute maximum\" }}\n{limit}\n"
+                    "[[limit]]\npins = [\"1\"]\nto = \"2\"\nabs_max = {{ none = \"the datasheet gives an overload test, not an absolute maximum\" }}\n{limit}\n"
                 );
                 let _ = writeln!(
                     t,
-                    "[[limit]]\nquantity = \"power\"\npins = [\"1\"]\nto = \"2\"\nabs_max = {{ unknown = \"the datasheet gives only the power rating\" }}\nrecommended = {{ min = 0, max = {p}, page = {}{} }}",
+                    "[[limit]]\nquantity = \"power\"\npins = [\"1\"]\nto = \"2\"\nabs_max = {{ none = \"the datasheet gives only the power rating\" }}\nrecommended = {{ min = 0, max = {p}, page = {}{} }}",
                     rating.page,
                     note(&rating.note)
                 );
@@ -541,7 +541,7 @@ impl Family {
                 let _ = writeln!(t, "\n[pins]\n1 = \"1\"\n2 = \"2\"\n");
                 let _ = writeln!(
                     t,
-                    "[[limit]]\npins = [\"1\"]\nto = \"2\"\nabs_max = {{ unknown = \"the datasheet gives a rated voltage and a withstanding-voltage test, not an absolute maximum\" }}\nrecommended = {{ min = -{v}, max = {v}, page = {}{} }}",
+                    "[[limit]]\npins = [\"1\"]\nto = \"2\"\nabs_max = {{ none = \"the datasheet gives a rated voltage and a withstanding-voltage test, not an absolute maximum\" }}\nrecommended = {{ min = -{v}, max = {v}, page = {}{} }}",
                     rating.page,
                     note(&rating.note)
                 );

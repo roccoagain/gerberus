@@ -661,10 +661,10 @@ fn a_floating_gate_leaves_its_channel_maybe_on() {
     assert_eq!(q8.state, ChannelState::Maybe, "{}", q8.reason);
 }
 
-/// A fuse and a net tie are DC shorts, so the net past them takes the driven net's range. A switch may as well be
-/// open, so it doesn't pull the net past it: that net is no better known than with nothing there.
+/// A fuse and a net tie are DC shorts, so the net past them takes the driven net's range. A switch passes the
+/// range while it is closed, but may as well be open, so it doesn't prove the net past it is driven.
 #[test]
-fn fuses_and_net_ties_pass_a_rail_through_but_switches_dont() {
+fn fuses_and_net_ties_pass_a_rail_through_and_switches_may() {
     use gerberus::design::Net;
     let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
     for name in ["FUSED", "TIED", "SWITCHED"] {
@@ -691,11 +691,38 @@ fn fuses_and_net_ties_pass_a_rail_through_but_switches_dont() {
         "{}",
         text(&v, &d, "TIED")
     );
-    assert_ne!(span(&d, &v, "SWITCHED"), span(&d, &v, "+3V3"));
+    assert_eq!(span(&d, &v, "SWITCHED"), span(&d, &v, "+3V3"));
     assert!(
-        text(&v, &d, "SWITCHED").contains("UNKNOWN"),
+        text(&v, &d, "SWITCHED").contains("through switch SW9 from +3V3 while it is closed"),
         "{}",
         text(&v, &d, "SWITCHED")
+    );
+    let i = d.nets.iter().position(|n| n.name == "SWITCHED").unwrap();
+    assert_eq!(v.nets[i].driver, gerberus::voltage::Driver::Weak);
+}
+
+/// A switch from a net that is only pulled up doesn't share that pull: with the switch open, the far side floats.
+#[test]
+fn a_switch_does_not_carry_a_pull_resistor_across() {
+    use gerberus::design::Net;
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    for name in ["MID", "BTN"] {
+        d.nets.push(Net {
+            name: name.into(),
+            pins: vec![],
+            labels: vec![],
+        });
+    }
+    add_part(&mut d, "R99", "Device:R", "+3V3", "MID");
+    add_part(&mut d, "SW99", "Switch:SW_Push", "MID", "BTN");
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    let btn = d.nets.iter().position(|n| n.name == "BTN").unwrap();
+    assert_ne!(v.nets[btn].driver, gerberus::voltage::Driver::Pulled);
+    assert!(
+        text(&v, &d, "BTN").contains("SW99 is a switch to MID"),
+        "{}",
+        text(&v, &d, "BTN")
     );
 }
 

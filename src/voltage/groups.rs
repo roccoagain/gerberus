@@ -1,5 +1,5 @@
-//! Nets no drive reaches: the range of everything that can pull them, through resistors, inductors, LEDs, jumpers
-//! and IC outputs.
+//! Nets no drive reaches: the range of everything that can pull them, through resistors, inductors, LEDs, jumpers,
+//! switches and IC outputs.
 use crate::design::Component;
 use crate::design::{Design, PinKind};
 use crate::inputs::BoardInputs;
@@ -25,6 +25,12 @@ pub(super) struct Group {
 enum Pull {
     /// Through a two-pin part to a driven net.
     Net {
+        via: String,
+        net: usize,
+    },
+    /// Through a switch to a driven net: the net's range while the switch is closed. While it is open, nothing
+    /// passes, so the switch alone doesn't prove the net is driven.
+    Switch {
         via: String,
         net: usize,
     },
@@ -55,7 +61,7 @@ impl Group {
         self.pulls
             .iter()
             .flat_map(|p| match p {
-                Pull::Net { net, .. } => vec![*net],
+                Pull::Net { net, .. } | Pull::Switch { net, .. } => vec![*net],
                 Pull::Channel { net, gate, .. } => vec![*net, *gate],
                 Pull::Output { supplies, .. } => supplies.clone(),
                 Pull::Unknown(_) => vec![],
@@ -106,6 +112,18 @@ impl Group {
                     span_of(out, *net),
                     Why {
                         text: format!("pulled through {via} toward {}{shared}", name(*net)),
+                        from: vec![*net],
+                        bounded: true,
+                        low_floor: out[*net].as_ref().is_some_and(|nv| nv.floor),
+                    },
+                ),
+                Pull::Switch { via, net } => (
+                    span_of(out, *net),
+                    Why {
+                        text: format!(
+                            "through switch {via} from {} while it is closed; while it is open, nothing passes{shared}",
+                            name(*net)
+                        ),
                         from: vec![*net],
                         bounded: true,
                         low_floor: out[*net].as_ref().is_some_and(|nv| nv.floor),
@@ -322,7 +340,18 @@ pub(super) fn build_groups(
                         reactive = true;
                     }
                     let Some(pin) = c.pins.get(pnum) else { continue };
-                    if is_link(lib, c) {
+                    if is_switch(c) {
+                        // A switch doesn't join two groups: the far side's pulls would then count as driving
+                        // this net, which an open switch leaves floating.
+                        match c.pins.values().map(|q| q.net).find(|&q| q != net) {
+                            Some(o) if strong[o] => pulls.push(Pull::Switch { via: r.clone(), net: o }),
+                            Some(o) => pulls.push(Pull::Unknown(format!(
+                                "{r} is a switch to {}, which nothing drives directly",
+                                design.nets[o].name
+                            ))),
+                            None => {}
+                        }
+                    } else if is_link(lib, c) {
                         let other = c.pins.values().map(|q| q.net).find(|&q| q != net);
                         if let Some(o) = other
                             && strong[o]
@@ -390,7 +419,8 @@ pub(super) fn build_groups(
 }
 
 /// A two-pin part a net's voltage passes through, for the fallback range: resistors, inductors and ferrite
-/// beads (and so LEDs, `Device:L*`), net ties and fuses, and jumpers. Not switches: an open one is as likely.
+/// beads (and so LEDs, `Device:L*`), net ties and fuses, and jumpers. Switches are [`is_switch`]: an open one is
+/// as likely as a closed one.
 fn is_link(lib: &Library, c: &Component) -> bool {
     c.pins.len() == 2
         && (c.lib_id.starts_with("Device:R")
@@ -398,4 +428,10 @@ fn is_link(lib: &Library, c: &Component) -> bool {
             || short_kind(c).is_some()
             || c.lib_id.starts_with("Jumper:")
             || matches!(class_of(lib, c), Some(Class::Resistor | Class::Inductor | Class::Led)))
+}
+
+/// A two-pin switch (`Switch:*`, `SW1`): a link while it is closed, nothing while it is open.
+fn is_switch(c: &Component) -> bool {
+    let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
+    c.pins.len() == 2 && (c.lib_id.starts_with("Switch:") || letters.eq_ignore_ascii_case("SW"))
 }

@@ -792,6 +792,10 @@ pub fn check(design: &Design, lib: &Library, levels: &Levels) -> Vec<Finding> {
         for limit in part.limits.iter().filter(|l| l.quantity == Quantity::Voltage) {
             let Some(to) = limit.to.as_deref() else { continue };
             let Some(tn) = pin_net(c, part, to) else { continue };
+            // The datasheet gives no limit at all here: nothing to check.
+            if matches!((&limit.abs_max, &limit.recommended), (Range::None(_), Range::None(_))) {
+                continue;
+            }
             for pin in &limit.pins {
                 let Some(pn) = pin_net(c, part, pin) else { continue };
                 if !levels.carries(pn) {
@@ -875,7 +879,9 @@ fn level(
         (&limit.recommended, Severity::Warning, "recommended range"),
     ] {
         let Range::Known { min, max, page, .. } = range else {
-            unknown.push(format!("the part file gives no {kind}"));
+            if let Range::Unknown(why) = range {
+                unknown.push(format!("its {kind} isn't known yet: {why}"));
+            }
             continue;
         };
         let at = cite(*page);
@@ -918,7 +924,9 @@ fn level(
                         fails.push((sev, format!("past its {kind} cap of {cap} V ({at})")));
                     }
                 }
-                Bound::Unknown(why) => unknown.push(format!("its {kind} doesn't give that end: {why}")),
+                // The datasheet gives no limit at this end, so there is nothing to check.
+                Bound::None(_) => {}
+                Bound::Unknown(why) => unknown.push(format!("its {kind} doesn't give that end yet: {why}")),
             }
         }
     }
