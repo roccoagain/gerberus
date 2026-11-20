@@ -19,5 +19,5 @@ url = "https://www.lcsc.com/datasheet/C780184.pdf"
 quantity = "current"
 pins = ["1"]
 to = "2"
-abs_max = { unknown = "the datasheet gives saturation and heat-rating currents, not an absolute maximum" }
+abs_max = { none = "the datasheet gives saturation and heat-rating currents, not an absolute maximum" }
 recommended = { min = -7.5, max = 7.5, page = 1, note = "Irms 7.5 A (40 °C temperature rise at rated Irms); Isat 12 A (inductance drops 20 %). The table doesn't say whether Irms and Isat are min, typ or max" }

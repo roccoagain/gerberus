@@ -208,6 +208,11 @@ fn rejects_malformed_files() {
         "abs_max = { min = 0, max = 5, pgae = 1 }\nrecommended = { unknown = \"none\" }",
         // A bound that is neither a number, a pin nor an unknown.
         "abs_max = { min = 0, max = { plus = 1 }, page = 1 }\nrecommended = { unknown = \"none\" }",
+        // A `none` with no reason, or mixed with values or with `unknown`.
+        "abs_max = { none = \" \" }\nrecommended = { unknown = \"x\" }",
+        "abs_max = { none = \"x\", min = 0, max = 1 }\nrecommended = { unknown = \"x\" }",
+        "abs_max = { none = \"x\", unknown = \"y\" }\nrecommended = { unknown = \"x\" }",
+        "abs_max = { min = { none = \"x\", unknown = \"y\" }, max = 1, page = 1 }\nrecommended = { unknown = \"x\" }",
     ];
     for limit in bad {
         let text = format!("{HEAD}[[limit]]\npins = [\"A\"]\nto = \"B\"\n{limit}");
@@ -216,6 +221,23 @@ fn rejects_malformed_files() {
             "accepted:\n{text}"
         );
     }
+}
+
+/// `none` is what the datasheet doesn't give; `unknown` is what isn't known yet. Both parse, as a range or as one
+/// end of one.
+#[test]
+fn none_and_unknown_are_told_apart() {
+    let text = format!(
+        "{HEAD}[[limit]]\npins = [\"A\"]\nto = \"B\"\nabs_max = {{ none = \"an output\" }}\n\
+         recommended = {{ min = {{ none = \"forward bias\" }}, max = {{ unknown = \"page unreadable\" }}, page = 1 }}"
+    );
+    let part: gerberus::limits::Part = toml::from_str(&text).unwrap();
+    assert_eq!(part.limits[0].abs_max, Range::None("an output".into()));
+    let Range::Known { min, max, .. } = &part.limits[0].recommended else {
+        panic!()
+    };
+    assert_eq!(*min, Bound::None("forward bias".into()));
+    assert_eq!(*max, Bound::Unknown("page unreadable".into()));
 }
 
 #[test]

@@ -35,7 +35,7 @@ the pin map against the datasheet's pin table, then replace each unread value. F
 
 1. Take it from the right table: absolute maximum ratings → `abs_max`; recommended operating conditions →
    `recommended` (or, where there is no such table, the operating ranges the format guide lists).
-2. Take MIN or MAX, never TYP. If the table gives only TYP, the value is `{ unknown = "only a typical value is
+2. Take MIN or MAX, never TYP. If the table gives only TYP, the value is `{ none = "only a typical value is
    given" }`.
 3. Convert to base units (V, A, W, °C, fractions for %).
 4. Check the conditions: the row for this package and part number, the temperature range, a footnote that
@@ -46,7 +46,9 @@ the pin map against the datasheet's pin table, then replace each unread value. F
    `derived = "3.3 * 0.98 .. 3.3 * 1.02; VOUT(T) x 0.98 to x 1.02"` (see the format guide). `verify` evaluates it.
 7. Re-read the source row against what you wrote.
 
-Anything not given is `{ unknown = "reason" }`. Never fill a gap from another part or from experience.
+Anything the datasheet doesn't give is `{ none = "reason" }`, and that end isn't checked. Anything you couldn't
+settle (the readings disagree, a page is unreadable) is `{ unknown = "reason" }`, which stays UNKNOWN until someone
+settles it. Never fill a gap from another part or from experience.
 
 ## 3. Verify against the pages
 

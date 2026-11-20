@@ -37,13 +37,13 @@ recommended = { min = -12, max = 12, page = 8, note = "receiver common-mode rang
 pins = ["TXD", "SHDN", "S"]
 to = "GND"
 abs_max = { min = -0.3, max = 5, page = 5 }
-recommended = { unknown = "the recommended operating conditions table lists no logic input range; only VIH min 2 V and VIL max 0.8 V (page 8)" }
+recommended = { none = "the recommended operating conditions table lists no logic input range; only VIH min 2 V and VIL max 0.8 V (page 8)" }
 
 [[limit]]
 pins = ["RXD"]
 to = "GND"
 abs_max = { min = -0.3, max = 5, page = 5 }
-recommended = { unknown = "RXD is an output; the recommended operating conditions table lists only its output current" }
+recommended = { none = "RXD is an output; the recommended operating conditions table lists only its output current" }
 
 [[esd]]
 pins = ["TXD", "GND", "VCC", "RXD", "SHDN", "S"]

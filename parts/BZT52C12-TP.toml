@@ -24,12 +24,12 @@ url = "https://www.lcsc.com/datasheet/C668891.pdf"
 [[limit]]
 pins = ["K"]
 to = "A"
-abs_max = { unknown = "the maximum ratings give power (PD 500 mW) and forward voltage, not a reverse voltage: past VZ the reverse voltage is set by the Zener current" }
-recommended = { unknown = "the datasheet has no recommended operating conditions; the reverse-voltage figures are VZ (in breakdown) and the IR test point (0.1 uA max at VR = 8 V, p2)" }
+abs_max = { none = "the maximum ratings give power (PD 500 mW) and forward voltage, not a reverse voltage: past VZ the reverse voltage is set by the Zener current" }
+recommended = { none = "the datasheet has no recommended operating conditions; the reverse-voltage figures are VZ (in breakdown) and the IR test point (0.1 uA max at VR = 8 V, p2)" }
 breakdown = { min = 11.4, max = 12.7, page = 2, note = "VZ at IZT = 5 mA, 25 °C; ZZT 25 ohm max at IZT; temperature coefficient 6.0 to 10.0 mV/°C at IZTC" }
 
 [[drive]]
 kind = "forward"
 pin = "A"
 to = "K"
-range = { min = { unknown = "only a maximum forward voltage is given" }, max = 0.9, page = 1, note = "maximum forward voltage VF at IF = 10 mA" }
+range = { min = { none = "only a maximum forward voltage is given" }, max = 0.9, page = 1, note = "maximum forward voltage VF at IF = 10 mA" }

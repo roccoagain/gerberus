@@ -423,7 +423,7 @@ impl Ctx<'_> {
                     note.as_deref().map(|n| format!(", {n}")).unwrap_or_default()
                 )
             }
-            Range::Unknown(_) => self.part.mpn.clone(),
+            Range::Unknown(_) | Range::None(_) => self.part.mpn.clone(),
         }
     }
 
@@ -623,11 +623,8 @@ fn voltage_rules(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report) 
         };
         let head = format!("{what}: {span}");
 
-        // abs-max. Passives and TVS diodes put their ratings in `recommended` and `breakdown`, so an unknown
-        // abs_max there is expected, not a gap.
-        let skip_abs = matches!(limit.abs_max, Range::Unknown(_)) && (passive || class == Class::Tvs);
-        if !skip_abs {
-            let (vd, why) = verdict(&compare(span, floor, &limit.abs_max, &other));
+        // An end the datasheet gives no limit for has nothing to check; with no end left there is no finding.
+        if let Some((vd, why)) = verdict(&compare(span, floor, &limit.abs_max, &other)) {
             let msg = match vd {
                 Verdict::Pass => format!("{head}, inside abs max ({})", ctx.cite(&limit.abs_max)),
                 _ => format!("{head}: {why} ({})", ctx.cite(&limit.abs_max)),
@@ -640,7 +637,9 @@ fn voltage_rules(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report) 
             Class::Capacitor => cap_voltage(ctx, policy, limit, span, floor, &head, &nets, r),
             Class::Tvs => tvs(ctx, limit, span, floor, &head, &nets, r),
             _ => {
-                let (vd, why) = verdict(&compare(span, floor, &limit.recommended, &other));
+                let Some((vd, why)) = verdict(&compare(span, floor, &limit.recommended, &other)) else {
+                    continue;
+                };
                 let severity = if passive { Severity::Error } else { Severity::Warning };
                 let msg = match vd {
                     Verdict::Pass => format!(

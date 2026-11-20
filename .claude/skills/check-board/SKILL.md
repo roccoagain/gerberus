@@ -44,8 +44,8 @@ It lists the things to add, the ones that settle the most UNKNOWN results first,
   schematic first; use the path it gives.
 
 Every number comes from a datasheet page and is verified with `gerberus datasheet verify`. Never fill a gap from
-memory, from a similar part, or from what would make a check pass. A value the datasheet doesn't give stays
-`{ unknown = "reason" }`.
+memory, from a similar part, or from what would make a check pass. A value the datasheet doesn't give is
+`{ none = "reason" }`; one you couldn't settle stays `{ unknown = "reason" }`.
 
 ## 3. Check
 

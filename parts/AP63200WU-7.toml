@@ -29,25 +29,25 @@ recommended = { min = 3.8, max = 32, page = 4 }
 pins = ["EN"]
 to = "GND"
 abs_max = { min = -0.3, max = 35.0, page = 4 }
-recommended = { unknown = "the recommended operating conditions table lists only VIN" }
+recommended = { none = "the recommended operating conditions table lists only VIN" }
 
 [[limit]]
 pins = ["FB"]
 to = "GND"
 abs_max = { min = -0.3, max = 6.0, page = 4 }
-recommended = { unknown = "the recommended operating conditions table lists only VIN" }
+recommended = { none = "the recommended operating conditions table lists only VIN" }
 
 [[limit]]
 pins = ["SW"]
 to = "GND"
 abs_max = { min = -1.0, max = { pin = "VIN", plus = 0.3 }, page = 4 }
-recommended = { unknown = "the recommended operating conditions table lists only VIN; SW is the switch node" }
+recommended = { none = "the recommended operating conditions table lists only VIN; SW is the switch node" }
 
 [[limit]]
 pins = ["BST"]
 to = "SW"
 abs_max = { min = -0.3, max = 6.0, page = 4 }
-recommended = { unknown = "the recommended operating conditions table lists only VIN" }
+recommended = { none = "the recommended operating conditions table lists only VIN" }
 
 [[drive]]
 kind = "regulates"
@@ -62,7 +62,7 @@ kind = "switches"
 pin = "SW"
 to = "GND"
 supply = "VIN"
-range = { min = { unknown = "the undershoot below GND during dead time is not given" }, max = { unknown = "SW rises above VIN by a body-diode drop during dead time, which is not given" }, page = 2, note = "pin descriptions: SW is the power switching output" }
+range = { min = { none = "the undershoot below GND during dead time is not given" }, max = { none = "SW rises above VIN by a body-diode drop during dead time, which is not given" }, page = 2, note = "pin descriptions: SW is the power switching output" }
 
 [[esd]]
 model = "hbm"

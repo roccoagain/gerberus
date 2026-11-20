@@ -19,12 +19,12 @@ url = "https://www.lcsc.com/datasheet/C25792.pdf"
 [[limit]]
 pins = ["1"]
 to = "2"
-abs_max = { unknown = "the datasheet gives a short-time overload voltage test (2.5 x RCWV, at most 100 V), not an absolute maximum" }
+abs_max = { none = "the datasheet gives a short-time overload voltage test (2.5 x RCWV, at most 100 V), not an absolute maximum" }
 recommended = { min = -50, max = 50, page = 5, note = "max. working voltage for 0402; the rated continuous working voltage sqrt(P x R) also applies, whichever is lower" }
 
 [[limit]]
 quantity = "power"
 pins = ["1"]
 to = "2"
-abs_max = { unknown = "the datasheet gives only the power rating" }
+abs_max = { none = "the datasheet gives only the power rating" }
 recommended = { min = 0, max = 0.0625, page = 4, note = "power rating at 70 C; derated above 70 C" }

@@ -29,8 +29,8 @@ recommended = { min = 3.0, max = 5.5, page = 7, note = "section 5, VDD pin volta
 [[limit]]
 pins = ["MODE", "OUT", "PUSH", "A", "B", "Z"]
 to = "GND"
-abs_max = { unknown = "section 4 (absolute maximum ratings) gives only the VDD pin voltage" }
-recommended = { unknown = "the datasheet gives no input voltage range for the signal pins" }
+abs_max = { none = "section 4 (absolute maximum ratings) gives only the VDD pin voltage" }
+recommended = { none = "the datasheet gives no input voltage range for the signal pins" }
 
 [[esd]]
 model = "hbm"

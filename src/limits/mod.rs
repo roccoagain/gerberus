@@ -1,8 +1,9 @@
 //! Part limits: the voltage, current and power ranges each part's pins may see, taken from its datasheet.
 //!
 //! One TOML file per part number lives in `parts/`. Every known value cites the datasheet page it came from.
-//! A value the datasheet does not give is written as `{ unknown = "reason" }` instead of being guessed, so a
-//! checker can report `UNKNOWN` with that reason. See `parts/README.md` for the file format.
+//! A value the datasheet does not give is written as `{ none = "reason" }` instead of being guessed, and isn't
+//! checked; one not known yet is `{ unknown = "reason" }`, so a checker reports `UNKNOWN` with that reason. See
+//! `parts/README.md` for the file format.
 pub mod family;
 
 use std::collections::BTreeMap;
@@ -354,11 +355,16 @@ pub struct Clamp {
     pub note: Option<String>,
 }
 
-/// A min/max pair, or a reason why the datasheet doesn't give one.
+/// A min/max pair, or a reason why there isn't one.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(try_from = "RawRange")]
 pub enum Range {
+    /// Not known yet: nobody has read it from the datasheet, or the datasheet couldn't be had. A check
+    /// against it is UNKNOWN until someone fills it in.
     Unknown(String),
+    /// The datasheet gives none, such as an output with no voltage rating or a part with no recommended
+    /// operating conditions. There is nothing to check against, so no check is made.
+    None(String),
     Known {
         min: Bound,
         max: Bound,
@@ -383,13 +389,18 @@ pub enum Bound {
         plus: f64,
         at_most: Option<f64>,
     },
+    /// Not known yet, as for [`Range::Unknown`].
     Unknown(String),
+    /// The datasheet gives none, as for [`Range::None`]: a forward-biased junction's end, limited by current
+    /// rather than voltage, or a pin rated only on one side.
+    None(String),
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawRange {
     unknown: Option<String>,
+    none: Option<String>,
     min: Option<Bound>,
     max: Option<Bound>,
     page: Option<u32>,
@@ -401,24 +412,37 @@ impl TryFrom<RawRange> for Range {
     type Error = String;
 
     fn try_from(r: RawRange) -> Result<Range, String> {
+        let reason = |kind: &str, why: String| {
+            if why.trim().is_empty() {
+                Err(format!("`{kind}` needs a reason"))
+            } else {
+                Ok(why)
+            }
+        };
         match r {
             RawRange {
-                unknown: Some(reason),
+                unknown: Some(why),
+                none: None,
                 min: None,
                 max: None,
                 page: None,
                 note: None,
                 derived: None,
-            } => {
-                if reason.trim().is_empty() {
-                    Err("`unknown` needs a reason".into())
-                } else {
-                    Ok(Range::Unknown(reason))
-                }
-            }
-            RawRange { unknown: Some(_), .. } => Err("`unknown` can't be combined with other fields".into()),
+            } => reason("unknown", why).map(Range::Unknown),
             RawRange {
                 unknown: None,
+                none: Some(why),
+                min: None,
+                max: None,
+                page: None,
+                note: None,
+                derived: None,
+            } => reason("none", why).map(Range::None),
+            RawRange { unknown: Some(_), .. } => Err("`unknown` can't be combined with other fields".into()),
+            RawRange { none: Some(_), .. } => Err("`none` can't be combined with other fields".into()),
+            RawRange {
+                unknown: None,
+                none: None,
                 min: Some(min),
                 max: Some(max),
                 page,
@@ -431,7 +455,10 @@ impl TryFrom<RawRange> for Range {
                 note,
                 derived,
             }),
-            _ => Err("a range needs both `min` and `max` (use `{ unknown = \"reason\" }` for a missing one)".into()),
+            _ => Err(
+                "a range needs both `min` and `max` (use `{ none = \"reason\" }` for an end the datasheet doesn't give)"
+                    .into(),
+            ),
         }
     }
 }
@@ -451,10 +478,12 @@ impl<'de> Deserialize<'de> for Bound {
             plus: Option<f64>,
             at_most: Option<f64>,
             unknown: Option<String>,
+            none: Option<String>,
         }
         let bad = || {
             serde::de::Error::custom(
-                "a bound is a number, `{ pin = \"NAME\", plus = X, at_most = Y }` or `{ unknown = \"reason\" }`",
+                "a bound is a number, `{ pin = \"NAME\", plus = X, at_most = Y }`, `{ none = \"reason\" }` or \
+                 `{ unknown = \"reason\" }`",
             )
         };
         match Raw::deserialize(d).map_err(|_| bad())? {
@@ -464,6 +493,7 @@ impl<'de> Deserialize<'de> for Bound {
                 plus,
                 at_most,
                 unknown: None,
+                none: None,
             }) => Ok(Bound::Pin {
                 pin,
                 plus: plus.unwrap_or(0.0),
@@ -474,7 +504,15 @@ impl<'de> Deserialize<'de> for Bound {
                 plus: None,
                 at_most: None,
                 unknown: Some(reason),
+                none: None,
             }) if !reason.trim().is_empty() => Ok(Bound::Unknown(reason)),
+            Raw::Table(RawBound {
+                pin: None,
+                plus: None,
+                at_most: None,
+                unknown: None,
+                none: Some(reason),
+            }) if !reason.trim().is_empty() => Ok(Bound::None(reason)),
             Raw::Table(_) => Err(bad()),
         }
     }
@@ -482,7 +520,7 @@ impl<'de> Deserialize<'de> for Bound {
 
 impl Bound {
     pub fn is_known(&self) -> bool {
-        !matches!(self, Bound::Unknown(_))
+        !matches!(self, Bound::Unknown(_) | Bound::None(_))
     }
 
     /// The bound in volts, given a way to look up another pin's voltage. `None` when the bound is unknown
@@ -494,7 +532,7 @@ impl Bound {
                 let v = pin_voltage(pin)? + plus;
                 Some(at_most.map_or(v, |cap| v.min(cap)))
             }
-            Bound::Unknown(_) => None,
+            Bound::Unknown(_) | Bound::None(_) => None,
         }
     }
 }
@@ -503,7 +541,7 @@ impl Range {
     /// Whether any bound is known, so the range needs a datasheet page.
     fn has_values(&self) -> bool {
         match self {
-            Range::Unknown(_) => false,
+            Range::Unknown(_) | Range::None(_) => false,
             Range::Known { min, max, .. } => min.is_known() || max.is_known(),
         }
     }
@@ -1156,7 +1194,7 @@ pub fn class_default(c: &Component) -> Option<Part> {
             pins: vec![numbers[0].clone()],
             to: Some(numbers[1].clone()),
             bidirectional: false,
-            abs_max: Range::Unknown("class default: only the rated voltage is known".into()),
+            abs_max: Range::None("class default: only the rated voltage is known".into()),
             recommended: Range::Known {
                 min,
                 max: Bound::Value(volts),

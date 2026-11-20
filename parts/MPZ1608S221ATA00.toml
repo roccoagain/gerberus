@@ -19,5 +19,5 @@ url = "https://www.lcsc.com/datasheet/C76815.pdf"
 quantity = "current"
 pins = ["1"]
 to = "2"
-abs_max = { unknown = "the datasheet gives a rated current, not an absolute maximum" }
+abs_max = { none = "the datasheet gives a rated current, not an absolute maximum" }
 recommended = { min = -2.2, max = 2.2, page = 2, note = "rated current 2.2 A max (either direction); derated above 85 °C per the rated current vs. temperature graph (p2)" }

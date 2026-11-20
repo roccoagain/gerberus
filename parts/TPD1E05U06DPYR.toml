@@ -15,8 +15,8 @@ url = "https://www.ti.com/lit/ds/symlink/tpd1e05u06.pdf"
 [[limit]]
 pins = ["I/O"]
 to = "GND"
-abs_max = { unknown = "the maximum ratings table gives only pulse ratings (2.5 A, 40 W at 8/20 µs); there is no DC voltage maximum" }
-recommended = { min = { unknown = "the datasheet gives no negative operating limit" }, max = 5.5, page = 7, note = "reverse stand-off voltage VRWM at IIO < 10 µA" }
+abs_max = { none = "the maximum ratings table gives only pulse ratings (2.5 A, 40 W at 8/20 µs); there is no DC voltage maximum" }
+recommended = { min = { none = "the datasheet gives no negative operating limit" }, max = 5.5, page = 7, note = "reverse stand-off voltage VRWM at IIO < 10 µA" }
 breakdown = { min = 6.5, max = 8.5, page = 7, note = "VBR at IIO = 1 mA" }
 
 [[capacitance]]

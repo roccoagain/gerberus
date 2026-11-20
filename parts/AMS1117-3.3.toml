@@ -20,14 +20,14 @@ url = "https://datasheet.lcsc.com/datasheet/pdf/e6935943fc6b1bbf350a1a0f3e90dc4a
 [[limit]]
 pins = ["VIN"]
 to = "GND"
-abs_max = { min = { unknown = "the absolute maximum ratings give only a maximum input voltage" }, max = 15, page = 2, note = "input voltage" }
+abs_max = { min = { none = "the absolute maximum ratings give only a maximum input voltage" }, max = 15, page = 2, note = "input voltage" }
 recommended = { min = 4.75, max = 15, page = 3, derived = "4.75 .. 15; the lowest specified input (page 3) up to the absolute maximum input (page 2)", note = "no recommended operating conditions are given: the lowest input the AMS1117-3.3 is specified at (load regulation and ripple rejection, VIN = 4.75 V), up to the 15 V absolute maximum (page 2)" }
 
 [[limit]]
 pins = ["VOUT"]
 to = "GND"
-abs_max = { unknown = "no output voltage rating is given" }
-recommended = { unknown = "VOUT is the regulated output; no separate operating range is given" }
+abs_max = { none = "no output voltage rating is given" }
+recommended = { none = "VOUT is the regulated output; no separate operating range is given" }
 
 [[drive]]
 kind = "regulates"

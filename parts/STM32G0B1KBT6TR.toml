@@ -77,7 +77,7 @@ recommended = { min = -0.3, max = { pin = "VDD/VDDA", plus = 0.3 }, page = 68, n
 pins = ["PF2-NRST"]
 to = "VSS/VSSA"
 abs_max = { min = -0.3, max = 4.0, page = 66, note = "Table 12 lists no FT structure for this pin, so the any-other-pin row applies" }
-recommended = { min = -0.3, max = { unknown = "Table 24 gives only the generic I/O range, which is above this pin's 4.0 V absolute maximum" }, page = 68 }
+recommended = { min = -0.3, max = { none = "Table 24 gives only the generic I/O range, which is above this pin's 4.0 V absolute maximum" }, page = 68 }
 
 [[esd]]
 model = "hbm"

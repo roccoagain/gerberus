@@ -51,7 +51,7 @@ recommended = { min = 0, max = 6, page = 5, note = "VRESET output pin voltage" }
 pins = ["CT"]
 to = "GND"
 abs_max = { min = -0.3, max = 6.5, page = 5, note = "VCT" }
-recommended = { min = { unknown = "the recommended operating conditions give only a maximum for VCT" }, max = { pin = "VDD" }, page = 5, note = "VCT max = VDD" }
+recommended = { min = { none = "the recommended operating conditions give only a maximum for VCT" }, max = { pin = "VDD" }, page = 5, note = "VCT max = VDD" }
 
 [[limit]]
 quantity = "current"

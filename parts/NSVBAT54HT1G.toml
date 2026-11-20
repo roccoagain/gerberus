@@ -25,21 +25,21 @@ url = "https://www.onsemi.com/pdf/datasheet/bat54ht1-d.pdf"
 [[limit]]
 pins = ["K"]
 to = "A"
-abs_max = { min = { unknown = "forward bias is limited by current, not voltage" }, max = 30, page = 1, note = "VR reverse voltage, maximum ratings" }
-recommended = { min = { unknown = "forward bias is limited by current, not voltage" }, max = 30, page = 1, note = "VR from the maximum ratings table, the only reverse-voltage rating the datasheet gives (no recommended operating conditions); V(BR)R min 30 V at IR = 10 uA, p2" }
+abs_max = { min = { none = "forward bias is limited by current, not voltage" }, max = 30, page = 1, note = "VR reverse voltage, maximum ratings" }
+recommended = { min = { none = "forward bias is limited by current, not voltage" }, max = 30, page = 1, note = "VR from the maximum ratings table, the only reverse-voltage rating the datasheet gives (no recommended operating conditions); V(BR)R min 30 V at IR = 10 uA, p2" }
 
 [[limit]]
 quantity = "current"
 pins = ["A"]
 to = "K"
-abs_max = { min = { unknown = "reverse current is set by the reverse voltage and is not rated" }, max = 0.2, page = 1, note = "IF forward current (DC), Max column; IFRM 300 mA (1 s pulse, 66 % duty), IFSM 600 mA (tp < 10 ms)" }
-recommended = { min = { unknown = "reverse current is set by the reverse voltage and is not rated" }, max = 0.2, page = 1, note = "IF forward current (DC), the only continuous current rating given; IFRM and IFSM are for pulses only" }
+abs_max = { min = { none = "reverse current is set by the reverse voltage and is not rated" }, max = 0.2, page = 1, note = "IF forward current (DC), Max column; IFRM 300 mA (1 s pulse, 66 % duty), IFSM 600 mA (tp < 10 ms)" }
+recommended = { min = { none = "reverse current is set by the reverse voltage and is not rated" }, max = 0.2, page = 1, note = "IF forward current (DC), the only continuous current rating given; IFRM and IFSM are for pulses only" }
 
 [[drive]]
 kind = "forward"
 pin = "A"
 to = "K"
-range = { min = { unknown = "only maximum forward voltages are given" }, max = 0.8, page = 2, note = "VF max at IF = 100 mA, TA = 25 °C, the highest current with a VF figure; 0.24 V at 0.1 mA, 0.32 V at 1 mA, 0.40 V at 10 mA, 0.50 V at 30 mA" }
+range = { min = { none = "only maximum forward voltages are given" }, max = 0.8, page = 2, note = "VF max at IF = 100 mA, TA = 25 °C, the highest current with a VF figure; 0.24 V at 0.1 mA, 0.32 V at 1 mA, 0.40 V at 10 mA, 0.50 V at 30 mA" }
 
 [[capacitance]]
 pins = ["K"]

@@ -64,8 +64,8 @@ recommended = { min = { pin = "VDD" }, max = 3.6, page = 47, note = "2.4 V minim
 [[limit]]
 pins = ["VDD"]
 to = "VDDA"
-abs_max = { min = { unknown = "the datasheet limits only VDD above VDDA" }, max = 0.4, page = 45 }
-recommended = { min = { unknown = "the datasheet limits only VDD above VDDA" }, max = 0, page = 47, note = "VDDA must be equal to or higher than VDD" }
+abs_max = { min = { none = "the datasheet limits only VDD above VDDA" }, max = 0.4, page = 45 }
+recommended = { min = { none = "the datasheet limits only VDD above VDDA" }, max = 0, page = 47, note = "VDDA must be equal to or higher than VDD" }
 
 # FT and FTf pins supplied by VDD.
 [[limit]]

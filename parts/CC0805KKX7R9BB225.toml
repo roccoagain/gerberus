@@ -17,5 +17,5 @@ url = "https://www.lcsc.com/datasheet/C125847.pdf"
 [[limit]]
 pins = ["1"]
 to = "2"
-abs_max = { unknown = "the datasheet gives a rated voltage and a short withstanding-voltage test, not an absolute maximum" }
+abs_max = { none = "the datasheet gives a rated voltage and a short withstanding-voltage test, not an absolute maximum" }
 recommended = { min = -50, max = 50, page = 2, note = "(4) rated voltage code 9 = 50 V" }

@@ -31,8 +31,8 @@ What is modelled:
   switcher at 100 % efficiency, the least it can draw), and with no soft start, so the regulator's inrush is high;
 - every IC's `[[supply]]` current.
 
-A limit relative to another pin (`max = VDD + 0.3`) is checked against that pin's voltage in the same run. A limit
-whose end the datasheet doesn't give comes out UNKNOWN, not PASS.
+A limit relative to another pin (`max = VDD + 0.3`) is checked against that pin's voltage in the same run. An end
+the datasheet doesn't give (`none`) isn't checked; one not known yet (`unknown`) comes out UNKNOWN, not PASS.
 
 What isn't:
 - Capacitor ESR and IC pins' internal clamps aren't modelled, both of which would damp a peak, so the result

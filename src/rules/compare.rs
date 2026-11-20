@@ -9,6 +9,8 @@ pub(super) enum End {
     Ok,
     Fail(String),
     Unknown(String),
+    /// The datasheet gives no limit at this end, so there is nothing to compare.
+    None,
 }
 
 pub(super) fn v(x: f64) -> String {
@@ -26,8 +28,10 @@ pub(super) fn compare(
     other: &dyn Fn(&str) -> Option<Other>,
 ) -> Vec<End> {
     let Range::Known { min, max, .. } = range else {
-        let Range::Unknown(reason) = range else { unreachable!() };
-        return vec![End::Unknown(format!("the datasheet gives no range: {reason}"))];
+        return match range {
+            Range::Unknown(reason) => vec![End::Unknown(format!("the range isn't known yet: {reason}"))],
+            _ => vec![End::None],
+        };
     };
     let soften = |e: End, f: bool| match e {
         End::Fail(why) if f => End::Unknown(format!(
@@ -52,17 +56,21 @@ pub(super) struct Other {
 
 pub(super) fn bound(seen: Option<f64>, b: &Bound, other: &dyn Fn(&str) -> Option<Other>, is_max: bool) -> End {
     let word = if is_max { "maximum" } else { "minimum" };
+    if let Bound::None(_) = b {
+        return End::None;
+    }
     let Some(x) = seen else {
         return match b {
             Bound::Unknown(reason) => End::Unknown(format!(
-                "the net's {word} is UNKNOWN, and the datasheet gives none: {reason}"
+                "the net's {word} is UNKNOWN, and the {word} isn't known yet: {reason}"
             )),
             _ => End::Unknown(format!("the net's {word} is UNKNOWN")),
         };
     };
     let beyond = |limit: f64| if is_max { x > limit + 1e-9 } else { x < limit - 1e-9 };
     match b {
-        Bound::Unknown(reason) => End::Unknown(format!("the datasheet gives no {word}: {reason}")),
+        Bound::None(_) => End::None,
+        Bound::Unknown(reason) => End::Unknown(format!("the {word} isn't known yet: {reason}")),
         Bound::Value(limit) => {
             if beyond(*limit) {
                 End::Fail(format!("reaches {}, past the {word} of {}", v(x), v(*limit)))
@@ -133,14 +141,18 @@ pub(super) fn bound(seen: Option<f64>, b: &Bound, other: &dyn Fn(&str) -> Option
     }
 }
 
-/// One verdict from several ends: any FAIL fails, else any UNKNOWN is unknown.
-pub(super) fn verdict(ends: &[End]) -> (Verdict, String) {
+/// One verdict from several ends: any FAIL fails, else any UNKNOWN is unknown. `None` when the datasheet
+/// gives no limit at any end, so there is nothing to report.
+pub(super) fn verdict(ends: &[End]) -> Option<(Verdict, String)> {
+    if ends.iter().all(|e| matches!(e, End::None)) {
+        return None;
+    }
     let fails: Vec<&str> = ends
         .iter()
         .filter_map(|e| if let End::Fail(s) = e { Some(s.as_str()) } else { None })
         .collect();
     if !fails.is_empty() {
-        return (Verdict::Fail, fails.join("; "));
+        return Some((Verdict::Fail, fails.join("; ")));
     }
     let unknowns: Vec<&str> = ends
         .iter()
@@ -153,9 +165,9 @@ pub(super) fn verdict(ends: &[End]) -> (Verdict, String) {
         })
         .collect();
     if !unknowns.is_empty() {
-        return (Verdict::Unknown, unknowns.join("; "));
+        return Some((Verdict::Unknown, unknowns.join("; ")));
     }
-    (Verdict::Pass, String::new())
+    Some((Verdict::Pass, String::new()))
 }
 
 /// The size of a voltage of either sign.
@@ -229,6 +241,7 @@ mod tests {
             End::Ok => "ok",
             End::Fail(_) => "fail",
             End::Unknown(_) => "unknown",
+            End::None => "none",
         }
     }
 
@@ -282,9 +295,41 @@ mod tests {
         };
         let ends = compare(Span::new(0.0, 3.5), (true, false), &range, &none);
         assert_eq!(ends.iter().map(is).collect::<Vec<_>>(), ["unknown", "fail"]);
-        assert_eq!(verdict(&ends).0, Verdict::Fail);
+        assert_eq!(verdict(&ends).unwrap().0, Verdict::Fail);
         let ends = compare(Span::new(0.0, 3.2), (true, false), &range, &none);
-        assert_eq!(verdict(&ends).0, Verdict::Unknown);
+        assert_eq!(verdict(&ends).unwrap().0, Verdict::Unknown);
+    }
+
+    /// An end the datasheet gives none for is left out, even when the net's voltage there is unknown; with
+    /// no end left there is nothing to report.
+    #[test]
+    fn ends_the_datasheet_gives_none_for() {
+        let none = |_: &str| None;
+        let forward = Range::Known {
+            min: Bound::None("forward bias is limited by current, not voltage".into()),
+            max: Bound::Value(30.0),
+            page: Some(1),
+            note: None,
+            derived: None,
+        };
+        let ends = compare(
+            Span {
+                min: None,
+                max: Some(12.0),
+            },
+            (false, false),
+            &forward,
+            &none,
+        );
+        assert_eq!(ends.iter().map(is).collect::<Vec<_>>(), ["none", "ok"]);
+        assert_eq!(verdict(&ends).unwrap().0, Verdict::Pass);
+        let ends = compare(
+            Span::new(0.0, 5.0),
+            (false, false),
+            &Range::None("an output".into()),
+            &none,
+        );
+        assert!(verdict(&ends).is_none());
     }
 
     /// Magnitude takes its floor from the end it comes from.

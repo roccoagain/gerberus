@@ -454,7 +454,7 @@ fn range_claims(label: &str, r: &Range, unit: Unit, context: &[String], out: &mu
                     plus: *plus,
                 }
             }
-            Bound::Unknown(_) => continue,
+            Bound::Unknown(_) | Bound::None(_) => continue,
         };
         out.push(Claim {
             label: format!("{label} {end}"),

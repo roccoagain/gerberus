@@ -111,7 +111,7 @@ pub enum Driver {
     Strong,
     /// A resistor path to a driven net, or a push-pull or bidirectional output pin.
     Pulled,
-    /// Only open-drain or tri-state outputs, connector pins or parts gerberus can't model: nothing proves the
+    /// Only open-drain or tri-state outputs, switches, connector pins or parts gerberus can't model: nothing proves the
     /// net is driven.
     Weak,
     /// Nothing at all.

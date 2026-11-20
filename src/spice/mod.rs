@@ -183,6 +183,8 @@ fn part_of<'a>(lib: &'a Library, c: &crate::design::Component) -> Option<std::bo
 /// What one end of a limit says about the sweep.
 enum Side {
     Inside,
+    /// The datasheet gives no limit at this end.
+    None,
     /// Past the limit: why, and the run that went furthest.
     Past(String, usize),
     Unknown(String),
@@ -225,6 +227,7 @@ fn side(sweep: &Sweep, at: &At<'_>, bound: &Bound, upper: bool) -> Side {
             min_run,
         ),
         Bound::Value(_) => Side::Inside,
+        Bound::None(_) => Side::None,
         Bound::Unknown(why) => Side::Unknown(format!("its {kind} has no known {end} ({why})")),
         Bound::Pin { pin, plus, at_most } => {
             let Some(rn) = sweep.circuit.pin_net(at.c, at.part, pin) else {
@@ -398,9 +401,14 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                 let sides = match range {
                     Range::Known { min, max, .. } => vec![side(sweep, &at, max, true), side(sweep, &at, min, false)],
                     // A protection part's breakdown covers it.
-                    Range::Unknown(_) if breakdown.is_some() => vec![],
+                    Range::Unknown(_) | Range::None(_) if breakdown.is_some() => vec![],
+                    Range::None(_) => vec![Side::None],
                     Range::Unknown(why) => vec![Side::Unknown(format!("its {kind} isn't known ({why})"))],
                 };
+                // The datasheet gives no limit at either end: nothing to report.
+                if !sides.is_empty() && sides.iter().all(|s| matches!(s, Side::None)) {
+                    continue;
+                }
                 if let Some((why, run)) = sides.iter().find_map(|s| match s {
                     Side::Past(why, run) => Some((why, *run)),
                     _ => None,

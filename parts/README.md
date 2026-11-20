@@ -3,8 +3,11 @@
 One TOML file per part number. Each says which voltages, currents and power a part's pins may see, and where in
 the datasheet that comes from. Checkers compare these with the voltage range they work out for each net.
 
-**Never invent a value.** If the datasheet doesn't give it, write `{ unknown = "reason" }`. A checker reports
-`UNKNOWN` with that reason instead of passing or failing.
+**Never invent a value.** If the datasheet doesn't give it, write `{ none = "reason" }`: there is nothing to
+check against, so that end isn't checked (an output with no voltage rating, a part with no recommended operating
+conditions, the forward-biased end of a diode, which current limits rather than voltage). If it isn't known yet
+(nobody has read it, or the datasheet can't be had), write `{ unknown = "reason" }`: a checker reports `UNKNOWN`
+with that reason, and `gerberus doctor` lists the file to fill in.
 
 ## Format
 
@@ -44,7 +47,8 @@ stay out. A pin named `DNC` (do not connect) must not be wired to anything; `NC`
 
 ### Ranges
 
-A range is either `{ min = ..., max = ..., page = N, note = "..." }` or `{ unknown = "reason" }`.
+A range is `{ min = ..., max = ..., page = N, note = "..." }`, `{ none = "reason" }` (the datasheet gives none)
+or `{ unknown = "reason" }` (not known yet).
 
 - `page` is the 1-based page of the PDF at `url` (not the printed page number). It is required whenever a bound
   is known.
@@ -60,7 +64,8 @@ A range is either `{ min = ..., max = ..., page = N, note = "..." }` or `{ unkno
   - another pin of the same part: `{ pin = "VIN", plus = 0.3 }`, optionally capped:
     `{ pin = "VDD", plus = 3.6, at_most = 5.5 }` means min(VDD + 3.6 V, 5.5 V). The other pin's voltage is
     measured from the limit's `to` pin. `at_most` only goes on `max`.
-  - `{ unknown = "reason" }`, for a datasheet that gives only one end
+  - `{ none = "reason" }`, for a datasheet that gives only one end
+  - `{ unknown = "reason" }`, for an end not known yet
 
 ### Fields of a limit
 
@@ -95,7 +100,7 @@ kind = "switches"      # a switch node; its range may follow the supply pin
 pin = "SW"
 to = "GND"
 supply = "VIN"
-range = { min = { unknown = "undershoot below GND isn't given" }, max = { unknown = "overshoot above VIN isn't given" }, page = 3 }
+range = { min = { none = "undershoot below GND isn't given" }, max = { none = "overshoot above VIN isn't given" }, page = 3 }
 
 [[drive]]
 kind = "biases"        # an input the part biases itself, such as an amplifier's AC-coupled input
@@ -108,7 +113,7 @@ range = { min = 1.2, max = 1.4, page = 7, note = "input bias voltage, VDD = 2.7 
 kind = "forward"       # a diode conducting from `pin` (anode) to `to` (cathode) drops `range`
 pin = "A"
 to = "K"
-range = { min = { unknown = "only a maximum is given" }, max = 0.6, page = 1, note = "at IF = 1 A" }
+range = { min = { none = "only a maximum is given" }, max = 0.6, page = 1, note = "at IF = 1 A" }
 
 [[drive]]
 kind = "channel"       # a MOSFET channel from `pin` (drain) to `to` (source), switched by `gate`
@@ -129,7 +134,7 @@ range = { min = 1.8, max = 2.4, page = 3, note = "VF at IF = 20 mA" }
 A `biases` drive sets the input's net only when nothing but capacitors share it (an AC-coupled input); with a
 resistor or another part's pin on the net, the net is worked out as usual and the bias is ignored. It counts as
 a pull, so `floating-input` passes. Its range works like a switch node's: a number, or another pin plus an
-offset. Give `{ unknown = "..." }` when the datasheet says the input is biased internally but not to what.
+offset. Give `{ none = "..." }` when the datasheet says the input is biased internally but not to what.
 `stress` doesn't model the bias: in its runs the input sits at whatever its capacitor couples in.
 
 On a part with no part file, an input reached only through capacitors is `UNKNOWN` rather than a FAIL when it is
@@ -452,10 +457,12 @@ down to the inputs it comes from. It starts from `inputs.toml` (the `to` pins ar
 - **MOSFET channels** (`channel`): off, fully on or maybe on, from the gate against both ends. A channel that
   isn't off pulls each end toward the other, no further than the gate; one that is off pulls nothing.
 - **Net ties (any number of pins), fuses and ferrite beads** are DC shorts: the net on the far side takes the
-  driven net's range. Switches are not followed, as an open switch is as likely as a closed one.
+  driven net's range.
 - **Everything else**: the union of what can pull the net: nets reached through resistors, inductors, LEDs,
   jumpers and two-pin switches (capacitors count as open, TVS diodes as off), and IC output pins, which reach at most their part's
-  highest supply. A pin of any other part that isn't an input makes the net UNKNOWN.
+  highest supply. A pin of any other part that isn't an input makes the net UNKNOWN. A switch passes its range
+  only while it is closed, so a net only switches reach isn't proven driven: an input there is UNKNOWN for
+  `floating-input`, as a pushbutton with no pull resistor leaves it floating.
 
 A net with a connector pin that `inputs.toml` doesn't describe is UNKNOWN, as is anything that needs a number
 nobody gave. Each unknown end says why. An input sets its whole net, so other connector pins on that net (a

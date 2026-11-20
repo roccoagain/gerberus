@@ -40,13 +40,13 @@ recommended = { min = 0, max = 4.5, page = 4 }
 pins = ["SW"]
 to = "GND"
 abs_max = { min = -0.3, max = { pin = "VIN", plus = 0.3 }, page = 4, note = "–3.5 V to 38 V for transients under 10 ns" }
-recommended = { unknown = "the recommended operating conditions table lists no SW range; SW is the switch node" }
+recommended = { none = "the recommended operating conditions table lists no SW range; SW is the switch node" }
 
 [[limit]]
 pins = ["CB"]
 to = "SW"
 abs_max = { min = -0.3, max = 5.5, page = 4 }
-recommended = { unknown = "the recommended operating conditions table lists no CB-to-SW range" }
+recommended = { none = "the recommended operating conditions table lists no CB-to-SW range" }
 
 [[drive]]
 kind = "regulates"
@@ -62,7 +62,7 @@ kind = "switches"
 pin = "SW"
 to = "GND"
 supply = "VIN"
-range = { min = { unknown = "the undershoot below GND during dead time is not given" }, max = { unknown = "SW rises above VIN by a body-diode drop during dead time, which is not given" }, page = 3, note = "pin functions: SW connects to the high-side FET source and the low-side FET drain" }
+range = { min = { none = "the undershoot below GND during dead time is not given" }, max = { none = "SW rises above VIN by a body-diode drop during dead time, which is not given" }, page = 3, note = "pin functions: SW connects to the high-side FET source and the low-side FET drain" }
 
 [[esd]]
 model = "hbm"

@@ -21,7 +21,7 @@ pub(super) fn tvs(
     if let Some(bd) = &limit.breakdown {
         let lowest = match bd {
             Range::Known { min, .. } => value_of(min),
-            Range::Unknown(_) => None,
+            Range::Unknown(_) | Range::None(_) => None,
         };
         let (seen, on_floor) = if limit.bidirectional {
             (magnitude(span).max, magnitude_floor(span, floor))
@@ -62,7 +62,7 @@ pub(super) fn tvs(
     // like every recommended range.
     let (lo, hi) = match &limit.recommended {
         Range::Known { min, max, .. } => (value_of(min), value_of(max)),
-        Range::Unknown(_) => (None, None),
+        Range::Unknown(_) | Range::None(_) => (None, None),
     };
     let src = ctx.cite(&limit.recommended);
     let mut fails = vec![];
@@ -125,7 +125,7 @@ pub(super) fn cap_voltage(
 ) {
     let (rmin, rmax) = match &limit.recommended {
         Range::Known { min, max, .. } => (value_of(min), value_of(max)),
-        Range::Unknown(_) => (None, None),
+        Range::Unknown(_) | Range::None(_) => (None, None),
     };
     let source = if ctx.part.datasheet.is_some() {
         ctx.cite(&limit.recommended)
@@ -231,7 +231,7 @@ pub(super) fn resistor_power(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &
     );
     let rated = match &limit.recommended {
         Range::Known { max, .. } => value_of(max),
-        Range::Unknown(_) => None,
+        Range::Unknown(_) | Range::None(_) => None,
     };
     let (vd, severity, msg) = match (across.max, smallest_resistance(ctx), rated) {
         (None, ..) => (

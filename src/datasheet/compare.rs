@@ -50,7 +50,7 @@ pub fn blank(toml_text: &str) -> Result<String, String> {
     clear(&mut doc);
     let mut out = String::from(
         "# Second reading: replace every \"?\" with what the datasheet says, in the format of parts/README.md.\n\
-         # Write { unknown = \"reason\" } where it gives nothing. Don't look at the first reading.\n",
+         # Write { none = \"reason\" } where it gives nothing. Don't look at the first reading.\n",
     );
     out.push_str(&toml::to_string(&doc).map_err(|e| e.to_string())?);
     Ok(out)
@@ -78,6 +78,7 @@ fn show_bound(b: &Bound) -> String {
             s
         }
         Bound::Unknown(_) => "unknown".into(),
+        Bound::None(_) => "none".into(),
     }
 }
 
@@ -104,7 +105,7 @@ fn same_bound(a: &Bound, b: &Bound) -> bool {
                     _ => false,
                 }
         }
-        (Bound::Unknown(_), Bound::Unknown(_)) => true,
+        (Bound::Unknown(_) | Bound::None(_), Bound::Unknown(_) | Bound::None(_)) => true,
         _ => false,
     }
 }
@@ -113,6 +114,7 @@ fn compare_range(at: &str, a: Option<&Range>, b: Option<&Range>, out: &mut Vec<D
     let show = |r: Option<&Range>| match r {
         None => "absent".to_string(),
         Some(Range::Unknown(_)) => "unknown".to_string(),
+        Some(Range::None(_)) => "none".to_string(),
         Some(Range::Known { min, max, page, .. }) => format!(
             "{} .. {} (page {})",
             show_bound(min),
@@ -129,7 +131,7 @@ fn compare_range(at: &str, a: Option<&Range>, b: Option<&Range>, out: &mut Vec<D
     };
     let (a2, b2) = (blank(a), blank(b));
     let same = match (a2.as_ref(), b2.as_ref()) {
-        (None, None) | (Some(Range::Unknown(_)), Some(Range::Unknown(_))) => true,
+        (None, None) | (Some(Range::Unknown(_) | Range::None(_)), Some(Range::Unknown(_) | Range::None(_))) => true,
         (
             Some(Range::Known {
                 min: m1,

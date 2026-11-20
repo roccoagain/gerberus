@@ -128,7 +128,7 @@ fn forward(part: Option<&Part>, led: bool) -> (f64, f64) {
                 (Bound::Value(v), _) | (_, Bound::Value(v)) => Some(*v),
                 _ => None,
             },
-            Range::Unknown(_) => None,
+            Range::Unknown(_) | Range::None(_) => None,
         })
         .unwrap_or(if led { 1.8 } else { 0.7 });
     let at = drive.and_then(|d| d.current).unwrap_or(if led { 0.02 } else { 1.0 });
@@ -152,7 +152,7 @@ fn breakdown_at(r: &Range) -> Option<f64> {
             (Bound::Value(v), _) | (_, Bound::Value(v)) => Some(*v),
             _ => None,
         },
-        Range::Unknown(_) => None,
+        Range::Unknown(_) | Range::None(_) => None,
     }
 }
 
@@ -216,7 +216,7 @@ impl Circuit {
                     .into_iter()
                     .filter_map(|r| match r {
                         Range::Known { min, max, .. } => Some([min, max]),
-                        Range::Unknown(_) => None,
+                        Range::Unknown(_) | Range::None(_) => None,
                     })
                     .flatten()
                     .filter_map(|bound| match bound {

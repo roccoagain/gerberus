@@ -108,7 +108,7 @@ fn number(b: &Bound) -> Option<f64> {
 fn range_ends(r: &Range) -> (Option<f64>, Option<f64>) {
     match r {
         Range::Known { min, max, .. } => (number(min), number(max)),
-        Range::Unknown(_) => (None, None),
+        Range::Unknown(_) | Range::None(_) => (None, None),
     }
 }
 

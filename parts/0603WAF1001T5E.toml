@@ -19,12 +19,12 @@ url = "https://www.lcsc.com/datasheet/C21190.pdf"
 [[limit]]
 pins = ["1"]
 to = "2"
-abs_max = { unknown = "the datasheet gives a short-time overload voltage test (2.5 x RCWV, at most 150 V), not an absolute maximum" }
+abs_max = { none = "the datasheet gives a short-time overload voltage test (2.5 x RCWV, at most 150 V), not an absolute maximum" }
 recommended = { min = -10, max = 10, page = 5, derived = "-sqrt(0.1 * 1000) .. sqrt(0.1 * 1000); RCWV = sqrt(P x R), with P from the power rating and R from the part number, below the 0603 max working voltage 75 V; non-polar, so the same magnitude applies in both directions", note = "Section 9 voltage rating: rated continuous DC or RMS AC working voltage RCWV = sqrt(P x R), never above the Max. Working Voltage (75 V for 0603, section 7 Ratings); P = 1/10 W at 70 C ambient" }
 
 [[limit]]
 quantity = "power"
 pins = ["1"]
 to = "2"
-abs_max = { unknown = "the datasheet gives only the power rating" }
+abs_max = { none = "the datasheet gives only the power rating" }
 recommended = { min = 0, max = 0.1, page = 4, note = "power rating at 70 C; derated above 70 C" }

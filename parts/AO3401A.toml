@@ -18,14 +18,14 @@ url = "https://www.lcsc.com/datasheet/C15127.pdf"
 [[limit]]
 pins = ["D"]
 to = "S"
-abs_max = { min = -30, max = { unknown = "a positive VDS forward-biases the body diode; it is limited by current (IS), not voltage" }, page = 1, note = "VDS drain-source voltage, TA = 25 °C" }
-recommended = { unknown = "no recommended operating conditions are given" }
+abs_max = { min = -30, max = { none = "a positive VDS forward-biases the body diode; it is limited by current (IS), not voltage" }, page = 1, note = "VDS drain-source voltage, TA = 25 °C" }
+recommended = { none = "no recommended operating conditions are given" }
 
 [[limit]]
 pins = ["G"]
 to = "S"
 abs_max = { min = -12, max = 12, page = 1, note = "VGS ±12 V" }
-recommended = { unknown = "no recommended operating conditions are given" }
+recommended = { none = "no recommended operating conditions are given" }
 
 # The body diode conducts from drain to source. With the gate driven, the channel bypasses it, so the drop can
 # be close to 0 V; the datasheet gives only its maximum. gerberus reads a forward drive as setting the source
@@ -36,7 +36,7 @@ recommended = { unknown = "no recommended operating conditions are given" }
 kind = "forward"
 pin = "D"
 to = "S"
-range = { min = { unknown = "only a maximum is given, and the channel can bypass the diode" }, max = 1, page = 2, note = "VSD diode forward voltage magnitude, IS = –1 A, VGS = 0 V (printed –1 V for this P-channel part)" }
+range = { min = { none = "only a maximum is given, and the channel can bypass the diode" }, max = 1, page = 2, note = "VSD diode forward voltage magnitude, IS = –1 A, VGS = 0 V (printed –1 V for this P-channel part)" }
 
 # The channel: VGS(th) is given at 25 °C only, so gerberus takes the threshold as 0 V. RDS(on) is given down to
 # VGS = -2.5 V, so past that the channel counts as fully on.

@@ -15,7 +15,7 @@ url = "https://www.lcsc.com/datasheet/C173513.pdf"
 [[limit]]
 pins = ["K"]
 to = "A"
-abs_max = { unknown = "the maximum ratings table gives only pulse ratings (400 W peak pulse power, 40 A forward surge); there is no DC voltage maximum" }
-recommended = { min = { unknown = "the datasheet gives no forward-bias operating range" }, max = 18.0, page = 2, note = "reverse stand-off voltage VRWM" }
+abs_max = { none = "the maximum ratings table gives only pulse ratings (400 W peak pulse power, 40 A forward surge); there is no DC voltage maximum" }
+recommended = { min = { none = "the datasheet gives no forward-bias operating range" }, max = 18.0, page = 2, note = "reverse stand-off voltage VRWM" }
 breakdown = { min = 20.00, max = 22.10, page = 2, note = "VBR at IT = 1 mA; clamps at 29.2 V at IPP = 13.7 A" }
 clamp = { volts = 29.2, current = 13.7, page = 2, note = "VC maximum clamping voltage at IPP, 10/1000 us waveform" }

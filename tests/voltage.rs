@@ -661,10 +661,10 @@ fn a_floating_gate_leaves_its_channel_maybe_on() {
     assert_eq!(q8.state, ChannelState::Maybe, "{}", q8.reason);
 }
 
-/// A fuse and a net tie are DC shorts, so the net past them takes the driven net's range. A switch may as well be
-/// open, so it doesn't pull the net past it: that net is no better known than with nothing there.
+/// A fuse and a net tie are DC shorts, so the net past them takes the driven net's range. A switch passes the
+/// range while it is closed, but may as well be open, so it doesn't prove the net past it is driven.
 #[test]
-fn fuses_and_net_ties_pass_a_rail_through_but_switches_dont() {
+fn fuses_and_net_ties_pass_a_rail_through_and_switches_may() {
     use gerberus::design::Net;
     let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
     for name in ["FUSED", "TIED", "SWITCHED"] {
@@ -691,12 +691,14 @@ fn fuses_and_net_ties_pass_a_rail_through_but_switches_dont() {
         "{}",
         text(&v, &d, "TIED")
     );
-    assert_ne!(span(&d, &v, "SWITCHED"), span(&d, &v, "+3V3"));
+    assert_eq!(span(&d, &v, "SWITCHED"), span(&d, &v, "+3V3"));
     assert!(
-        text(&v, &d, "SWITCHED").contains("UNKNOWN"),
+        text(&v, &d, "SWITCHED").contains("through switch SW9 from +3V3 while it is closed"),
         "{}",
         text(&v, &d, "SWITCHED")
     );
+    let i = d.nets.iter().position(|n| n.name == "SWITCHED").unwrap();
+    assert_eq!(v.nets[i].driver, gerberus::voltage::Driver::Weak);
 }
 
 /// A net tie with three pins joins all three nets.

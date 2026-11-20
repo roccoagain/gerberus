@@ -27,17 +27,17 @@ url = "https://www.sameskydevices.com/product/resource/sj3-3506x.pdf"
 # measurement, so it is read as the rating (as for any connector's rated voltage).
 [[limit]]
 pins = ["sleeve", "ring", "tip", "isolated ring", "isolated ring switch (N-O)"]
-abs_max = { unknown = "the sheet gives a rated voltage and a 500 Vac one-minute withstand test, not an absolute maximum" }
+abs_max = { none = "the sheet gives a rated voltage and a 500 Vac one-minute withstand test, not an absolute maximum" }
 recommended = { min = -12, max = 12, page = 1, note = "Specifications: rated input voltage 12 Vdc (printed in the typ column)" }
 
 [[limit]]
 quantity = "current"
 pins = ["sleeve", "ring", "tip"]
-abs_max = { unknown = "the sheet gives only a rated current" }
+abs_max = { none = "the sheet gives only a rated current" }
 recommended = { min = -1, max = 1, page = 1, note = "Specifications: rated input current 1 A max" }
 
 [[limit]]
 quantity = "current"
 pins = ["isolated ring", "isolated ring switch (N-O)"]
-abs_max = { unknown = "the sheet gives only a rated current" }
-recommended = { unknown = "the rated input current (1 A) is the jack's rating; the sheet doesn't say it covers the isolated switch contacts" }
+abs_max = { none = "the sheet gives only a rated current" }
+recommended = { none = "the rated input current (1 A) is the jack's rating; the sheet doesn't say it covers the isolated switch contacts" }
