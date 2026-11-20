@@ -701,6 +701,31 @@ fn fuses_and_net_ties_pass_a_rail_through_and_switches_may() {
     assert_eq!(v.nets[i].driver, gerberus::voltage::Driver::Weak);
 }
 
+/// A switch from a net that is only pulled up doesn't share that pull: with the switch open, the far side floats.
+#[test]
+fn a_switch_does_not_carry_a_pull_resistor_across() {
+    use gerberus::design::Net;
+    let (mut d, inputs) = board("can-encoder", "can-encoder.kicad_sch");
+    for name in ["MID", "BTN"] {
+        d.nets.push(Net {
+            name: name.into(),
+            pins: vec![],
+            labels: vec![],
+        });
+    }
+    add_part(&mut d, "R99", "Device:R", "+3V3", "MID");
+    add_part(&mut d, "SW99", "Switch:SW_Push", "MID", "BTN");
+    let lib = Library::load_dir(&root("parts")).unwrap();
+    let v = compute(&d, &lib, &inputs);
+    let btn = d.nets.iter().position(|n| n.name == "BTN").unwrap();
+    assert_ne!(v.nets[btn].driver, gerberus::voltage::Driver::Pulled);
+    assert!(
+        text(&v, &d, "BTN").contains("SW99 is a switch to MID"),
+        "{}",
+        text(&v, &d, "BTN")
+    );
+}
+
 /// A net tie with three pins joins all three nets.
 #[test]
 fn a_three_pin_net_tie_joins_every_net() {

@@ -7,7 +7,8 @@ the datasheet that comes from. Checkers compare these with the voltage range the
 check against, so that end isn't checked (an output with no voltage rating, a part with no recommended operating
 conditions, the forward-biased end of a diode, which current limits rather than voltage). If it isn't known yet
 (nobody has read it, or the datasheet can't be had), write `{ unknown = "reason" }`: a checker reports `UNKNOWN`
-with that reason, and `gerberus doctor` lists the file to fill in.
+with that reason until someone fills it in. `none` skips the check only in a limit's `abs_max` and `recommended`;
+a `breakdown` or a `[[drive]]` range needs the number, so a `none` end there leaves what rests on it UNKNOWN.
 
 ## Format
 

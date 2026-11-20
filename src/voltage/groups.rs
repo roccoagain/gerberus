@@ -255,7 +255,7 @@ pub(super) fn build_groups(
         r
     }
     for c in design.components.values() {
-        if c.dnp || !(is_link(lib, c) || is_switch(c)) {
+        if c.dnp || !is_link(lib, c) {
             continue;
         }
         let nets: Vec<usize> = c.pins.values().map(|p| p.net).collect();
@@ -340,16 +340,23 @@ pub(super) fn build_groups(
                         reactive = true;
                     }
                     let Some(pin) = c.pins.get(pnum) else { continue };
-                    if is_link(lib, c) || is_switch(c) {
+                    if is_switch(c) {
+                        // A switch doesn't join two groups: the far side's pulls would then count as driving
+                        // this net, which an open switch leaves floating.
+                        match c.pins.values().map(|q| q.net).find(|&q| q != net) {
+                            Some(o) if strong[o] => pulls.push(Pull::Switch { via: r.clone(), net: o }),
+                            Some(o) => pulls.push(Pull::Unknown(format!(
+                                "{r} is a switch to {}, which nothing drives directly",
+                                design.nets[o].name
+                            ))),
+                            None => {}
+                        }
+                    } else if is_link(lib, c) {
                         let other = c.pins.values().map(|q| q.net).find(|&q| q != net);
                         if let Some(o) = other
                             && strong[o]
                         {
-                            pulls.push(if is_switch(c) {
-                                Pull::Switch { via: r.clone(), net: o }
-                            } else {
-                                Pull::Net { via: r.clone(), net: o }
-                            });
+                            pulls.push(Pull::Net { via: r.clone(), net: o });
                         }
                     } else if is_connector(lib, c) {
                         if is_undriven(inputs, r, pnum) {
