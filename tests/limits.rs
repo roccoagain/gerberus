@@ -613,7 +613,7 @@ fn resistors_give_their_tolerance() {
     assert!(missing.is_empty(), "no tolerance: {missing:?}");
 }
 
-/// A released binary has no `parts/` or `policy.toml` beside it, so it uses the copies built into it. They must
+/// An installed binary has no `parts/` or `policy.toml` beside it, so it uses the copies built into it. They must
 /// be the files in this repository.
 #[test]
 fn built_in_library_and_policy_match_the_files() {

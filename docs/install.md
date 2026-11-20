@@ -1,26 +1,16 @@
 # Installing and updating
 
-On macOS or Linux:
+Gerberus is built from source. Install [Rust](https://rustup.rs) and git, then:
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.sh | sh
+git clone https://github.com/roccoagain/gerberus
+cd gerberus
+cargo install --locked --path .
 ```
 
-On Windows, in PowerShell:
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/roccoagain/gerberus/releases/latest/download/gerberus-installer.ps1 | iex"
-```
-
-The installer downloads the release built for your machine (macOS on Apple silicon or Intel, Linux on x86-64 or
-ARM64 with glibc 2.35 or newer, Windows on x86-64) and puts `gerberus` and `gerberus-update` in `~/.cargo/bin`
-(`$CARGO_HOME/bin` if you set it), adding that folder to your `PATH` if it isn't there. The [releases
-page](https://github.com/roccoagain/gerberus/releases) also has each build as a plain archive, with checksums. To
-build it yourself instead, with Rust installed:
-
-```sh
-cargo install --locked --git https://github.com/roccoagain/gerberus
-```
+This builds `gerberus` and puts it in `~/.cargo/bin` (`$CARGO_HOME/bin` if you set it), which the Rust installer
+adds to your `PATH`. It builds on macOS, Linux and Windows. To run it from the clone without installing, use
+`cargo run --release -- <command>`, such as `cargo run --release -- check board.kicad_sch`.
 
 The shared part library (`parts/`) and the derating policy (`policy.toml`) are built into the binary, so it needs
 nothing else beside it. `gerberus datasheet verify` also needs poppler's `pdftotext` (`brew install poppler`,
@@ -28,6 +18,5 @@ nothing else beside it. `gerberus datasheet verify` also needs poppler's `pdftot
 
 ## Updating
 
-Run `gerberus-update`, which the installer put next to `gerberus`. A copy built with `cargo install` has no
-updater: run the same `cargo install` command again.
+In the clone, run `git pull`, then the same `cargo install --locked --path .` again.
 `gerberus --version` prints the version you have.

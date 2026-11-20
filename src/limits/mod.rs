@@ -983,7 +983,7 @@ impl Library {
         Ok(lib)
     }
 
-    /// The shared library in `parts/` at the root of this repository, built into the binary so a released
+    /// The shared library in `parts/` at the root of this repository, built into the binary so an installed
     /// `gerberus` needs no checkout. Each part's file shows as `parts/<file> (built in)`.
     pub fn builtin() -> Result<Library, String> {
         let mut lib = Library::default();

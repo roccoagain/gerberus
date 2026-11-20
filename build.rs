@@ -1,4 +1,4 @@
-//! Embeds the shared part library (`parts/*.toml`) and the default `policy.toml` in the binary, so a released
+//! Embeds the shared part library (`parts/*.toml`) and the default `policy.toml` in the binary, so an installed
 //! `gerberus` works without a checkout of this repository next to it.
 use std::fmt::Write as _;
 use std::path::Path;
