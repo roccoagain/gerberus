@@ -609,6 +609,33 @@ impl Part {
             || self.drives.iter().any(|d| unread(&d.range))
     }
 
+    /// The reasons of every value the file marks `{ unknown = "..." }`, not known yet, each once.
+    pub fn unknowns(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = vec![];
+        let ranges = self
+            .limits
+            .iter()
+            .flat_map(|l| [Some(&l.abs_max), Some(&l.recommended), l.breakdown.as_ref()])
+            .flatten()
+            .chain(self.drives.iter().map(|d| &d.range));
+        for r in ranges {
+            match r {
+                Range::Unknown(why) => out.push(why),
+                Range::Known { min, max, .. } => {
+                    for b in [min, max] {
+                        if let Bound::Unknown(why) = b {
+                            out.push(why);
+                        }
+                    }
+                }
+                Range::None(_) => {}
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
     /// Pin names no voltage limit mentions, apart from `NC` and `DNC`. A checker must report these as
     /// UNKNOWN; `check` reports them as `unchecked`.
     pub fn uncovered_pins(&self) -> Vec<&str> {
