@@ -132,6 +132,10 @@ pub struct NetVoltage {
     /// every moment this net is between the lowest and highest of these. Empty when that isn't known: a
     /// capacitor holds a node's old voltage and an inductor overshoots, so either can take it outside them.
     pub between: Vec<usize>,
+    /// The one resistor that sets this net, and the net on its other end, when nothing else drives it (a
+    /// supply filtered through a series resistor). In steady state that resistor drops only the current the
+    /// net's parts draw. Capacitors on the net don't change that, only how it gets there at power-on.
+    pub fed_through: Option<(String, usize)>,
 }
 
 /// Whether a regulator's supply leaves it enough room to hold its output.
@@ -671,6 +675,7 @@ fn unknown(text: String, from: Vec<usize>) -> NetVoltage {
         driver: Driver::Strong,
         floor: false,
         between: vec![],
+        fed_through: None,
     }
 }
 
@@ -694,6 +699,7 @@ fn merge(slot: &mut Option<NetVoltage>, span: Span, why: Why) {
                 why: vec![why],
                 driver: Driver::Strong,
                 between: vec![],
+                fed_through: None,
             });
         }
     }

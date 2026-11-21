@@ -221,6 +221,9 @@ impl Group {
                 || matches!(p, Pull::Output { push_pull, .. } if *push_pull)
         });
         nv.driver = if real { Driver::Pulled } else { Driver::Weak };
+        if let ([Pull::Net { via, net }], [_]) = (self.pulls.as_slice(), self.nets.as_slice()) {
+            nv.fed_through = Some((via.clone(), *net));
+        }
         if !self.reactive && self.pulls.iter().all(|p| matches!(p, Pull::Net { .. })) {
             nv.between = self
                 .pulls

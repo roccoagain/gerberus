@@ -445,7 +445,7 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
                     cite(best.model, best.volts, best.page)
                 ));
             } else {
-                unrated.push(format!("{who} ({} gives no ESD rating for it)", ic.part.mpn));
+                unrated.push((who, ic.part.mpn.as_str()));
             }
         }
         let need = format!("{} V contact or {} V air ({})", level.contact, level.air, level.reason);
@@ -480,7 +480,16 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
         } else if !unrated.is_empty() || !unknown.is_empty() {
             let mut why = vec![];
             if !unrated.is_empty() {
-                why.push(format!("nothing says what {} survive", unrated.join(", ")));
+                // Each part's missing rating is named once, however many of its pins reach the connector.
+                let pins: Vec<&str> = unrated.iter().map(|(who, _)| who.as_str()).collect();
+                let parts: BTreeSet<&str> = unrated.iter().map(|(_, mpn)| *mpn).collect();
+                let parts: Vec<&str> = parts.into_iter().collect();
+                let verb = if parts.len() == 1 { "gives" } else { "give" };
+                why.push(format!(
+                    "nothing says what {} survive ({} {verb} no ESD rating for them)",
+                    pins.join(", "),
+                    parts.join(", ")
+                ));
             }
             if !unknown.is_empty() {
                 why.push(no_file.clone());
