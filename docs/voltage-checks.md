@@ -20,16 +20,17 @@ error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V
    = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx
    = help: add a divider, clamp or series resistor, or choose a part rated higher
 
-error: 18 errors, 9 warnings, 29 unknown, 429 passed
-   = note: 29 unknown and 429 passed not shown; --all lists them
+error: 18 errors, 9 warnings, 45 unknown, 429 passed
+   = note: 45 unknown and 429 passed not shown; --all lists them
    = note: --verbose shows how each net in a finding got its voltage range
 ```
 
 Errors come first, then warnings. UNKNOWNs and passes are only counted unless `--all` asks for them, and how each net got its range is printed only with `--verbose` (`-v`). Colour is on when
 the output is a terminal and `NO_COLOR` isn't set. `--allow RULE` silences a rule's warnings, as a compiler's
-`-A` does (`--allow esd`; `--allow warnings` silences all of them), and the summary says how many it silenced.
-Errors can't be silenced: a [waiver](waivers.md) accepts one, with its reason. `stress`, `si`, `traces`, `bom`
-and `pinout` print the same way and take the same flags. The rules:
+`-A` does (`--allow esd`; `--allow warnings` silences all of them), in the report, `--json` and `--html`, and the
+summary says how many it silenced, or that it matched none. Errors can't be silenced: a [waiver](waivers.md)
+accepts one, with its reason. `stress`, `signal`, `si`, `traces`, `bom` and `pinout` print the same way and take
+the same flags. The rules:
 
 | Rule | FAILs when | Severity |
 | --- | --- | --- |
@@ -62,15 +63,16 @@ on it, sits between the nets around it, so a termination resistor behind a jumpe
 Fault cases in `inputs.toml` (such as VBUS shorted onto CANH) are each worked out on their own and checked
 against `abs-max`, `tvs-breakdown` and `cap-voltage` (without derating). Resistor power and other passives'
 ratings are checked too, but can only PASS or be UNKNOWN there, since a fault's two ends needn't move together.
-Their findings say which fault they come from; `voltages --fault CASE` shows one case's nets. Once a fault case
-damages a part (an error FAILs), its UNKNOWNs are left out: settling them can't change what to do about the fault.
+Their findings say which fault they come from; `voltages --fault CASE` shows one case's nets.
 
 Every supply input (one with a positive minimum) is also checked connected backwards, as the fault case
 `<name> reversed`, unless its `inputs.toml` entry says why it can't be (`reverse = "keyed connector"`). A series
 diode blocks it: its cathode stays at 0 V or above. A regulator fed a negative supply may pass it to its output (many CMOS
 regulators have a body diode from output to input), so its output's low end becomes a floor at the supply's
 minimum: pins on it come out UNKNOWN rather than PASS. `reverse-polarity` sums the case up, counting only
-findings that normal operation doesn't already have; the summary isn't counted again in the error total.
+findings that normal operation doesn't already have; the summary isn't counted again in the error total. When it
+FAILs, the case's UNKNOWNs are left out: protection at the input settles the whole case. A connector that can't
+be plugged in backwards takes `reverse = "..."` in `inputs.toml` rather than a waiver, which drops the case.
 
 The `esd` rule looks at every connector pin `inputs.toml` names (inputs and undriven pins, not their ground
 references). An undriven test point is left out: only a probe touches it, at the bench. So is a connector left

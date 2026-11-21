@@ -122,6 +122,7 @@ impl Show {
                 "--verbose" | "-v" => show.verbose = true,
                 "--allow" => show.allow.push(
                     it.next()
+                        .filter(|r| !r.starts_with('-'))
                         .ok_or("--allow takes a rule, such as esd, or `warnings` for every warning")?
                         .clone(),
                 ),
@@ -146,16 +147,21 @@ impl Show {
         before - items.len()
     }
 
-    /// The closing note for warnings `--allow` silenced, if any were.
+    /// The closing note for `--allow`: how many warnings it silenced, or that it matched none, which catches a
+    /// misspelt rule.
     pub fn silenced_note(&self, n: usize) -> String {
-        if n == 0 {
+        if self.allow.is_empty() {
             return String::new();
         }
+        let what = if n == 0 {
+            "no warnings matched".to_string()
+        } else {
+            format!("{} silenced by", plural(n, "warning"))
+        };
         format!(
-            "   {} {}: {} silenced by --allow {}\n",
+            "   {} {}: {what} --allow {}\n",
             self.style.paint(BLUE, "="),
             self.style.paint(BOLD, "note"),
-            plural(n, "warning"),
             self.allow.join(", --allow ")
         )
     }
@@ -714,5 +720,6 @@ mod tests {
         assert!(show.allows("esd") && !show.allows("abs-max"));
         assert_eq!(rest, ["x"]);
         assert!(Show::parse(&["--allow".to_string()]).is_err());
+        assert!(Show::parse(&["--allow".to_string(), "--json".to_string()]).is_err());
     }
 }

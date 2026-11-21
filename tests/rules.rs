@@ -240,20 +240,16 @@ fn known_warnings() {
     );
 }
 
-/// A rail that may sag because its regulator isn't held never fails a minimum. The pins on it aren't listed as
-/// UNKNOWN either: the regulator-headroom warning already says the rail may sag.
+/// A rail that may sag because its regulator isn't held never fails a minimum, only leaves it UNKNOWN.
 #[test]
-fn a_sagging_rail_is_left_to_the_headroom_warning() {
+fn a_sagging_rail_is_unknown_not_failed() {
     let (_, _, r) = run("sniffer", "sniffer.kicad_sch");
-    let vdd: Vec<_> = r
+    let f = r
         .by_rule("recommended")
-        .filter(|f| f.case.is_none() && f.reference == "U2" && f.message.starts_with("U2.VDD"))
-        .collect();
-    assert!(vdd.is_empty(), "{vdd:#?}");
-    assert!(
-        r.by_rule("regulator-headroom")
-            .any(|f| f.reference == "U1" && f.verdict == Verdict::Fail)
-    );
+        .find(|f| f.reference == "U2" && f.message.starts_with("U2.VDD"))
+        .unwrap();
+    assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
+    assert!(f.message.contains("only a bound"), "{}", f.message);
 }
 
 /// A pin limited to `VDD + 0.3 V` passes when everything driving it is bounded by that same VDD.
@@ -1282,4 +1278,27 @@ fn esd_counts_a_tvs_with_only_a_clamping_voltage() {
     let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J1.2")).collect();
     assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
     assert!(f[0].message.contains("U99 (USBLC6-2SC6)"), "{}", f[0].message);
+}
+
+/// A supply connected backwards that damages a part drops the case's UNKNOWNs: input protection settles it all.
+/// Any other fault case keeps them, since its fix is local and can leave them open (R3 across the shorted bus).
+#[test]
+fn only_a_failing_reversal_drops_its_unknowns() {
+    let (_, _, r) = run("kitchen-sink", "kitchen-sink.kicad_sch");
+    let unknown = |case: &str| {
+        r.findings
+            .iter()
+            .filter(|f| f.case.as_deref() == Some(case) && f.verdict == Verdict::Unknown)
+            .count()
+    };
+    assert_eq!(unknown("VAUX reversed"), 0);
+    assert!(
+        r.findings
+            .iter()
+            .any(|f| f.case.as_deref() == Some("VIN shorted onto CANH")
+                && f.verdict == Verdict::Unknown
+                && f.reference == "R3"),
+        "{:#?}",
+        r.by_rule("resistor-power").collect::<Vec<_>>()
+    );
 }

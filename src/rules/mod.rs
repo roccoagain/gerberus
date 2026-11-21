@@ -23,7 +23,7 @@ use crate::finding::{Finding, Severity, Verdict};
 use crate::inputs::BoardInputs;
 use crate::limits::{Class, Coverage, Library, Lookup, Part, Quantity, Range, coverage};
 use crate::policy::Policy;
-use crate::voltage::{Hold, Span, Voltages};
+use crate::voltage::{Span, Voltages};
 use parts::{cap_voltage, tvs};
 
 /// The rules, in report order: name and what it checks.
@@ -169,21 +169,6 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
     }
     undriven_pins(design, lib, volts, &mut r);
     regulator_headroom(design, volts, &mut r);
-    // A pin on the output of a regulator that may not hold it, UNKNOWN only because that output's low end is a
-    // floor, repeats the regulator-headroom warning.
-    let unheld: BTreeSet<usize> = volts
-        .regulators
-        .iter()
-        .filter(|g| g.sets_output && matches!(g.hold, Hold::NotHeld(_)))
-        .map(|g| g.output)
-        .collect();
-    r.findings.retain(|f| {
-        !(f.case.is_none()
-            && f.verdict == Verdict::Unknown
-            && f.message.contains("only a bound")
-            && f.nets.iter().any(|n| unheld.contains(n))
-            && f.nets.iter().all(|n| unheld.contains(n) || !volts.nets[*n].floor))
-    });
 
     crate::protection::esd(design, lib, policy, inputs, &mut r.findings);
     let th = crate::thermal::compute(design, lib, inputs, volts);
@@ -203,18 +188,17 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
         let cv = crate::voltage::compute(design, lib, &case_inputs);
         let mut fr = Report::default();
         part_rules(design, lib, &Policy::default(), &case_inputs, &cv, true, &mut fr);
+        // A supply connected backwards that damages a part is fixed at the input (a series diode or an
+        // ideal-diode MOSFET), which settles the whole case, so its UNKNOWNs only add to the list.
+        let mut reversal_fails = false;
         if let Some((_, input)) = reversed.iter().find(|(c, _)| c == fault) {
             let summary =
                 crate::protection::reverse_polarity(design, lib, inputs, input, fault, &fr.findings, &r.findings, &cv);
+            reversal_fails = summary.verdict == Verdict::Fail;
             r.findings.push(summary);
         }
-        // Once the fault case damages a part, its open questions can't change what to do about it.
-        let damages = fr
-            .findings
-            .iter()
-            .any(|f| f.verdict == Verdict::Fail && f.severity == Severity::Error);
         for mut f in fr.findings {
-            if damages && f.verdict == Verdict::Unknown {
+            if reversal_fails && f.verdict == Verdict::Unknown {
                 continue;
             }
             // The same finding, word for word, in normal operation: the fault changes nothing it read.
