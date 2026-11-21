@@ -5,8 +5,8 @@ class = "diode"
 theta_ja = { value = 250, page = 1, note = "thermal resistance junction to ambient, maximum ratings" }
 tj_max = { value = 150, page = 1, note = "operating junction temperature range −65 to +150 °C, maximum ratings; PD 500 mW, derated with ambient per Fig. 1 (p3)" }
 
-# A Zener has no class of its own. `tvs` would make `check` call any rail above breakdown.min a part that
-# "conducts continuously and overheats", which is what a resistor-fed Zener clamp is meant to do, so the class
+# A Zener has no class of its own. `tvs` would make `check` fail any rail at or above breakdown.min, as a TVS
+# held in breakdown conducts continuously and overheats, which is what a resistor-fed Zener clamp is meant to do, so the class
 # is `diode` and the Zener voltage is recorded in `breakdown` as the format guide says for Zener parts.
 # The series sheet's ordering information (p4) gives "Part Number-TP" for tape and reel, so BZT52C12-TP is the
 # BZT52C12 row of the p2 table.

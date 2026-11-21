@@ -72,6 +72,8 @@ Every command reads a design into one design graph and checks that.
 - `src/doctor.rs` (`doctor`) traces each UNKNOWN finding back to what it waits on.
 - `src/pinout.rs` (`pinout`), `src/bom.rs` (`bom`), `src/si/` (`si`) and `src/datasheet/` (`datasheet`) each
   back one command.
+- `src/diag.rs` prints findings rustc-style, and `src/explain.rs` (`explain`) prints a rule's section of
+  [`rules.md`](rules.md), which is built into the binary.
 - `src/main.rs` is the command line. `src/lib.rs` declares the modules, so tests can use them.
 
 Modules depend on each other in one direction only: no two modules reach into each other.

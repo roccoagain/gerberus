@@ -472,8 +472,15 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             (
                 Verdict::Fail,
                 format!(
-                    "{at} has no TVS or ESD clamp, and {}; a connector pin needs {need}",
-                    weak.join("; ")
+                    "{at} has {}, and {}, not {} kV contact{}; a connector pin needs {need}",
+                    if too_high.is_empty() {
+                        "no TVS or ESD clamp"
+                    } else {
+                        "no clamp that breaks down low enough"
+                    },
+                    weak[0],
+                    level.contact / 1000.0,
+                    weak[1..].iter().flat_map(|w| ["; ", w.as_str()]).collect::<String>()
                 ),
             )
         } else if !unrated.is_empty() || !unknown.is_empty() {
@@ -485,8 +492,9 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
                 let parts: Vec<&str> = parts.into_iter().collect();
                 let verb = if parts.len() == 1 { "gives" } else { "give" };
                 why.push(format!(
-                    "nothing says what {} survive ({} {verb} no ESD rating for them)",
+                    "nothing says what {} {} ({} {verb} no ESD rating for them)",
                     pins.join(", "),
+                    if pins.len() == 1 { "survives" } else { "survive" },
                     parts.join(", ")
                 ));
             }

@@ -620,8 +620,12 @@ pub fn laid_out(f: &Finding) -> Diagnostic {
     }
     let mut d = Diagnostic::from_message(level, f.rule, &[&f.reference], message);
     if let Some(h) = &f.headline {
-        d.headline.clone_from(h);
+        // The message's own opening, such as the part's dissipation, stays as the first note.
+        let lead = std::mem::replace(&mut d.headline, h.clone());
         d.notes.retain(|n| !h.contains(n.as_str()));
+        if !h.contains(&lead) {
+            d.notes.insert(0, lead);
+        }
     }
     if let Some(c) = &f.case {
         let at = d.location.take().unwrap_or_else(|| f.reference.clone());
@@ -629,6 +633,14 @@ pub fn laid_out(f: &Finding) -> Diagnostic {
     }
     if f.verdict == Verdict::Fail {
         d.help = help(f.rule).map(str::to_string);
+    }
+    // A waiver waiting for a person is what to do next, so it shows as the help.
+    if let Some(i) = d
+        .notes
+        .iter()
+        .position(|n| n.starts_with(crate::finding::PENDING_WAIVER))
+    {
+        d.help = Some(d.notes.remove(i));
     }
     d
 }

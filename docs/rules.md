@@ -9,7 +9,7 @@ what to do; `--verbose` adds its numbers and datasheet citations.
 A pin can go past its absolute maximum rating: the voltage beyond which the datasheet says the part may be damaged,
 even briefly. The pin's net is taken at its worst-case range (`gerberus voltages --explain NET` shows how it got
 it), in normal operation and in each fault case of `inputs.toml`. A limit relative to another pin (`VDD + 0.3 V`)
-holds only if it holds however both nets move. See [voltage checks](voltage-checks.md).
+holds only if it holds however both nets move. See `docs/voltage-checks.md`.
 
 Fix it with a divider, clamp or series resistor that keeps the pin inside its rating, or with a part rated higher.
 
@@ -74,7 +74,7 @@ connector is a system-level event, rated by IEC 61000-4-2: level 4, the usual ta
 cables into, is 8 kV contact and 15 kV air. An IC's HBM or CDM rating (±1 kV or ±2 kV, say) covers only handling in
 a factory, so it isn't enough. The IC needs its own IEC 61000-4-2 rating at `policy.toml`'s `[esd]` level, or a clamp
 beside the connector. The rule follows one series resistor, inductor or diode from the connector. See
-[voltage checks](voltage-checks.md).
+`docs/voltage-checks.md`.
 
 Add a TVS or ESD clamp next to the connector pin, breaking down below the absolute maximum of the IC pins it guards.
 
@@ -90,7 +90,7 @@ Add reverse-polarity protection on the input: a series diode, or an ideal-diode 
 
 A part's junction, at the board's ambient (the top of `inputs.toml`'s `temperature`) plus its dissipation × θJA,
 passes its maximum (an error) or comes within `policy.toml`'s `[junction]` margin of it (a warning; 20 °C). θJA is
-the datasheet's figure for a JEDEC test board, so a real board's copper changes it. See [thermal](thermal.md).
+the datasheet's figure for a JEDEC test board, so a real board's copper changes it. See `docs/thermal.md`.
 
 Cut the part's dissipation, or give it a lower thermal resistance: more copper under it, or a bigger package.
 
@@ -109,14 +109,14 @@ UNKNOWN only: a fitted part or pin has no limits to check against. Give the part
 ## trace-current
 
 A track can't carry its net's current without heating more than `policy.toml`'s `[traces] rise` (10 °C), by
-IPC-2221's fit for its width and copper weight. See [traces](traces.md).
+IPC-2221's fit for its width and copper weight. See `docs/traces.md`.
 
 Widen the track, or move it to an outer layer or thicker copper.
 
 ## voltage-drop
 
 The copper between a power pin and its supply drops so much that the pin falls below its recommended minimum, at
-the pin's own maximum current. See [traces](traces.md#voltage-drop).
+the pin's own maximum current. See `docs/traces.md`.
 
 Widen or shorten the tracks from the supply, or feed the pin from a plane.
 
@@ -179,15 +179,22 @@ Add fiducials (KiCad's `Fiducial` library) near three corners of that side.
 ## hot-plug
 
 Plugging the board in, simulated in ngspice, takes a pin past its rating: the cable's inductance rings with the
-input capacitors, and a rail can overshoot its settled value, up to about twice it. See [stress](stress.md).
+input capacitors, and a rail can overshoot its settled value, up to about twice it. See `docs/stress.md`.
 
 Damp the ringing: a TVS at the input, a bulk electrolytic capacitor (whose ESR damps it) or an RC snubber, or a load
 switch that turns on slowly.
 
+## waiver
+
+A waiver in `waivers.toml` matches no failed or unknown finding: the problem was fixed, the board changed, or its
+`rule` or `contains` is misspelt, so it accepts nothing. See `docs/waivers.md`.
+
+Remove the waiver, or fix it to match what the report says now.
+
 ## clipping
 
 An op-amp's output, on the loudest signal of `inputs.toml`, reaches past its supply rails or closer to one than the
-datasheet's output swing, so it clips. See [signal](signal.md).
+datasheet's output swing, so it clips. See `docs/signal.md`.
 
 ## signal-level
 
@@ -202,12 +209,12 @@ The signal simulation leaves a part open on a net a signal reaches, so nothing p
 
 A part's symbol pins, footprint pads and datasheet pin table (the `[pins]` of its part file) don't agree: a pin
 with no pad, pins whose names look swapped, a do-not-connect pin wired to a net. A swapped pin is a board that
-doesn't work. See [pinout](pinout.md).
+doesn't work. See `docs/pinout.md`.
 
 ## usb-impedance
 
 A stretch of a USB 2.0 pair is outside 81–99 Ω differential (TI SPRAAR7J Table A-1). An impedance step reflects
-part of each edge back to the driver and closes the eye. See [USB signal integrity](usb-si.md).
+part of each edge back to the driver and closes the eye. See `docs/usb-si.md`.
 
 Set the trace width and gap for 90 Ω on the board's stackup, with the pair coupled all along.
 
@@ -250,7 +257,7 @@ The simulated eye at the connector breaks USB 2.0's Template 1: the signal can't
 ## bom-identity
 
 The LCSC number in the schematic is a different part from its `MPN` field: another value, size or a lower rating.
-JLCPCB fits the LCSC part, while gerberus checks the MPN's part file. See [BOM health](bom.md).
+JLCPCB fits the LCSC part, while gerberus checks the MPN's part file. See `docs/bom.md`.
 
 ## bom-stock
 

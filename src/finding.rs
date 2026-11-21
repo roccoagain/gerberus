@@ -58,6 +58,9 @@ pub struct Finding {
     pub headline: Option<String>,
 }
 
+/// How a finding's message says a proposed waiver waits for a person; a report shows it as the finding's help.
+pub const PENDING_WAIVER: &str = "a waiver proposed by";
+
 /// A finding a waiver accepted, and why.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Waived {

@@ -271,6 +271,13 @@ fn symbol_vs_datasheet(design: &Design, c: &Component, part: &Part, fp: Option<&
                     .is_none_or(|s| !names_match(&s, other))
         });
         match swapped_with {
+            // A swapped pair is reported once, from its lower pin, when the other pin is the one it swapped with.
+            Some((m, _))
+                if m.as_str() < num.as_str()
+                    && c.pins
+                        .get(m)
+                        .and_then(|p| shown_name(&p.name))
+                        .is_some_and(|s| names_match(&s, ds_name)) => {}
             Some((m, other)) => {
                 out.error(format!(
                     "symbol pins {num} and {m} look swapped: the datasheet puts {other} on pin {m} and {ds_name} on \

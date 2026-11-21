@@ -357,7 +357,8 @@ fn the_report_reads_like_rustc() {
         "error[cap-voltage]: C2.1: 26 V across it, past its 25 V rating\n",
         "error[junction-temperature]: U7's junction reaches 114 °C at 70 °C ambient, above its 105 °C maximum\n",
         "warning[regulator-headroom]: U3 may not hold /power/+3V3A: /power/VAUX can fall to 3 V",
-        "warning[esd]: J3.1 has no TVS or ESD clamp, and U4.VIO is rated only ±4 kV HBM\n  --> J3.1 (+3V3)\n",
+        "warning[esd]: J3.1 has no TVS or ESD clamp, and U4.VIO is rated only ±4 kV HBM, not 8 kV \
+         contact\n  --> J3.1 (+3V3)\n",
         "error: 18 errors, 9 warnings, 45 unknown, 429 passed\n   = note: 45 unknown and 429 passed not shown; \
          --all lists them\n   = note: --verbose adds each finding's numbers and sources, and how each net got its \
          range\n   = help: for more about a rule, try `gerberus explain abs-max`\n",
@@ -393,13 +394,35 @@ fn the_report_reads_like_rustc() {
     assert_eq!((passes, all.matches("\npass[").count()), (430, 430));
     // No colour unless asked for.
     assert!(!text.contains('\x1b'));
-    // `gerberus explain` covers every rule the report can name.
-    for f in &r.findings {
-        assert!(
-            gerberus::explain::text(f.rule).is_some(),
-            "no explanation for {}",
-            f.rule
-        );
+    // `gerberus explain` covers every rule a report can name.
+    let layout = [
+        "trace-current",
+        "voltage-drop",
+        "decoupling",
+        "plane-split",
+        "hot-loop",
+        "line-length",
+        "thermal-relief",
+        "tombstoning",
+        "fiducials",
+    ];
+    let others = [
+        "hot-plug",
+        "clipping",
+        "signal-level",
+        "signal-path",
+        "pinout",
+        "waiver",
+        "bom-identity",
+        "bom-stock",
+        "bom-lifecycle",
+        "bom-second-source",
+        "bom-assembly",
+    ];
+    let named = r.findings.iter().map(|f| f.rule);
+    let tables = rules::RULES.iter().chain(si::RULES.iter()).map(|(rule, _)| *rule);
+    for rule in named.chain(tables).chain(layout).chain(others) {
+        assert!(gerberus::explain::text(rule).is_some(), "no explanation for {rule}");
     }
 
     let json: serde_json::Value = serde_json::to_value(r).unwrap();

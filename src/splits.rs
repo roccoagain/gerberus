@@ -185,12 +185,7 @@ pub fn check(design: &Design, layout: &Layout) -> Vec<Finding> {
             .map(|t| (reference(&neighbours(&t.layer), t), *t))
             .max_by_key(|(r, _)| *r)
             .expect("the net has tracks");
-        let at = |t: &Track| {
-            format!(
-                "a track on {} (from {:.2}, {:.2} to {:.2}, {:.2})",
-                t.layer, t.start.0, t.start.1, t.end.0, t.end.1
-            )
-        };
+        let at = |t: &Track| format!("its track at ({:.2}, {:.2}) on {}", t.start.0, t.start.1, t.layer);
         let (verdict, message) = match worst {
             (Reference::Whole, _) => (
                 Verdict::Pass,

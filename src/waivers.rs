@@ -101,8 +101,8 @@ impl Waivers {
                 let w = &self.waiver[i];
                 let _ = write!(
                     f.message,
-                    "; a waiver proposed by {} in {file} is waiting for a person to approve it (delete its \
-                     `proposed` line): {}",
+                    "; {} {} in {file} is waiting for a person to approve it by deleting its `proposed` line: {}",
+                    crate::finding::PENDING_WAIVER,
                     w.proposed.as_deref().unwrap_or_default(),
                     w.reason
                 );

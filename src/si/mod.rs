@@ -680,7 +680,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
             }
             if !places.is_empty() {
                 gaps.push(format!(
-                    "{net} loses the plane on the next layer: {}",
+                    "{net} loses the plane on the next layer for {}",
                     places.join("; ")
                 ));
             }

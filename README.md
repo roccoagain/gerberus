@@ -45,7 +45,8 @@ decide, usually because a part has no part file yet; it never counts as a pass. 
 passes too, and `--verbose` to see the numbers each finding compared, the datasheet pages they came from and how each
 net got its voltage range. `gerberus explain abs-max` says what a rule checks and why ([all rules](docs/rules.md)).
 The sniffer's 2 errors
-are its supply connected backwards, which damages the regulator; its warnings are headers with no ESD protection.
+are its supply connected backwards, which damages the regulator; its warnings are a regulator input that can sag
+below what it needs and headers with no ESD protection.
 
 To see the findings on the drawings, add `--html report.html`: one web page with the schematic and board, each
 finding ringed on its part. It needs KiCad's `kicad-cli` on the PATH. [More](docs/html-report.md)

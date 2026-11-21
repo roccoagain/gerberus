@@ -84,7 +84,7 @@ impl Style {
 pub struct Show {
     /// List UNKNOWNs and passes, not just count them.
     pub all: bool,
-    /// Print the longer explanations: how each net in a FAIL got its range, and long lists in full.
+    /// Print each finding's notes (its numbers and sources) and how each net in a FAIL got its range.
     pub verbose: bool,
     pub style: Style,
     /// Columns to wrap notes at; 0 means 100.
@@ -336,8 +336,10 @@ impl Diagnostic {
 /// What a report's listed diagnostics leave for its summary to point at.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Listed {
-    /// Some notes or details were left for `--verbose`.
-    pub hidden: bool,
+    /// Some notes were left for `--verbose`.
+    pub notes: bool,
+    /// Some explanations of how a net got its range were left for `--verbose`.
+    pub ranges: bool,
     /// The first error or warning's rule, for the `gerberus explain` hint.
     pub rule: Option<String>,
 }
@@ -345,7 +347,8 @@ pub struct Listed {
 impl Listed {
     /// Counts in a diagnostic the report lists.
     pub fn add(&mut self, d: &Diagnostic) {
-        self.hidden |= !d.notes.is_empty() || !d.details.is_empty();
+        self.notes |= !d.notes.is_empty();
+        self.ranges |= !d.details.is_empty();
         if self.rule.is_none()
             && matches!(d.level, Level::Error | Level::Warning)
             && crate::explain::text(&d.rule).is_some()
@@ -400,10 +403,15 @@ pub fn summary(out: &mut String, show: &Show, counts: [usize; 4], listed: &Liste
             hidden.join(" and ")
         );
     }
-    if listed.hidden && !show.verbose {
+    if (listed.notes || listed.ranges) && !show.verbose {
         let _ = writeln!(
             out,
-            "   {eq} {note}: --verbose adds each finding's numbers and sources, and how each net got its range"
+            "   {eq} {note}: --verbose adds {}",
+            match (listed.notes, listed.ranges) {
+                (true, true) => "each finding's numbers and sources, and how each net got its range",
+                (true, false) => "each finding's numbers and sources",
+                _ => "how each net got its range",
+            }
         );
     }
     if let Some(rule) = &listed.rule {
