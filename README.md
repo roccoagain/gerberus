@@ -18,7 +18,7 @@ That puts the `gerberus` command in `~/.cargo/bin`. To update, run `git pull` an
 
 Three commands need another program installed: `gerberus stress` and `gerberus signal` need [ngspice](https://ngspice.sourceforge.io/),
 and `gerberus datasheet verify` needs poppler's `pdftotext`. Reading a tscircuit `.tsx` board needs the tscircuit CLI
-(`npm install -g tscircuit`). More in [docs/install.md](docs/install.md).
+(`npm install -g tscircuit`) and [Bun](https://bun.sh), which it runs on. More in [docs/install.md](docs/install.md).
 
 ## Quick start
 

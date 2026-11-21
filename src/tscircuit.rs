@@ -46,7 +46,7 @@ pub fn build(path: &Path) -> Result<Design, String> {
         .map_err(|e| {
             format!(
                 "can't run tsci ({e}); reading a .tsx board needs the tscircuit CLI on the PATH \
-                 (`npm install -g tscircuit`), or give gerberus the circuit.json that `tsci build` writes"
+                 (`npm install -g tscircuit`, which runs on Bun), or give gerberus the circuit.json that `tsci build` writes"
             )
         })?;
     let text = std::fs::read_to_string(&out);
