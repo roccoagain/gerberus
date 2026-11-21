@@ -73,9 +73,11 @@ fn sig(x: f64) -> String {
 /// The worst of all runs for one pair of nets.
 #[derive(Debug, Clone, Copy)]
 pub struct Worst {
+    /// The highest value any run reached.
     pub max: f64,
     /// The run that reached `max`.
     pub max_run: usize,
+    /// The lowest value any run reached.
     pub min: f64,
     /// The run that reached `min`.
     pub min_run: usize,
@@ -95,7 +97,7 @@ pub struct Sweep {
 }
 
 impl Sweep {
-    /// The highest and lowest `V(a) − V(b)` any run reached, and the run that reached each.
+    /// The worst `V(a) − V(b)` across the runs.
     pub fn peak(&self, a: usize, b: Option<usize>) -> Option<Worst> {
         self.worst.get(&(a, b)).copied()
     }
@@ -244,23 +246,11 @@ fn side(sweep: &Sweep, at: &At<'_>, bound: &Bound, upper: bool) -> Side {
                 return Side::Unknown(format!("its {kind} {end} follows {pin}, which isn't on the schematic"));
             };
             let limit = relative(pin, *plus);
-            let Worst {
-                max: rmax,
-                max_run: rmax_run,
-                min: rmin,
-                min_run: rmin_run,
-                ..
-            } = match sweep.circuit.key(at.a, rn) {
+            let (rmax, rmax_run, rmin, rmin_run) = match sweep.circuit.key(at.a, rn) {
                 // The same net: the difference is always 0.
-                None => Worst {
-                    max: 0.0,
-                    max_run: 0,
-                    min: 0.0,
-                    min_run: 0,
-                    end_max: 0.0,
-                },
+                None => (0.0, 0, 0.0, 0),
                 Some((x, y)) => match sweep.peak(x, y) {
-                    Some(p) => p,
+                    Some(p) => (p.max, p.max_run, p.min, p.min_run),
                     None => return Side::Unknown(format!("ngspice didn't measure it against {pin}")),
                 },
             };

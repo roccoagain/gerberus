@@ -232,8 +232,8 @@ struct Loads<'a> {
 
 impl Loads<'_> {
     /// Capacitance in pF of the pads in `pads` (each part counted once per pin name), with the parts that
-    /// have no figure and the figures used. The pair's own driver and connector are left out: their capacitance is part of the
-    /// USB budget the templates already cover.
+    /// have no figure and the figures used. The pair's own driver and connector are left out: their capacitance
+    /// is part of the USB budget the templates already cover.
     fn of(&self, pads: &[(String, String)], ends: &[&str]) -> PadLoad {
         let mut seen = BTreeSet::new();
         let (mut total, mut unknown, mut used) = (0.0, Vec::new(), Vec::new());

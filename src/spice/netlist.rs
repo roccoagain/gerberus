@@ -120,9 +120,9 @@ fn tvs_ohms(l: &crate::limits::Limit, bv: f64) -> f64 {
 pub const SWITCH_OHMS: f64 = 0.05;
 
 /// A part's forward drop and its test current, from its forward drive, or typical ones for its class.
-fn forward(part: Option<&Part>, class: Class) -> (f64, f64) {
+fn forward(part: &Part, class: Class) -> (f64, f64) {
     let led = class == Class::Led;
-    let drive = part.and_then(|p| p.drives.iter().find(|d| d.kind == DriveKind::Forward));
+    let drive = part.drives.iter().find(|d| d.kind == DriveKind::Forward);
     let vf = drive
         .and_then(|d| match &d.range {
             Range::Known { min, max, .. } => match (min, max) {
@@ -570,7 +570,7 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
                     skip(&mut c, "its anode or cathode isn't on the schematic".into());
                     continue;
                 };
-                let (vf, at) = forward(Some(p), kind);
+                let (vf, at) = forward(p, kind);
                 let model = diode_model(&format!("DM_{reference}"), vf, at, kind, 0.05, None);
                 c.elements.push(Element::D {
                     name: reference.clone(),
@@ -581,7 +581,7 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
             }
             (Some(p), Some(Class::Tvs)) => {
                 let mut any = false;
-                let (vf, at) = forward(Some(p), Class::Tvs);
+                let (vf, at) = forward(p, Class::Tvs);
                 for (li, l) in p.limits.iter().enumerate() {
                     let Some(bv) = l.breakdown.as_ref().and_then(breakdown_at) else {
                         continue;
