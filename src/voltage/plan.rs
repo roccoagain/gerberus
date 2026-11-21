@@ -156,15 +156,22 @@ fn missing(drive: &Drive) -> String {
     )
 }
 
+/// The smallest and largest a resistor can be, in ohms, and where the numbers come from.
+#[derive(Debug, Clone)]
+pub struct ResistanceRange {
+    pub min: f64,
+    pub max: f64,
+    pub note: String,
+}
+
 /// The smallest and largest a resistor can be: its value, off by its tolerance plus its temperature drift over
-/// the board's temperature range (or its own rated range when `inputs.toml` gives none). Also says where the
-/// numbers come from.
+/// the board's temperature range (or its own rated range when `inputs.toml` gives none).
 pub fn resistance_range(
     lib: &Library,
     inputs: &BoardInputs,
     r: &str,
     c: &Component,
-) -> Result<(f64, f64, String), String> {
+) -> Result<ResistanceRange, String> {
     let Some(ohms) = crate::units::parse_ohms(&c.value).filter(|&v| v > 0.0) else {
         return Err(format!("can't read a resistance from {r}'s value {:?}", c.value));
     };
@@ -209,7 +216,11 @@ pub fn resistance_range(
         round(dev * 100.0),
         part.mpn,
     );
-    Ok((ohms * (1.0 - dev), ohms * (1.0 + dev), note))
+    Ok(ResistanceRange {
+        min: ohms * (1.0 - dev),
+        max: ohms * (1.0 + dev),
+        note,
+    })
 }
 
 /// The divider on a regulator's feedback net, and the net it sets. `Ok(None)` when no resistor is on the pin,
@@ -268,9 +279,9 @@ fn find_divider(
     let mut notes = vec![];
     for (r, c) in [(rt_ref, rt), (rb_ref, rb)] {
         match resistance_range(lib, inputs, r, c) {
-            Ok((lo, hi, note)) => {
-                ends.push((lo, hi));
-                notes.push(note);
+            Ok(range) => {
+                ends.push((range.min, range.max));
+                notes.push(range.note);
             }
             Err(e) => return Err((format!("UNKNOWN: {e}"), Some(out))),
         }
@@ -466,8 +477,8 @@ impl Plan<'_> {
                 // The lowest supply the range is specified at.
                 let needs = head.map(|h| (ohi + h.volts) / h.duty);
                 let hold;
-                let min = match (s.min, rec.0, needs) {
-                    (Some(sn), Some(rn), Some(nd)) if sn >= rn && sn >= nd => {
+                let min = match (s.min, rec.0, head.zip(needs)) {
+                    (Some(sn), Some(rn), Some((h, nd))) if sn >= rn && sn >= nd => {
                         hold = Hold::Held(format!(
                             "{} stays at or above {} V; the output needs {} V and {} at least {rn} V",
                             name(*supply),
@@ -475,7 +486,6 @@ impl Plan<'_> {
                             round(nd),
                             sup
                         ));
-                        let h = head.expect("needs comes from headroom");
                         notes.push(format!(
                             "{} stays at or above {} V, which covers the {} V the output needs ({} p{}{}); line and \
                              load regulation aren't modelled",
@@ -489,6 +499,7 @@ impl Plan<'_> {
                         Some(lo)
                     }
                     (Some(sn), rn, nd) => {
+                        let nd = nd.map(|(_, nd)| nd);
                         let (why, known) = match (rn, nd) {
                             (Some(rn), _) if sn < rn => (format!("below its recommended minimum of {rn} V"), true),
                             (None, _) => ("and its recommended minimum isn't known".into(), false),

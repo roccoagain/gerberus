@@ -177,14 +177,13 @@ pub fn check(design: &Design, layout: &Layout) -> Vec<Finding> {
             continue;
         }
         let tracks: Vec<&Track> = layout.tracks.iter().filter(|t| t.net == net.name).collect();
-        if tracks.is_empty() {
-            continue;
-        }
-        let worst = tracks
+        let Some(worst) = tracks
             .iter()
             .map(|t| (reference(&neighbours(&t.layer), t), *t))
             .max_by_key(|(r, _)| *r)
-            .expect("the net has tracks");
+        else {
+            continue;
+        };
         let at = |t: &Track| format!("its track at ({:.2}, {:.2}) on {}", t.start.0, t.start.1, t.layer);
         let (verdict, message) = match worst {
             (Reference::Whole, _) => (

@@ -666,7 +666,7 @@ fn references_in(text: &str, design: &Design) -> BTreeSet<String> {
 /// a single G, D and S (a dual part). A single MOSFET's part file can give a `channel` drive.
 fn is_transistor(c: &crate::design::Component) -> bool {
     let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
-    (letters == "Q" || c.lib_id.starts_with("Transistor")) && crate::voltage::fet_pins(c).is_none()
+    (letters == "Q" || c.lib_id.starts_with("Transistor")) && !crate::voltage::is_mosfet(c)
 }
 
 /// `3 unknown results wait on it`.

@@ -18,8 +18,15 @@ use crate::kicad::pcb::{Layout, PlacedPad, StackLayer, Track};
 use crate::policy::TracePolicy;
 use crate::thermal::Thermal;
 
-/// Copper thickness of each copper layer, mm, and whether it is an outer layer.
-fn copper(layout: &Layout) -> BTreeMap<String, (f64, bool)> {
+/// Whether a copper layer is on the outside of the board, where a track sheds heat to the air, or inside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Layer {
+    Outer,
+    Inner,
+}
+
+/// Copper thickness of each copper layer, mm, and which side it is on.
+fn copper(layout: &Layout) -> BTreeMap<String, (f64, Layer)> {
     let names: Vec<(&str, f64)> = layout
         .stackup
         .iter()
@@ -32,15 +39,25 @@ fn copper(layout: &Layout) -> BTreeMap<String, (f64, bool)> {
     names
         .iter()
         .enumerate()
-        .map(|(i, &(n, t))| (n.to_string(), (t, i == 0 || i == last)))
+        .map(|(i, &(n, t))| {
+            let layer = if i == 0 || i == last {
+                Layer::Outer
+            } else {
+                Layer::Inner
+            };
+            (n.to_string(), (t, layer))
+        })
         .collect()
 }
 
 /// IPC-2221's safe current, amps, for a track `width` mm wide and `thickness` mm thick.
-pub fn ipc2221(width: f64, thickness: f64, outer: bool, rise: f64) -> f64 {
+pub fn ipc2221(width: f64, thickness: f64, layer: Layer, rise: f64) -> f64 {
     let mil = 1.0 / 0.0254;
     let area = width * mil * thickness * mil;
-    let k = if outer { 0.048 } else { 0.024 };
+    let k = match layer {
+        Layer::Outer => 0.048,
+        Layer::Inner => 0.024,
+    };
     k * rise.powf(0.44) * area.powf(0.725)
 }
 
@@ -160,9 +177,9 @@ pub fn check(design: &Design, layout: &Layout, th: &Thermal, policy: &TracePolic
         let mut unknown_layer = None;
         for (i, t) in tracks.iter().enumerate() {
             match cu.get(&t.layer) {
-                Some(&(thick, outer)) => {
-                    rated.push((i, ipc2221(t.width, thin.unwrap_or(thick), outer, policy.rise)));
-                    rated_thick.insert(i, ipc2221(t.width, thick_cu.unwrap_or(thick), outer, policy.rise));
+                Some(&(thick, layer)) => {
+                    rated.push((i, ipc2221(t.width, thin.unwrap_or(thick), layer, policy.rise)));
+                    rated_thick.insert(i, ipc2221(t.width, thick_cu.unwrap_or(thick), layer, policy.rise));
                 }
                 None => unknown_layer = Some(t.layer.clone()),
             }

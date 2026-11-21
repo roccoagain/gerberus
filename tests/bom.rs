@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gerberus::bom::{
-    Fixed, Health, Listing, Online, Options, Severity, Similar, Source, Topic, check, lines, normalize_lcsc,
+    Fixed, Health, Listing, Lookups, Online, Options, Severity, Similar, Source, Topic, check, lines, normalize_lcsc,
 };
 use gerberus::design::{Component, Design};
 use gerberus::kicad;
@@ -15,7 +15,7 @@ fn root(rel: &str) -> PathBuf {
 }
 
 fn snapshot() -> Online {
-    Online::new(Some(root("tests/fixtures/lcsc")), Duration::ZERO, true)
+    Online::new(Some(root("tests/fixtures/lcsc")), Duration::ZERO, Lookups::CacheOnly)
 }
 
 fn board(rel: &str) -> Vec<Health> {
@@ -394,7 +394,7 @@ fn temp_cache(name: &str) -> PathBuf {
 fn a_damaged_cache_file_is_reported_offline() {
     let dir = temp_cache("damaged");
     std::fs::write(dir.join("C1.json"), "{\"fetched\": 1, \"listing\": ").unwrap();
-    let mut s = Online::new(Some(dir.clone()), Duration::ZERO, true);
+    let mut s = Online::new(Some(dir.clone()), Duration::ZERO, Lookups::CacheOnly);
     assert!(s.listing("C1").unwrap_err().contains("damaged"));
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -403,7 +403,7 @@ fn a_damaged_cache_file_is_reported_offline() {
 fn a_failed_lookup_falls_back_to_an_old_answer_with_a_warning() {
     let dir = temp_cache("stale");
     std::fs::copy(root("tests/fixtures/lcsc/C1525.json"), dir.join("C1525.json")).unwrap();
-    let mut s = Online::new(Some(dir.clone()), Duration::ZERO, false);
+    let mut s = Online::new(Some(dir.clone()), Duration::ZERO, Lookups::Network);
     s.endpoint = "http://127.0.0.1:9/?productCode=".into();
     let l = s.listing("C1525").unwrap().unwrap();
     assert_eq!(l.mpn, "CL05B104KO5NNNC");

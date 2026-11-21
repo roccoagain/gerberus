@@ -55,32 +55,30 @@ pub(super) fn find_channels(design: &Design, lib: &Library) -> Vec<Channel> {
     out
 }
 
-/// The drain, source and gate nets of a MOSFET symbol: a `Transistor_FET` symbol, or a `Q` part, whose pins
-/// are named G, D and S (or Gate, Drain and Source), and nothing else. Pins sharing a name must share a net.
-pub fn fet_pins(c: &Component) -> Option<(usize, usize, usize)> {
+/// Whether a part is a single MOSFET: a `Transistor_FET` symbol, or a `Q` part, whose pins are named G, D and S
+/// (or Gate, Drain and Source), and nothing else. Pins sharing a name must share a net.
+pub fn is_mosfet(c: &Component) -> bool {
     let letters: String = c.reference.chars().take_while(char::is_ascii_alphabetic).collect();
     if !(c.lib_id.starts_with("Transistor_FET") || letters == "Q") {
-        return None;
+        return false;
     }
-    let role = |names: [&str; 2]| -> Option<usize> {
+    // Each role is on exactly one net.
+    let one_net = |names: [&str; 2]| {
         let nets: BTreeSet<usize> = c
             .pins
             .values()
             .filter(|p| names.iter().any(|n| p.name.eq_ignore_ascii_case(n)))
             .map(|p| p.net)
             .collect();
-        (nets.len() == 1).then(|| *nets.iter().next().expect("one net"))
+        nets.len() == 1
     };
-    let (d, s, g) = (role(["D", "Drain"])?, role(["S", "Source"])?, role(["G", "Gate"])?);
     // Every pin is one of the three, so this is a single MOSFET, not a dual one or an IC.
-    c.pins
-        .values()
-        .all(|p| {
-            ["D", "Drain", "S", "Source", "G", "Gate"]
-                .iter()
-                .any(|n| p.name.eq_ignore_ascii_case(n))
-        })
-        .then_some((d, s, g))
+    let only_fet_pins = c.pins.values().all(|p| {
+        ["D", "Drain", "S", "Source", "G", "Gate"]
+            .iter()
+            .any(|n| p.name.eq_ignore_ascii_case(n))
+    });
+    one_net(["D", "Drain"]) && one_net(["S", "Source"]) && one_net(["G", "Gate"]) && only_fet_pins
 }
 
 /// Whether a channel conducts, from the gate, drain and source ranges in `v`. Either end of the channel can act

@@ -258,14 +258,22 @@ struct CacheEntry {
 /// Version 2 added LCSC's parameter table.
 const CACHE_VERSION: u32 = 2;
 
+/// Where an [`Online`] source gets its answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lookups {
+    /// The cache while it is fresh, else the network.
+    Network,
+    /// Only the cache, whatever its age; a part that isn't cached is an error.
+    CacheOnly,
+}
+
 /// A distributor asked over the network, with answers cached on disk.
 pub struct Online {
     /// One JSON file per part. Without it every lookup goes to the network.
     pub cache: Option<PathBuf>,
     /// Cached answers younger than this are used without asking again.
     pub max_age: Duration,
-    /// Use only the cache, whatever its age; a part that isn't cached is an error.
-    pub offline: bool,
+    pub lookups: Lookups,
     /// The lookup endpoint. Tests point it somewhere unreachable.
     pub endpoint: String,
     agent: Option<ureq::Agent>,
@@ -276,12 +284,12 @@ const LCSC_DETAIL: &str = "https://wmsc.lcsc.com/ftps/wm/product/detail?productC
 
 impl Online {
     /// An LCSC source.
-    pub fn new(cache: Option<PathBuf>, max_age: Duration, offline: bool) -> Online {
+    pub fn new(cache: Option<PathBuf>, max_age: Duration, lookups: Lookups) -> Online {
         Online {
             endpoint: LCSC_DETAIL.to_string(),
             cache,
             max_age,
-            offline,
+            lookups,
             agent: None,
             caveats: BTreeMap::new(),
         }
@@ -401,7 +409,7 @@ impl Source for Online {
 
     fn listing(&mut self, code: &str) -> Result<Option<Listing>, String> {
         self.caveats.remove(code);
-        if self.offline {
+        if self.lookups == Lookups::CacheOnly {
             return self
                 .read_cache(code)?
                 .map(|c| c.listing)

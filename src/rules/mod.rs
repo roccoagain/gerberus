@@ -420,7 +420,7 @@ impl Ctx<'_> {
             )));
         }
         let rmax = match crate::voltage::resistance_range(self.lib, self.inputs, self.reference, self.c) {
-            Ok((_, rmax, _)) => rmax,
+            Ok(range) => range.max,
             Err(e) => return Some(Err(format!("{lead}: {e}"))),
         };
         let drop = load.amps * rmax;

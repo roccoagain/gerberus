@@ -365,11 +365,11 @@ fn part_text(lib: &Library, mpn: &str) -> Result<String, String> {
             .unwrap_or_else(|| format!("# {mpn} is in {}\n", path.display())));
     }
     for (path, family) in lib.families.iter().rev() {
-        if let Some(text) = family.part_text(mpn) {
+        if let (Some(text), Some(part)) = (family.part_text(mpn), family.part(mpn)) {
             let at = |e: String| format!("{}: {e}", path.display());
             let text = text.map_err(at)?;
             // The same checks `check` runs on it, so this never prints a part that `check` would reject.
-            let part = family.part(mpn).expect("it decoded above").map_err(at)?;
+            let part = part.map_err(at)?;
             let problems = part.problems();
             if !problems.is_empty() {
                 return Err(at(problems.join("; ")));
@@ -879,7 +879,7 @@ fn bringup(path: &Path, rest: &[String]) -> Result<bool, String> {
 }
 
 fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
-    use gerberus::bom::{Online, Options, Severity, check_with_parts};
+    use gerberus::bom::{Lookups, Online, Options, Severity, check_with_parts};
     const CACHE_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
     let (show, rest) = Show::parse(rest)?;
     let mut opts = Options::default();
@@ -912,7 +912,7 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
     let design = load_design(path)?;
     let mut lib = load_library(&dirs)?;
     lib.expand_families(&design);
-    let mut source = Online::new(Online::default_cache_dir(), CACHE_MAX_AGE, false);
+    let mut source = Online::new(Online::default_cache_dir(), CACHE_MAX_AGE, Lookups::Network);
     let mut report = check_with_parts(&design, &mut source, opts, Some(&lib));
     let silenced: usize = report
         .iter_mut()

@@ -300,5 +300,5 @@ fn smallest_resistance(ctx: &Ctx<'_>) -> Result<(f64, String), String> {
     let mut lib = Library::default();
     lib.parts
         .insert(crate::limits::component_mpn(ctx.c).to_string(), ctx.part.clone());
-    resistance_range(&lib, ctx.inputs, ctx.reference, ctx.c).map(|(lo, _, note)| (lo, note))
+    resistance_range(&lib, ctx.inputs, ctx.reference, ctx.c).map(|range| (range.min, range.note))
 }

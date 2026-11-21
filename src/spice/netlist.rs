@@ -119,8 +119,9 @@ fn tvs_ohms(l: &crate::limits::Limit, bv: f64) -> f64 {
 /// can be.
 pub const SWITCH_OHMS: f64 = 0.05;
 
-/// A part's forward drop and its test current, from its forward drive.
-fn forward(part: Option<&Part>, led: bool) -> (f64, f64) {
+/// A part's forward drop and its test current, from its forward drive, or typical ones for its class.
+fn forward(part: Option<&Part>, class: Class) -> (f64, f64) {
+    let led = class == Class::Led;
     let drive = part.and_then(|p| p.drives.iter().find(|d| d.kind == DriveKind::Forward));
     let vf = drive
         .and_then(|d| match &d.range {
@@ -136,8 +137,8 @@ fn forward(part: Option<&Part>, led: bool) -> (f64, f64) {
 }
 
 /// A diode's model card: `vf` volts at `at` amps forward, series resistance `rs`, and a reverse breakdown.
-fn diode_model(name: &str, vf: f64, at: f64, led: bool, rs: f64, bv: Option<f64>) -> String {
-    let n = if led { 2.0 } else { 1.0 };
+fn diode_model(name: &str, vf: f64, at: f64, class: Class, rs: f64, bv: Option<f64>) -> String {
+    let n = if class == Class::Led { 2.0 } else { 1.0 };
     let vt = 0.025_85;
     let is = at / ((vf / (n * vt)).exp() - 1.0);
     let bv = bv.map(|v| format!(" BV={} IBV=1m", sig(v))).unwrap_or_default();
@@ -497,10 +498,10 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
             || (class.is_none() && lib_id.starts_with("Device:L") && !lib_id.starts_with("Device:LED"));
         if two && resistor {
             let ohms = match resistance_range(lib, inputs, reference, comp) {
-                Ok((lo, hi, _)) => Some(Value::Range {
-                    nominal: f64::midpoint(lo, hi),
-                    lo,
-                    hi,
+                Ok(range) => Some(Value::Range {
+                    nominal: f64::midpoint(range.min, range.max),
+                    lo: range.min,
+                    hi: range.max,
                 }),
                 Err(_) => parse_ohms(&comp.value).filter(|&v| v > 0.0).map(Value::Fixed),
             };
@@ -560,7 +561,7 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
             continue;
         }
         match (part.as_deref(), class) {
-            (Some(p), Some(Class::Diode | Class::Led)) => {
+            (Some(p), Some(kind @ (Class::Diode | Class::Led))) => {
                 let Some(d) = p.drives.iter().find(|d| d.kind == DriveKind::Forward) else {
                     skip(&mut c, format!("{} gives no forward drop", p.mpn));
                     continue;
@@ -569,9 +570,8 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
                     skip(&mut c, "its anode or cathode isn't on the schematic".into());
                     continue;
                 };
-                let led = class == Some(Class::Led);
-                let (vf, at) = forward(Some(p), led);
-                let model = diode_model(&format!("DM_{reference}"), vf, at, led, 0.05, None);
+                let (vf, at) = forward(Some(p), kind);
+                let model = diode_model(&format!("DM_{reference}"), vf, at, kind, 0.05, None);
                 c.elements.push(Element::D {
                     name: reference.clone(),
                     a,
@@ -581,7 +581,7 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
             }
             (Some(p), Some(Class::Tvs)) => {
                 let mut any = false;
-                let (vf, at) = forward(Some(p), false);
+                let (vf, at) = forward(Some(p), Class::Tvs);
                 for (li, l) in p.limits.iter().enumerate() {
                     let Some(bv) = l.breakdown.as_ref().and_then(breakdown_at) else {
                         continue;
@@ -591,7 +591,7 @@ pub fn build(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Volta
                     for (j, pin) in l.pins.iter().enumerate() {
                         let Some(kn) = c.pin_net(comp, p, pin) else { continue };
                         let name = format!("{reference}_{li}_{j}");
-                        let model = diode_model(&format!("DM_{name}"), vf, at, false, tvs_ohms(l, bv), Some(bv));
+                        let model = diode_model(&format!("DM_{name}"), vf, at, Class::Tvs, tvs_ohms(l, bv), Some(bv));
                         any = true;
                         if l.bidirectional {
                             // Two diodes back to back, each breaking down at the rating.
