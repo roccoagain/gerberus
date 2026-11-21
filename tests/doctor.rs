@@ -115,8 +115,9 @@ fn kitchen_sink_gaps_in_part_files() {
     let own = std::env::temp_dir().join(format!("gerberus-doctor-pins-{}", std::process::id()));
     std::fs::create_dir_all(&own).unwrap();
     let full = std::fs::read_to_string(root("parts/FNR4030S6R8MT.toml")).unwrap();
-    let voltage = full.rfind("\n[[limit]]\npins").expect("FNR4030S6R8MT's voltage limit");
-    std::fs::write(own.join("FNR4030S6R8MT.toml"), &full[..voltage]).unwrap();
+    let voltage = "\n[[limit]]\npins = [\"1\"]\nto = \"2\"\nabs_max = { none = \"the datasheet gives no voltage rating\" }\nrecommended = { none = \"the datasheet gives no voltage rating\" }\n";
+    assert!(full.contains(voltage), "FNR4030S6R8MT's voltage limit");
+    std::fs::write(own.join("FNR4030S6R8MT.toml"), full.replace(voltage, "")).unwrap();
     let lib = Library::load_dirs(&[&root("parts"), &own]).unwrap();
     std::fs::remove_dir_all(&own).unwrap();
     let d = doctor(&design, &lib, &inputs, false);

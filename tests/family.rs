@@ -1,7 +1,7 @@
 //! Part families: decoding part numbers, and agreeing with the part files written by hand for the same parts.
 use gerberus::design::Component;
 use gerberus::limits::family::{ValueKind, parse_value};
-use gerberus::limits::{Library, Lookup, Quantity, Range};
+use gerberus::limits::{Class, Library, Lookup, Quantity, Range};
 
 fn builtin() -> Library {
     Library::builtin().unwrap()
@@ -368,10 +368,12 @@ fn families_agree_with_hand_written_part_files() {
             if current(&made).is_some() {
                 assert_eq!(current(&made), current(by_hand), "{mpn}: rated current");
             }
-            // Every rating it gives is cited; a range the datasheet doesn't give is `none`.
+            // Every rating it gives is cited; only an inductor's voltage limit is `none`.
             for l in &made.limits {
+                let none_ok = made.class == Class::Inductor && l.quantity == Quantity::Voltage;
                 assert!(
-                    matches!(l.recommended, Range::Known { page: Some(_), .. } | Range::None(_)),
+                    matches!(l.recommended, Range::Known { page: Some(_), .. })
+                        || (none_ok && matches!(l.recommended, Range::None(_))),
                     "{mpn}: {:?}",
                     l.recommended
                 );
@@ -381,4 +383,36 @@ fn families_agree_with_hand_written_part_files() {
     // The six Samsung CL files, less CL05B104KB54PNC, whose codes 4 and P the 2015 catalogue doesn't list, and
     // the nine UNI-ROYAL files, the two Yageo CC, the one Fenghua and the one TDK MPZ1608 file.
     assert!(compared >= 18, "only {compared} parts compared");
+}
+
+/// A ferrite-bead family rates each part number its table lists, with no voltage rating, and refuses one the
+/// table doesn't list.
+#[test]
+fn bead_families_rate_their_table_rows() {
+    let lib = builtin();
+    let blm = family(&lib, "Murata BLM18H");
+    for (mpn, amps) in [
+        ("BLM18HG601SN1D", 0.2),
+        ("BLM18HE601SN1B", 0.8),
+        ("BLM18HD102SN1D", 0.05),
+    ] {
+        let p = blm.part(mpn).unwrap().unwrap();
+        assert_eq!(p.class, Class::Inductor, "{mpn}");
+        let current = p.limits.iter().find(|l| l.quantity == Quantity::Current).unwrap();
+        assert_eq!(current.recommended.values(), Some((-amps, amps)), "{mpn}");
+        let voltage = p.limits.iter().find(|l| l.quantity == Quantity::Voltage).unwrap();
+        assert!(matches!(voltage.recommended, Range::None(_)), "{mpn}");
+        assert_eq!(
+            p.temperature.as_ref().map(|t| (t.min, t.max)),
+            Some((-55.0, 125.0)),
+            "{mpn}"
+        );
+    }
+    let err = blm.part("BLM18HE121SN1D").unwrap().unwrap_err();
+    assert!(err.contains("the datasheet doesn't list BLM18HE121SN1D"), "{err}");
+    let mpz = family(&lib, "TDK MPZ1608");
+    let p = mpz.part("MPZ1608S260ATAH0").unwrap().unwrap();
+    let current = p.limits.iter().find(|l| l.quantity == Quantity::Current).unwrap();
+    assert_eq!(current.recommended.values(), Some((-6.0, 6.0)));
+    assert!(mpz.part("MPZ1608S221BTA00").unwrap().is_err());
 }

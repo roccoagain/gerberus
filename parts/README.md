@@ -361,7 +361,7 @@ limit of `none`, since the voltage across it is set by the current through it. A
 lists one part number per row, so each row's `when` names every code that picks it out. A field can list its codes and give
 `values` for only some of them: a capacitor tolerance in picofarads (B, C, D) or +80/−20 % (Z) gives no fraction,
 so the part gets no tolerance. Each rating comes from the one row that covers the part number and gives it: no
-row leaves it out (power or rated voltage left out makes the part unchecked, with the reason), and two rows are an
+row leaves it out (power, rated voltage or rated current left out makes the part unchecked, with the reason), and two rows are an
 error. So is a missing temperature coefficient when the family has `[[tcr]]` rows, and a part number that splits
 into fields more than one way. A resistor's rated voltage is √(P·R) from the decoded value, capped by the maximum working voltage. A 0 Ω
 jumper isn't rated, since it has a current rating rather than a power one.

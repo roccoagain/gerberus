@@ -3,7 +3,7 @@
 # per row, so each rating row names all of its codes.
 family = "TDK MPZ1608"
 manufacturer = "TDK"
-description = "chip ferrite bead for power lines, 0603 (1608 metric)"
+description = "chip ferrite bead for power lines, 1608 metric (0603)"
 class = "inductor"
 mpn = "MPZ1608{material}{impedance}{characteristic}T{internal}"
 

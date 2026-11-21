@@ -544,19 +544,23 @@ impl Family {
                 );
             }
             Class::Inductor => {
-                let rating =
-                    pick("rated current", &|r| r.current.is_some())?.ok_or_else(|| missing("rated current"))?;
+                // The tables list one part number per row, so a part number no row covers isn't in the datasheet.
+                let rating = pick("rated current", &|r| r.current.is_some())?.ok_or_else(|| {
+                    format!(
+                        "{} family: the datasheet doesn't list {mpn} ({codes_text}): no rating row covers it",
+                        self.family
+                    )
+                })?;
                 let a = rating.current.unwrap_or_default();
                 let _ = writeln!(
                     t,
                     "description = {}",
                     q(&format!(
-                        "{}{size} ({}, from the part number: {codes_text})",
+                        "{}{size}; {}, from the part number: {codes_text}",
                         self.description, self.family
                     ))
                 );
                 let _ = writeln!(t, "class = \"inductor\"");
-                tolerance_line(&mut t, tol);
                 temperature_line(&mut t, temperature);
                 datasheet_section(&mut t, ds);
                 let _ = writeln!(t, "\n[pins]\n1 = \"1\"\n2 = \"2\"\n");

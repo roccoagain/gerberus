@@ -15,9 +15,3 @@ pins = ["1"]
 to = "2"
 abs_max = { unknown = "no datasheet was reachable (LCSC has none for C37428; sunlordinc.com is blocked)" }
 recommended = { unknown = "no datasheet was reachable (LCSC has none for C37428; sunlordinc.com is blocked)" }
-
-[[limit]]
-pins = ["1"]
-to = "2"
-abs_max = { unknown = "no datasheet was reachable (LCSC has none for C37428; sunlordinc.com is blocked)" }
-recommended = { unknown = "no datasheet was reachable (LCSC has none for C37428; sunlordinc.com is blocked)" }

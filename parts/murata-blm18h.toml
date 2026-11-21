@@ -3,7 +3,7 @@
 # page 1 lists one part number per row, so each rating row names its characteristics and impedance codes.
 family = "Murata BLM18H"
 manufacturer = "Murata"
-description = "GHz-range chip ferrite bead, 0603 (1608 metric)"
+description = "GHz-range chip ferrite bead, 1608 metric (0603)"
 class = "inductor"
 mpn = "BLM18{characteristics}{impedance}SN1{packaging}"
 
