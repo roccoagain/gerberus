@@ -39,7 +39,6 @@
     "source_component_id": "source_component_0",
     "ftype": "simple_pin_header",
     "name": "J1",
-    "supplier_part_numbers": {},
     "pin_count": 2,
     "gender": "male",
     "are_pins_interchangeable": true,
@@ -108,7 +107,6 @@
     "ftype": "simple_chip",
     "name": "U1",
     "manufacturer_part_number": "AMS1117-3.3",
-    "supplier_part_numbers": {},
     "source_group_id": "source_group_0"
   },
   {
@@ -149,7 +147,6 @@
     "ftype": "simple_capacitor",
     "name": "C1",
     "manufacturer_part_number": "CL21A106KAYNNNE",
-    "supplier_part_numbers": {},
     "capacitance": 0.00001,
     "display_capacitance": "10uF",
     "are_pins_interchangeable": true,
@@ -193,7 +190,6 @@
     "ftype": "simple_capacitor",
     "name": "C2",
     "manufacturer_part_number": "CL05B104KB54PNC",
-    "supplier_part_numbers": {},
     "capacitance": 1e-7,
     "display_capacitance": "100nF",
     "are_pins_interchangeable": true,
@@ -237,7 +233,6 @@
     "ftype": "simple_capacitor",
     "name": "C3",
     "manufacturer_part_number": "CL21A106KAYNNNE",
-    "supplier_part_numbers": {},
     "capacitance": 0.00001,
     "display_capacitance": "10uF",
     "are_pins_interchangeable": true,
@@ -281,7 +276,6 @@
     "ftype": "simple_resistor",
     "name": "R1",
     "manufacturer_part_number": "0402WGF1001TCE",
-    "supplier_part_numbers": {},
     "resistance": 1000,
     "display_resistance": "1kΩ",
     "are_pins_interchangeable": true,
@@ -305,7 +299,6 @@
     "source_component_id": "source_component_6",
     "ftype": "simple_test_point",
     "name": "TP1",
-    "supplier_part_numbers": {},
     "footprint_variant": "pad",
     "pad_shape": "circle",
     "pad_diameter": 1,
@@ -2828,65 +2821,6 @@
       "z": 0
     },
     "footprinter_string": "smtpad_circle_d1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_mqDyuv768i",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <capacitor#27 name=\".C1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_2",
-    "subcircuit_id": "subcircuit_source_group_0",
-    "manufacturer_part_number": "CL21A106KAYNNNE",
-    "part_name": "C1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_AONHj6eLV9",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <capacitor#51 name=\".C3\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_4",
-    "subcircuit_id": "subcircuit_source_group_0",
-    "manufacturer_part_number": "CL21A106KAYNNNE",
-    "part_name": "C3"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_duVb2MbXiK",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <chip#7 name=\".U1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_1",
-    "subcircuit_id": "subcircuit_source_group_0",
-    "manufacturer_part_number": "AMS1117-3.3",
-    "part_name": "U1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_4dw4V0BW9L",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <pinheader#0 name=\".J1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_0",
-    "subcircuit_id": "subcircuit_source_group_0",
-    "part_name": "J1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_tjiITNf077",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <resistor#63 name=\".R1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_5",
-    "subcircuit_id": "subcircuit_source_group_0",
-    "manufacturer_part_number": "0402WGF1001TCE",
-    "part_name": "R1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_UPd9G6Jr9q",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <capacitor#39 name=\".C2\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_3",
-    "subcircuit_id": "subcircuit_source_group_0",
-    "manufacturer_part_number": "CL05B104KB54PNC",
-    "part_name": "C2"
   },
   {
     "type": "source_missing_manufacturer_part_number_warning",

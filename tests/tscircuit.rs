@@ -193,6 +193,14 @@ fn nets_are_named_by_subcircuit_and_pins() {
 }
 
 #[test]
+fn without_inputs_the_boards_own_ground_is_0_v() {
+    let d = tscircuit::load(&fixture("parts/parts.circuit.json")).unwrap();
+    let inputs = gerberus::inputs::BoardInputs::none("parts", &d);
+    let pin = &inputs.inputs[0].pin;
+    assert_eq!(d.pin_net(&pin.reference, &pin.pin).unwrap().name, "GND");
+}
+
+#[test]
 fn pinout_finds_the_diode_numbered_unlike_its_datasheet() {
     let d = tscircuit::load(&fixture("parts/parts.circuit.json")).unwrap();
     let lib = gerberus::limits::Library::builtin().unwrap();

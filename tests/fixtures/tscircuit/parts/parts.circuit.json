@@ -64,7 +64,6 @@
     "ftype": "simple_diode",
     "name": "D1",
     "manufacturer_part_number": "B5819WS",
-    "supplier_part_numbers": {},
     "are_pins_interchangeable": false,
     "source_group_id": "source_group_2"
   },
@@ -107,7 +106,6 @@
     "name": "LED1",
     "color": "red",
     "symbol_display_value": "red",
-    "supplier_part_numbers": {},
     "are_pins_interchangeable": false,
     "source_group_id": "source_group_2"
   },
@@ -157,7 +155,6 @@
     "source_component_id": "source_component_2",
     "ftype": "simple_mosfet",
     "name": "Q1",
-    "supplier_part_numbers": {},
     "mosfet_mode": "enhancement",
     "channel_type": "n",
     "source_group_id": "source_group_2"
@@ -211,7 +208,6 @@
     "source_component_id": "source_component_3",
     "ftype": "simple_transistor",
     "name": "Q2",
-    "supplier_part_numbers": {},
     "transistor_type": "pnp",
     "source_group_id": "source_group_2"
   },
@@ -271,7 +267,6 @@
     "source_component_id": "source_component_4",
     "name": "SW1",
     "ftype": "simple_push_button",
-    "supplier_part_numbers": {},
     "are_pins_interchangeable": true,
     "source_group_id": "source_group_2",
     "internally_connected_source_port_ids": [
@@ -322,7 +317,6 @@
     "source_component_id": "source_component_5",
     "ftype": "simple_capacitor",
     "name": "C2",
-    "supplier_part_numbers": {},
     "capacitance": 0.00001,
     "max_voltage_rating": 16,
     "display_capacitance": "10uF",
@@ -412,7 +406,6 @@
     "source_component_id": "source_component_7",
     "name": "Y1",
     "ftype": "simple_crystal",
-    "supplier_part_numbers": {},
     "frequency": 12000000,
     "load_capacitance": 1.8e-11,
     "display_frequency": "12MHz",
@@ -468,7 +461,6 @@
     "source_component_id": "source_component_8",
     "ftype": "simple_pin_header",
     "name": "J1",
-    "supplier_part_numbers": {},
     "pin_count": 3,
     "gender": "male",
     "are_pins_interchangeable": true,
@@ -512,7 +504,6 @@
     "ftype": "simple_inductor",
     "inductance": "10uH",
     "display_inductance": "10µH",
-    "supplier_part_numbers": {},
     "are_pins_interchangeable": true,
     "source_group_id": "source_group_2"
   },
@@ -549,7 +540,6 @@
     "source_component_id": "source_component_10",
     "name": "F1",
     "ftype": "simple_fuse",
-    "supplier_part_numbers": {},
     "current_rating_amps": 1,
     "display_current_rating": "1A",
     "display_voltage_rating": "V",
@@ -573,7 +563,6 @@
     "source_component_id": "source_component_11",
     "ftype": "simple_test_point",
     "name": "TP1",
-    "supplier_part_numbers": {},
     "footprint_variant": "pad",
     "pad_shape": "circle",
     "pad_diameter": 1,
@@ -698,7 +687,6 @@
     "ftype": "simple_chip",
     "name": "U1",
     "manufacturer_part_number": "TEST-REG",
-    "supplier_part_numbers": {},
     "source_group_id": "source_group_2"
   },
   {
@@ -738,7 +726,6 @@
     "source_component_id": "source_component_13",
     "ftype": "simple_resistor",
     "name": "R1",
-    "supplier_part_numbers": {},
     "resistance": 10000,
     "display_resistance": "10kΩ",
     "are_pins_interchangeable": true,
@@ -781,7 +768,6 @@
     "source_component_id": "source_component_14",
     "ftype": "simple_capacitor",
     "name": "C1",
-    "supplier_part_numbers": {},
     "capacitance": 1e-9,
     "display_capacitance": "1nF",
     "are_pins_interchangeable": true,
@@ -857,7 +843,6 @@
     "source_component_id": "source_component_15",
     "ftype": "simple_resistor",
     "name": "R1",
-    "supplier_part_numbers": {},
     "resistance": 10000,
     "display_resistance": "10kΩ",
     "are_pins_interchangeable": true,
@@ -900,7 +885,6 @@
     "source_component_id": "source_component_16",
     "ftype": "simple_capacitor",
     "name": "C1",
-    "supplier_part_numbers": {},
     "capacitance": 1e-9,
     "display_capacitance": "1nF",
     "are_pins_interchangeable": true,
@@ -8018,134 +8002,6 @@
     "footprinter_string": "cap0402_nonpolarized"
   },
   {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_aJpiSI98oG",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <diode#0 name=\".D1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_0",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "manufacturer_part_number": "B5819WS",
-    "part_name": "D1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_UE6mz8FB6h",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <crystal#102 name=\".Y1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_7",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "part_name": "Y1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_iAR1GDsHKj",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <capacitor#73 name=\".C2\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_5",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "part_name": "C2"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_KqArGSpdgN",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <fuse#135 name=\".F1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_10",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "part_name": "F1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_0kbQ6nL6wv",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <chip#153 name=\".U1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_12",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "manufacturer_part_number": "TEST-REG",
-    "part_name": "U1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_FJ39QiUhjA",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <mosfet#31 name=\".Q1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_2",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "part_name": "Q1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_5LZqhjMJin",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <inductor#123 name=\".L1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_9",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "part_name": "L1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_ioOFtSFIbj",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <transistor#46 name=\".Q2\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_3",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "part_name": "Q2"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_WuCSzuCi7v",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <pinheader#114 name=\".J1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_8",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "part_name": "J1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_5jwRJoV4nw",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <resistor#186(.A>.R1) />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_13",
-    "subcircuit_id": "subcircuit_source_group_0",
-    "part_name": "R1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_2LImmo2oEd",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <resistor#212(.B>.R1) />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_15",
-    "subcircuit_id": "subcircuit_source_group_1",
-    "part_name": "R1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_tYm5OjKIBg",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <capacitor#199(.A>.C1) />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_14",
-    "subcircuit_id": "subcircuit_source_group_0",
-    "part_name": "C1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_0Nx1NxYIy6",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <capacitor#225(.B>.C1) />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_16",
-    "subcircuit_id": "subcircuit_source_group_1",
-    "part_name": "C1"
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_rEZFnyeSEY",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier part numbers for <led#15 name=\".LED1\" />: Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_1",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "part_name": "LED1"
-  },
-  {
     "type": "source_missing_manufacturer_part_number_warning",
     "source_missing_manufacturer_part_number_warning_id": "source_missing_manufacturer_part_number_warning_0",
     "source_component_id": "source_component_1",
@@ -8208,28 +8064,6 @@
     "subcircuit_id": "subcircuit_source_group_2",
     "warning_type": "source_missing_manufacturer_part_number_warning",
     "message": "<testpoint#147 name=\".TP1\" /> is missing a manufacturer part number and could not be resolved to a supplier part. Specify mpn, manufacturerPartNumber, or mfn, provide supplierPartNumbers, or configure a parts engine to select a part. If this part will not be assembled, mark it doNotPlace."
-  },
-  {
-    "type": "source_component_availability_warning",
-    "source_component_availability_warning_id": "source_component_availability_warning_Q9Zb8TNOZu",
-    "warning_type": "source_component_availability_warning",
-    "message": "C3 may not have availability from jlcpcb (C307331).",
-    "source_component_id": "source_component_6",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "supplier_name": "jlcpcb",
-    "supplier_part_numbers": [
-      "C307331"
-    ]
-  },
-  {
-    "type": "source_part_not_found_warning",
-    "source_part_not_found_warning_id": "source_part_not_found_warning_ODIWw85XQW",
-    "warning_type": "source_part_not_found_warning",
-    "message": "Failed to fetch supplier footprint for <capacitor#90 name=\".C3\" /> (jlcpcb:C307331): Proxy refused to open a tunnel: 403 Forbidden (agent proxy: no rule or network setting allows this host)",
-    "source_component_id": "source_component_6",
-    "subcircuit_id": "subcircuit_source_group_2",
-    "supplier_name": "jlcpcb",
-    "supplier_part_number": "C307331"
   },
   {
     "type": "pcb_trace",

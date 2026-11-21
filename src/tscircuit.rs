@@ -39,7 +39,8 @@ pub fn build(path: &Path) -> Result<Design, String> {
         .current_dir(dir)
         .arg("export")
         .arg(file)
-        .args(["--format", "circuit-json", "--output"])
+        // Without the parts engine, the part numbers are the ones the board names, and nothing is fetched.
+        .args(["--disable-parts-engine", "--format", "circuit-json", "--output"])
         .arg(&out)
         .output()
         .map_err(|e| {
@@ -74,7 +75,8 @@ pub fn read(text: &str) -> Result<Design, String> {
     let footprints: HashMap<&str, &str> = of_type("cad_component")
         .filter_map(|e| Some((str_of(e, "source_component_id")?, str_of(e, "footprinter_string")?)))
         .collect();
-    // A part is fitted unless its board part says not to place it; a part with no board part isn't on the board.
+    // A part is fitted unless its board part says not to place it (`doNotPlace`). tscircuit gives every part on
+    // the board a board part, even one with no footprint.
     let placed: HashMap<&str, bool> = of_type("pcb_component")
         .filter_map(|e| {
             let dnp = e.get("do_not_place").and_then(Value::as_bool).unwrap_or(false);
@@ -196,8 +198,19 @@ pub fn read(text: &str) -> Result<Design, String> {
     }
     for (id, n) in missing {
         warnings.push(format!(
-            "{n} connections name {id}, which is no port or net of the design, so they join nothing through it"
+            "{n} connection{} name{} {id}, which is no port or net of the design, so {} nothing through it",
+            if n == 1 { "" } else { "s" },
+            if n == 1 { "s" } else { "" },
+            if n == 1 { "it joins" } else { "they join" },
         ));
+    }
+    // What tscircuit itself couldn't build, such as a trace to a port that doesn't exist, is missing from the
+    // design.
+    for e in elements {
+        if str_of(e, "type").is_some_and(|t| t.starts_with("source_") && t.ends_with("_error")) {
+            let message = str_of(e, "message").or(str_of(e, "type")).unwrap_or_default();
+            warnings.push(format!("tscircuit reported: {message}"));
+        }
     }
 
     let mut members: BTreeMap<usize, (Vec<&str>, BTreeSet<String>)> = BTreeMap::new();
@@ -279,14 +292,15 @@ impl<'a> Groups<'a> {
         Groups { by_id, subcircuits }
     }
 
-    /// The names of the groups from the board down to `group`, leaving out the board's own group.
+    /// The names of the groups from the board down to `group`, leaving out the board's own group. A group with
+    /// no name is named by its id (`source_group_3`), so an unnamed subcircuit's nets and parts stay its own.
     fn path(&self, group: Option<&str>) -> Vec<&'a str> {
         let mut names = Vec::new();
         let mut at = group.and_then(|g| self.by_id.get_key_value(g));
-        while let Some((_, &(name, parent))) = at {
+        while let Some((&id, &(name, parent))) = at {
             // The outermost group is the board.
             let Some(parent) = parent else { break };
-            names.extend(name);
+            names.push(name.unwrap_or(id));
             at = self.by_id.get_key_value(parent);
         }
         names.reverse();
@@ -403,7 +417,7 @@ fn kind(p: &Value, ftype: &str) -> PinKind {
     if let Some(&(_, k)) = attributes.iter().find(|(a, _)| flag(p, a)) {
         return k;
     }
-    if symbol_of(ftype, true).is_some() {
+    if symbol_of(ftype, true).is_some() || matches!(ftype, "simple_transistor" | "simple_mosfet") {
         PinKind::Passive
     } else {
         PinKind::Unspecified
@@ -449,8 +463,9 @@ fn symbol(c: &Value, ftype: &str) -> String {
     }
 }
 
-/// The value as a schematic shows it: `10kΩ`, `100nF` or `3.3µH` for a passive, or the part number. A part
-/// with neither is named by its symbol, as KiCad's are (`LED`, `Q_NMOS`).
+/// The value as a schematic shows it: `10kΩ`, `100nF` or `3.3µH` for a passive, or the part number. A discrete
+/// part with neither is named by its symbol, as KiCad's are (`LED`, `Q_NMOS`), and any other part by its own
+/// name, so two different chips without part numbers never pass for one part.
 fn value(c: &Value, ftype: &str, lib_id: &str) -> String {
     let quantity = match ftype {
         "simple_resistor" => Some("resistance"),
@@ -468,7 +483,10 @@ fn value(c: &Value, ftype: &str, lib_id: &str) -> String {
         .and_then(|q| text(&format!("display_{q}")).or_else(|| text(q)))
         .or_else(|| text("display_value"))
         .or_else(|| text("manufacturer_part_number"))
-        .unwrap_or_else(|| lib_id.rsplit(':').next().unwrap_or_default().to_string())
+        .unwrap_or_else(|| match lib_id.strip_prefix("tscircuit:") {
+            Some(_) => str_of(c, "name").unwrap_or_default().to_string(),
+            None => lib_id.rsplit(':').next().unwrap_or_default().to_string(),
+        })
 }
 
 /// The fields the checks read: the part number (`MPN`), the LCSC part number (`LCSC`, which JLCPCB numbers also
@@ -601,5 +619,51 @@ mod tests {
         assert_eq!(d.pin_net("U1", "3").unwrap().name, "unconnected-(U1-SCL-Pad3)");
         assert_eq!(d.pin_net("U1", "4").unwrap().name, "unconnected-(U1-Pad4)");
         assert!(d.components["U1"].pins["4"].no_connect);
+    }
+
+    #[test]
+    fn an_unnamed_subcircuit_used_twice_keeps_its_parts_and_nets_apart() {
+        let d = design(
+            r#"[
+            {"type":"source_group","source_group_id":"g0","is_subcircuit":true,"subcircuit_id":"s0"},
+            {"type":"source_group","source_group_id":"g1","is_subcircuit":true,"subcircuit_id":"s1","parent_source_group_id":"g0"},
+            {"type":"source_group","source_group_id":"g2","is_subcircuit":true,"subcircuit_id":"s2","parent_source_group_id":"g0"},
+            {"type":"source_component","source_component_id":"c0","ftype":"simple_resistor","name":"R2","source_group_id":"g1"},
+            {"type":"source_component","source_component_id":"c1","ftype":"simple_resistor","name":"R2","source_group_id":"g2"},
+            {"type":"source_port","source_port_id":"p0","source_component_id":"c0","name":"pin1","pin_number":1},
+            {"type":"source_port","source_port_id":"p1","source_component_id":"c1","name":"pin1","pin_number":1},
+            {"type":"source_net","source_net_id":"n0","name":"GND","subcircuit_id":"s1"},
+            {"type":"source_net","source_net_id":"n1","name":"GND","subcircuit_id":"s2"},
+            {"type":"source_trace","source_trace_id":"t0","connected_source_port_ids":["p0"],"connected_source_net_ids":["n0"]},
+            {"type":"source_trace","source_trace_id":"t1","connected_source_port_ids":["p1"],"connected_source_net_ids":["n1"]}
+        ]"#,
+        );
+        assert_eq!(d.pin_net("R2_g1", "1").unwrap().name, "/g1/GND");
+        assert_eq!(d.pin_net("R2_g2", "1").unwrap().name, "/g2/GND");
+    }
+
+    #[test]
+    fn what_tscircuit_could_not_build_is_a_warning_and_a_chip_is_valued_by_its_name() {
+        let d = design(
+            r#"[
+            {"type":"source_component","source_component_id":"c0","ftype":"simple_chip","name":"U1"},
+            {"type":"source_component","source_component_id":"c1","ftype":"simple_transistor","name":"Q1","transistor_type":"npn"},
+            {"type":"source_port","source_port_id":"p0","source_component_id":"c0","name":"pin1","pin_number":1},
+            {"type":"source_port","source_port_id":"p1","source_component_id":"c1","name":"pin1","pin_number":1,"port_hints":["collector"]},
+            {"type":"source_trace_not_connected_error","message":"Could not find port for selector \".R9 > .pin1\""},
+            {"type":"pcb_trace_error","message":"routing failed"},
+            {"type":"source_trace","source_trace_id":"t0","connected_source_port_ids":["p0","p9"],"connected_source_net_ids":[]}
+        ]"#,
+        );
+        assert_eq!(
+            d.warnings,
+            [
+                "1 connection names p9, which is no port or net of the design, so it joins nothing through it",
+                "tscircuit reported: Could not find port for selector \".R9 > .pin1\""
+            ]
+        );
+        assert_eq!(d.components["U1"].value, "U1");
+        assert_eq!(d.components["Q1"].value, "Q_NPN");
+        assert_eq!(d.components["Q1"].pins["1"].kind, PinKind::Passive);
     }
 }

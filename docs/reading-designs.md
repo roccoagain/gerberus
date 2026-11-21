@@ -40,9 +40,12 @@ things follow from how tscircuit works:
 - Pin attributes give the pin types: `requiresPower` and `requiresGround` are power inputs, `providesPower` a
   power output, `isInput` an input, and so on. A `noConnect` pin is marked not connected.
 - A `subcircuit` group keeps its nets to itself, as tscircuit does: `net.VCC` inside group A is a net of its
-  own, named `/A/VCC`. Parts of a group used twice share names, so each is named after its group too (`R1_A`).
+  own, named `/A/VCC` (an unnamed subcircuit is named by its group id). Parts of a group used twice share names, so each is named after its group too (`R1_A`).
 - Pins a part joins inside itself (`internallyConnectedPins`) are on one net.
-- A part with no board footprint is not on the board, and one with `doNotPlace` is not fitted.
+- A part with `doNotPlace` is not fitted.
+- Gerberus runs `tsci export` with the parts engine off, so a `.tsx` board's part numbers are the ones it names,
+  and nothing is fetched. A `circuit.json` from `tsci build` holds what the parts engine chose, if it ran.
+- What tscircuit couldn't build, such as a trace to a port that doesn't exist, is listed as a warning.
 
 `traces`, `si`, the footprint half of `pinout` and the board drawing of `check --html` read KiCad's board file, so
 they don't run on a tscircuit board yet.
