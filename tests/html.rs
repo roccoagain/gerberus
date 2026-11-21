@@ -75,6 +75,8 @@ fn a_finding_is_ringed_on_its_sheet_and_linked_both_ways() {
     assert!(page.contains(r#"<circle id="m0-1-0" class="mark error" cx="50" cy="50" r="6">"#));
     assert!(page.contains(r##"<a class="ring error" href="#f0"><circle class="halo" cx="50" cy="50" r="6"/>"##));
     assert!(!page.contains("m0-0-0"));
+    // KiCad's drawing sits in its own group, apart from the rings, so dark mode can invert the sheet alone.
+    assert!(page.contains(r#"<svg viewBox="0 0 297 210"><g class="art sheet"></g><g class="marks">"#));
     // The finding links to the ring, and its message is escaped.
     assert!(page.contains(r##"href="#m0-1-0" data-view="1""##));
     assert!(page.contains("R2 &lt;hot&gt;"));

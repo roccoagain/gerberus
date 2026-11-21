@@ -14,12 +14,14 @@ gerberus check amp-board.kicad_sch --html report.html
   tab. Scroll to zoom, drag to pan and double-click to see the whole drawing.
 - **A ring on each finding's part.** On every sheet that holds one of the part's symbols (each unit of a
   multi-unit part gets its own ring) and on the board in the middle of its footprint's pads. The ring is red for
-  an error, orange for a warning, blue for UNKNOWN and green for a pass, with a white outline so it stands out
-  on copper of the same colour. Click a ring to jump to its finding.
+  an error, orange for a warning, blue for UNKNOWN and green for a pass, with an outline so it stands out on
+  copper of the same colour. Click a ring to jump to its finding.
 - **The findings**, errors first, then warnings, UNKNOWNs and passes. Each links to its rings: click one to open
   that drawing zoomed in on the part. Where several findings share a part, the worst one's ring is on top.
 - **Filters.** Errors and warnings show at first; click the UNKNOWN or passed count to add those, on the list and the
   drawings.
+- **Light and dark.** The page follows the system setting; the button at the top right switches it and
+  remembers the choice. In dark mode the schematic is drawn light on dark.
 
 Waived findings are left out.
 

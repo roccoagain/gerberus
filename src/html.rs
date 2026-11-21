@@ -232,7 +232,7 @@ pub fn render(
             let r = if drawing.sheet.is_some() { 6 } else { 3 };
             for (k, (x, y)) in points.into_iter().enumerate() {
                 let id = format!("m{n}-{d}-{k}");
-                // A white halo under the coloured ring keeps it clear of copper drawn in the same colour.
+                // A halo under the coloured ring keeps it clear of copper drawn in the same colour.
                 marks[d].push(format!(
                     r##"<a class="ring {c}" href="#f{n}"><circle class="halo" cx="{x}" cy="{y}" r="{r}"/><circle id="{id}" class="mark {c}" cx="{x}" cy="{y}" r="{r}"><title>{}</title></circle></a>"##,
                     escape(&format!("{} {}: {}", f.rule, f.reference, f.message))
@@ -263,6 +263,10 @@ pub fn render(
             (None, Some(b)) => with_view_box(&without_title(&svg[..close]), b),
             _ => without_title(&svg[..close]),
         };
+        // KiCad's drawing in its own group, so dark mode can invert a schematic sheet without touching the rings.
+        let open = svg.find('>').map_or(svg.len(), |i| i + 1);
+        let art = if drawing.sheet.is_some() { "art sheet" } else { "art" };
+        let svg = format!(r#"{}<g class="{art}">{}</g>"#, &svg[..open], &svg[open..]);
         let _ = write!(
             tabs,
             r#"<button class="tab" data-view="{d}">{}</button>"#,
@@ -282,13 +286,15 @@ pub fn render(
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <link rel="icon" href="{icon}">
-<style>{STYLE}</style></head>
+<style>{STYLE}</style>
+<script>try{{const t=localStorage.getItem('gerberus-theme');if(t)document.documentElement.dataset.theme=t}}catch(e){{}}</script></head>
 <body>
 <header>{LOGO}<h1>{title}</h1>
 <div class="filters"><label class="error"><input type="checkbox" data-show="error" checked><i class="dot"></i>{e}</label>
 <label class="warning"><input type="checkbox" data-show="warning" checked><i class="dot"></i>{w}</label>
 <label class="unknown"><input type="checkbox" data-show="unknown"><i class="dot"></i>{u} unknown</label>
-<label class="pass"><input type="checkbox" data-show="pass"><i class="dot"></i>{p} passed</label></div></header>
+<label class="pass"><input type="checkbox" data-show="pass"><i class="dot"></i>{p} passed</label></div>
+<button class="theme" aria-label="Switch light or dark"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></svg></button></header>
 <main>
 <section class="drawings">{drawn}</section>
 <section class="list"><ol>{list}</ol></section>
@@ -327,23 +333,25 @@ fn data_url(svg: &str) -> String {
 }
 
 const STYLE: &str = r#"
-:root{--bg:#fff;--fg:#18181b;--muted:#71717a;--line:#ececef;--soft:#f6f6f7;--paper:#f5f4ef;--error:#dc2626;--warning:#d97706;--unknown:#6366f1;--pass:#16a34a}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#111113;--fg:#ededef;--muted:#8b8b93;--line:#26262a;--soft:#1c1c1f;--error:#f87171;--warning:#fbbf24;--unknown:#a5b4fc;--pass:#4ade80}}
-:root[data-theme="dark"]{--bg:#111113;--fg:#ededef;--muted:#8b8b93;--line:#26262a;--soft:#1c1c1f;--error:#f87171;--warning:#fbbf24;--unknown:#a5b4fc;--pass:#4ade80}
+:root{--bg:#fff;--fg:#18181b;--muted:#71717a;--line:#ececef;--soft:#f6f6f7;--paper:#f5f4ef;--halo:#fff;--error:#dc2626;--warning:#d97706;--unknown:#6366f1;--pass:#16a34a}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#111113;--fg:#ededef;--muted:#8b8b93;--line:#26262a;--soft:#1c1c1f;--paper:#0b0b0d;--halo:#000;--error:#f87171;--warning:#fbbf24;--unknown:#a5b4fc;--pass:#4ade80}.art.sheet{filter:invert(1) hue-rotate(180deg)}}
+:root[data-theme="dark"]{--bg:#111113;--fg:#ededef;--muted:#8b8b93;--line:#26262a;--soft:#1c1c1f;--paper:#0b0b0d;--halo:#000;--error:#f87171;--warning:#fbbf24;--unknown:#a5b4fc;--pass:#4ade80}
+:root[data-theme="dark"] .art.sheet{filter:invert(1) hue-rotate(180deg)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
 code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
-header{height:52px;padding:0 20px;border-bottom:1px solid var(--line);display:flex;gap:24px;align-items:center}
-header>svg{width:26px;height:26px;flex:none;margin-right:-14px}
+header{height:60px;padding:0 20px;border-bottom:1px solid var(--line);display:flex;gap:24px;align-items:center}
+header>svg{width:38px;height:38px;flex:none;margin-right:-12px}
 h1{font-size:14px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.filters{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
-.filters label{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap}
-.filters label:hover{background:var(--soft)}.filters label:has(:checked){background:var(--soft);color:var(--fg)}
+.filters{display:flex;gap:20px;margin-left:auto;flex-wrap:wrap}
+.filters label{display:flex;align-items:center;gap:6px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap}
+.filters label:hover,.filters label:has(:checked){color:var(--fg)}
 .filters input{position:absolute;opacity:0;pointer-events:none}.filters label:not(:has(:checked)) .dot{opacity:.35}
-.filters label:has(:focus-visible){outline:2px solid var(--fg);outline-offset:1px}
+.filters label:has(:focus-visible){outline:2px solid var(--fg);outline-offset:3px}
+.theme{border:0;background:none;color:var(--muted);padding:4px;cursor:pointer;display:flex}.theme:hover{color:var(--fg)}.theme svg{width:16px;height:16px}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none;background:var(--muted)}
 .error .dot{background:var(--error)}.warning .dot{background:var(--warning)}.unknown .dot{background:var(--unknown)}.pass .dot{background:var(--pass)}
-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);height:calc(100vh - 52px)}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);height:calc(100vh - 60px)}
 @media (max-width:800px){header{height:auto;padding:12px 16px;flex-wrap:wrap}.filters{margin-left:0}main{grid-template-columns:1fr;height:auto}.view{height:60vh}}
 .drawings{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line)}
 nav{display:flex;gap:20px;padding:0 20px;border-bottom:1px solid var(--line)}
@@ -352,7 +360,7 @@ nav{display:flex;gap:20px;padding:0 20px;border-bottom:1px solid var(--line)}
 .view{display:none;flex:1;overflow:hidden;background:var(--paper);cursor:grab}.view.on{display:block}.view:active{cursor:grabbing}
 .view svg{width:100%;height:100%}.note{margin:20px;color:var(--muted)}
 .halo,.mark{fill:none;vector-effect:non-scaling-stroke;pointer-events:visibleFill;cursor:pointer}
-.halo{stroke:#fff;stroke-width:6px}.mark{stroke-width:2.5px}
+.halo{stroke:var(--halo);stroke-width:6px}.mark{stroke-width:2.5px}
 .mark.error{stroke:#dc2626}.mark.warning{stroke:#f59e0b}.mark.unknown{stroke:#6366f1}.mark.pass{stroke:#16a34a}
 .ring.hidden{display:none}.mark.hot{stroke-width:3.5px;animation:pulse 1s ease-in-out 3}@keyframes pulse{50%{stroke-opacity:.25}}
 .list{overflow:auto}.list ol{list-style:none;margin:0;padding:0}
@@ -390,4 +398,7 @@ function filter(){const on=new Set([...document.querySelectorAll('[data-show]')]
  document.querySelectorAll('.finding').forEach(f=>f.classList.toggle('hidden',![...on].some(c=>f.classList.contains(c))));
  document.querySelectorAll('.ring').forEach(m=>m.classList.toggle('hidden',![...on].some(c=>m.classList.contains(c))))}
 document.querySelectorAll('[data-show]').forEach(c=>c.onchange=filter);filter();
+// The theme button flips between light and dark from whatever shows now, and the choice is kept for next time.
+document.querySelector('.theme').onclick=()=>{const r=document.documentElement,t=r.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+ r.dataset.theme=t=='dark'?'light':'dark';try{localStorage.setItem('gerberus-theme',r.dataset.theme)}catch(e){}};
 ";
