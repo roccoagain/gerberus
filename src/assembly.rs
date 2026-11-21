@@ -6,24 +6,75 @@
 //!   The pour's pad heats more slowly in reflow, so the other end's solder melts first and can stand the part up.
 //! - `fiducials`: a side carrying a fine-pitch part (pads `[assembly] fine_pitch` apart or closer) needs
 //!   `[assembly] fiducials` global fiducials for the placement machine to find the board accurately.
+//!
+//! How a pour joins a pad is read from KiCad's last fill, not from the zone's settings, so DRC-rule overrides,
+//! keepouts and higher-priority zones count: the fill is sampled on a ring just outside the pad. Copper all round
+//! it is solid; copper on part of it is a relief's spokes (or a pad partly hemmed in, taken as a relief).
 use crate::design::Design;
 use crate::finding::{Finding, Severity, Verdict};
-use crate::kicad::pcb::{Layout, PadConnection, PlacedFootprint, PlacedPad, dist, inside};
+use crate::kicad::pcb::{Layout, PlacedFootprint, PlacedPad, Point, dist, inside};
 use crate::policy::AssemblyPolicy;
 
-/// How the pours join a pad: the most solid joint of any pour of its net that covers it, with the pour's net and
-/// layer. `None` when no pour of its net covers it.
-fn joint<'a>(layout: &'a Layout, pad: &PlacedPad) -> Option<(PadConnection, &'a str, &'a str)> {
-    let net = pad.net.as_deref()?;
-    layout
-        .pours
-        .iter()
-        .filter(|p| p.net == net && pad.layers.contains(&p.layer) && inside(pad.at, &p.outline))
-        .map(|p| {
-            let c = pad.zone_connect.unwrap_or(p.pads).for_pad(pad.through_hole);
-            (c, p.net.as_str(), p.layer.as_str())
+/// Points on a ring 0.05 mm outside the pad: its circle, or its rectangle for any other shape.
+fn ring(pad: &PlacedPad) -> Vec<Point> {
+    const N: usize = 32;
+    const GAP: f64 = 0.05;
+    let (w, h) = (pad.size.0 / 2.0 + GAP, pad.size.1 / 2.0 + GAP);
+    let (c, s) = (pad.rotation.to_radians().cos(), pad.rotation.to_radians().sin());
+    (0..N)
+        .map(|i| {
+            let t = i as f64 / N as f64;
+            let (lx, ly) = if pad.round {
+                let a = t * std::f64::consts::TAU;
+                (w * a.cos(), w * a.sin())
+            } else {
+                // Walk the rectangle's perimeter.
+                let d = t * 4.0 * (w + h);
+                match d {
+                    d if d < 2.0 * w => (-w + d, -h),
+                    d if d < 2.0 * w + 2.0 * h => (w, -h + d - 2.0 * w),
+                    d if d < 4.0 * w + 2.0 * h => (w - (d - 2.0 * w - 2.0 * h), h),
+                    d => (-w, h - (d - 4.0 * w - 2.0 * h)),
+                }
+            };
+            // Back from the pad's frame to the board's (the inverse of `PlacedPad::contains`).
+            (pad.at.0 + lx * c + ly * s, pad.at.1 - lx * s + ly * c)
         })
-        .max_by_key(|(c, ..)| matches!(c, PadConnection::Solid))
+        .collect()
+}
+
+/// How the pours join a pad.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Joint {
+    None,
+    Relief,
+    Solid,
+}
+
+/// The most solid joint any pour of the pad's net makes with it, and on which layer.
+fn joint<'a>(layout: &'a Layout, pad: &PlacedPad) -> (Joint, &'a str) {
+    let Some(net) = pad.net.as_deref() else {
+        return (Joint::None, "");
+    };
+    let points = ring(pad);
+    layout
+        .zones
+        .iter()
+        .filter(|z| z.net == net && pad.layers.contains(&z.layer))
+        .map(|z| {
+            let filled = points
+                .iter()
+                .filter(|&&p| z.polygons.iter().any(|poly| inside(p, poly)))
+                .count();
+            let j = match filled {
+                0 => Joint::None,
+                n if n * 10 >= points.len() * 9 => Joint::Solid,
+                _ => Joint::Relief,
+            };
+            (j, z.layer.as_str())
+        })
+        .max_by_key(|(j, _)| *j)
+        .unwrap_or((Joint::None, ""))
 }
 
 /// A two-pad surface-mount package of 0603 or smaller, by the size code in its footprint name
@@ -31,7 +82,7 @@ fn joint<'a>(layout: &'a Layout, pad: &PlacedPad) -> Option<(PadConnection, &'a 
 fn small_chip(f: &PlacedFootprint) -> bool {
     let name = f.lib_id.rsplit(':').next().unwrap_or_default();
     f.pads.len() == 2
-        && f.pads.iter().all(|p| !p.through_hole)
+        && f.pads.iter().all(|p| p.kind == "smd")
         && name.split('_').any(|w| ["01005", "0201", "0402", "0603"].contains(&w))
 }
 
@@ -42,7 +93,7 @@ fn is_fiducial(f: &PlacedFootprint) -> bool {
 
 /// The closest two surface-mount pads of a part with at least six, centre to centre: its pin pitch.
 fn pitch(f: &PlacedFootprint) -> Option<f64> {
-    let smd: Vec<&PlacedPad> = f.pads.iter().filter(|p| !p.through_hole).collect();
+    let smd: Vec<&PlacedPad> = f.pads.iter().filter(|p| p.kind == "smd").collect();
     if smd.len() < 6 {
         return None;
     }
@@ -69,14 +120,31 @@ pub fn check(design: &Design, layout: &Layout, policy: &AssemblyPolicy) -> Vec<F
     };
     let mut out = vec![];
     for f in layout.footprints.iter().filter(|f| fitted(f)) {
-        for pad in f.pads.iter().filter(|p| p.through_hole) {
-            let Some((c, net, layer)) = joint(layout, pad) else {
-                continue;
-            };
-            let at = format!("{}.{} ({net})", f.reference, pad.number);
+        // A through-hole pad by its number: a part may repeat one (a connector's shield tabs), reported once.
+        let mut numbers: Vec<&str> = f
+            .pads
+            .iter()
+            .filter(|p| p.kind == "thru_hole")
+            .map(|p| p.number.as_str())
+            .collect();
+        numbers.sort_unstable();
+        numbers.dedup();
+        for number in numbers {
+            let (j, layer, net) = f
+                .pads
+                .iter()
+                .filter(|p| p.kind == "thru_hole" && p.number == number)
+                .map(|p| {
+                    let (j, layer) = joint(layout, p);
+                    (j, layer, p.net.as_deref().unwrap_or_default())
+                })
+                .max_by_key(|(j, ..)| *j)
+                .unwrap_or((Joint::None, "", ""));
+            let at = format!("{}.{number} ({net})", f.reference);
             let nets = net_index(net).into_iter().collect();
-            out.push(if c == PadConnection::Solid {
-                finding(
+            match j {
+                Joint::None => {}
+                Joint::Solid => out.push(finding(
                     "thermal-relief",
                     Verdict::Fail,
                     &f.reference,
@@ -85,46 +153,43 @@ pub fn check(design: &Design, layout: &Layout, policy: &AssemblyPolicy) -> Vec<F
                          heat away, so the solder may not fill the hole"
                     ),
                     nets,
-                )
-            } else {
-                finding(
+                )),
+                Joint::Relief => out.push(finding(
                     "thermal-relief",
                     Verdict::Pass,
                     &f.reference,
                     format!("{at} joins the {net} pour on {layer} through a thermal relief"),
                     nets,
-                )
-            });
+                )),
+            }
         }
         if small_chip(f) {
-            let solid: Vec<Option<(&str, &str)>> = f
-                .pads
-                .iter()
-                .map(|p| match joint(layout, p) {
-                    Some((PadConnection::Solid, net, layer)) => Some((net, layer)),
-                    _ => None,
-                })
-                .collect();
+            let joints: Vec<(Joint, &str)> = f.pads.iter().map(|p| joint(layout, p)).collect();
             let nets = f.pads.iter().filter_map(|p| net_index(p.net.as_deref()?)).collect();
-            out.push(match (&f.pads[..], &solid[..]) {
-                ([p, q], [Some((net, layer)), None]) | ([q, p], [None, Some((net, layer))]) => finding(
-                    "tombstoning",
-                    Verdict::Fail,
-                    &f.reference,
-                    format!(
-                        "{}: pad {} joins the {net} pour on {layer} solidly and pad {} doesn't, so pad {} heats more \
-                         slowly in reflow and the part can stand up on it",
-                        f.reference, p.number, q.number, p.number
-                    ),
-                    nets,
-                ),
-                _ => finding(
+            let solid = |i: usize| joints[i].0 == Joint::Solid;
+            out.push(if solid(0) == solid(1) {
+                finding(
                     "tombstoning",
                     Verdict::Pass,
                     &f.reference,
                     format!("{}: both pads are joined alike", f.reference),
                     nets,
-                ),
+                )
+            } else {
+                let (s, o) = if solid(0) { (0, 1) } else { (1, 0) };
+                let (p, q) = (&f.pads[s], &f.pads[o]);
+                let net = p.net.as_deref().unwrap_or_default();
+                finding(
+                    "tombstoning",
+                    Verdict::Fail,
+                    &f.reference,
+                    format!(
+                        "{}: pad {} joins the {net} pour on {} solidly and pad {} doesn't, so pad {} heats more \
+                         slowly in reflow and the part can stand up on it",
+                        f.reference, p.number, joints[s].1, q.number, p.number
+                    ),
+                    nets,
+                )
             });
         }
     }

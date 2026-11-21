@@ -95,10 +95,11 @@ at `c / √εr` through the stackup's highest-εr dielectric.
 
 ## Assembly: thermal reliefs, tombstoning and fiducials
 
-`traces` also checks three things that make a board solder or place badly. A pad counts as in a pour when its centre
-is inside the drawn outline of a filled zone of its net on one of its layers; how the pour joins it is the pad's own
-zone connection, else its footprint's, else the zone's (KiCad's "Pad connections": thermal reliefs, solid, reliefs
-for through-hole pads only, or none).
+`traces` also checks three things that make a board solder or place badly. How a pour joins a pad is read from
+KiCad's last fill, so zone settings, pad and footprint overrides, DRC rules, keepouts and higher-priority zones all
+count as KiCad applied them: the fill of each zone of the pad's net, on each of the pad's layers, is sampled on a
+ring 0.05 mm outside the pad. Copper all round it (nine tenths of the ring or more) is a solid joint; copper on part
+of it is a thermal relief's spokes; none is no joint. Refill the zones before checking.
 
 | Rule | Warns when |
 |---|---|

@@ -56,8 +56,8 @@ fn pad(num: &str, net: &str, at: Point, size: f64) -> PlacedPad {
         size: (size, size),
         rotation: 0.0,
         layers: vec!["F.Cu".into()],
-        through_hole: false,
-        zone_connect: None,
+        kind: "smd".into(),
+        round: false,
     }
 }
 

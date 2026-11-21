@@ -131,53 +131,6 @@ pub struct Layout {
     pub stackup_assumed: bool,
     /// Every net with a zone, filled or not: an unfilled zone has no polygons in `zones`.
     pub zone_nets: Vec<String>,
-    /// Each zone's outline on each layer it is filled on, with how it joins pads, for the assembly checks.
-    pub pours: Vec<Pour>,
-}
-
-/// One zone's drawn outline on one copper layer it is filled on.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Pour {
-    pub net: String,
-    pub layer: String,
-    pub outline: Vec<Point>,
-    /// How the zone joins pads of its net, unless a pad or its footprint says otherwise.
-    pub pads: PadConnection,
-}
-
-/// How a zone joins a pad of its net: KiCad's zone `connect_pads`, or a pad's or footprint's `zone_connect`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PadConnection {
-    /// Not joined: a track must reach the pad.
-    None,
-    /// Through a few narrow spokes across a clearance ring.
-    Thermal,
-    /// Copper all round the pad.
-    Solid,
-    /// Thermal for through-hole pads, solid for surface-mount ones.
-    ThermalThroughHole,
-}
-
-impl PadConnection {
-    /// What it comes to for one pad.
-    pub fn for_pad(self, through_hole: bool) -> PadConnection {
-        match self {
-            PadConnection::ThermalThroughHole if through_hole => PadConnection::Thermal,
-            PadConnection::ThermalThroughHole => PadConnection::Solid,
-            c => c,
-        }
-    }
-
-    /// KiCad's `zone_connect` number on a pad or footprint; absent or -1 follows the zone.
-    fn from_number(n: f64) -> Option<PadConnection> {
-        match n as i64 {
-            0 => Some(PadConnection::None),
-            1 => Some(PadConnection::Thermal),
-            2 => Some(PadConnection::Solid),
-            3 => Some(PadConnection::ThermalThroughHole),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -251,10 +204,10 @@ pub struct PlacedPad {
     pub rotation: f64,
     /// Copper layers the pad is on.
     pub layers: Vec<String>,
-    /// A plated hole rather than a surface-mount pad.
-    pub through_hole: bool,
-    /// How zones join this pad when the pad or its footprint overrides the zone's own setting.
-    pub zone_connect: Option<PadConnection>,
+    /// `smd`, `thru_hole`, `np_thru_hole` or `connect`.
+    pub kind: String,
+    /// True for a round pad (`circle`); other shapes are taken as their rectangle.
+    pub round: bool,
 }
 
 impl PlacedPad {
@@ -477,14 +430,6 @@ fn parse_layout(tree: &Sexp) -> Layout {
             .and_then(|c| c.arg_f64(1))
             .unwrap_or(0.5);
         let min_thickness = z.child("min_thickness").and_then(|c| c.arg_f64(1)).unwrap_or(0.25);
-        // `(connect_pads yes ...)` is solid, `no` none, `thru_hole_only` reliefs for through-hole pads only; with
-        // no word, thermal reliefs.
-        let pads = match z.child("connect_pads").and_then(|c| c.arg(1)) {
-            Some("yes") => PadConnection::Solid,
-            Some("no") => PadConnection::None,
-            Some("thru_hole_only") => PadConnection::ThermalThroughHole,
-            _ => PadConnection::Thermal,
-        };
         let zone_layer = z.child("layer").and_then(|l| l.arg(1)).map(str::to_string);
         let points = |p: &Sexp| -> Vec<Point> {
             p.child("pts")
@@ -524,14 +469,6 @@ fn parse_layout(tree: &Sexp) -> Layout {
             }
         }
         if outline.len() >= 3 {
-            for layer in &filled {
-                out.pours.push(Pour {
-                    net: net.clone(),
-                    layer: layer.clone(),
-                    outline: outline.clone(),
-                    pads,
-                });
-            }
             for o in out
                 .zones
                 .iter_mut()
@@ -566,10 +503,6 @@ fn parse_layout(tree: &Sexp) -> Layout {
                 .to_string()
         };
         let (c, s) = (frot.to_radians().cos(), frot.to_radians().sin());
-        let fp_connect = fp
-            .child("zone_connect")
-            .and_then(|z| z.arg_f64(1))
-            .and_then(PadConnection::from_number);
         let pads = fp
             .children("pad")
             .filter_map(|pad| {
@@ -604,12 +537,8 @@ fn parse_layout(tree: &Sexp) -> Layout {
                     // when it is 0.
                     rotation: at.arg_f64(3).unwrap_or(0.0),
                     layers,
-                    through_hole: pad.arg(2) == Some("thru_hole"),
-                    zone_connect: pad
-                        .child("zone_connect")
-                        .and_then(|z| z.arg_f64(1))
-                        .and_then(PadConnection::from_number)
-                        .or(fp_connect),
+                    kind: pad.arg(2).unwrap_or_default().to_string(),
+                    round: pad.arg(3) == Some("circle"),
                 })
             })
             .collect();

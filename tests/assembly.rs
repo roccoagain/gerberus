@@ -1,5 +1,5 @@
 //! The assembly checks on the build-checks board (from roccoagain/hardware), which has a fail and a pass case for
-//! each, and on the sniffer, whose 0402 decoupling capacitors have their GND pads poured solid.
+//! each, and on the sniffer, whose 0603 decoupling capacitors have their GND pads poured solid.
 use std::path::Path;
 
 use gerberus::finding::{Finding, Verdict};

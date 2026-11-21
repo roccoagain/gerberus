@@ -29,8 +29,8 @@ fn pad(r: &str, at: (f64, f64)) -> PlacedFootprint {
             size: (1.0, 1.0),
             rotation: 0.0,
             layers: vec!["F.Cu".into()],
-            through_hole: false,
-            zone_connect: None,
+            kind: "smd".into(),
+            round: false,
         }],
     }
 }
@@ -179,8 +179,8 @@ mod voltage_drop {
             size: (0.5, 0.5),
             rotation: 0.0,
             layers: vec![layer.into()],
-            through_hole: false,
-            zone_connect: None,
+            kind: "smd".into(),
+            round: false,
         }
     }
 
