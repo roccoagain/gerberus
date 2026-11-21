@@ -28,8 +28,13 @@ pub fn build(path: &Path) -> Result<Design, String> {
     // npm installs the CLI as a `.cmd` script on Windows, which Command only finds by its full name.
     let tsci = if cfg!(windows) { "tsci.cmd" } else { "tsci" };
     // Run in the board's folder, as its designer runs tsci, so the cache tsci keeps (`.tscircuit/`) lands there.
-    let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    let file = path.file_name().ok_or_else(|| format!("{}: not a file", path.display()))?;
+    let dir = path
+        .parent()
+        .filter(|d| !d.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let file = path
+        .file_name()
+        .ok_or_else(|| format!("{}: not a file", path.display()))?;
     let run = Command::new(tsci)
         .current_dir(dir)
         .arg("export")
