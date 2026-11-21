@@ -34,17 +34,17 @@ It prints each problem it found, then a count:
 ```text
 error[abs-max]: U1.CE reaches -5.5 V, past the minimum of -0.3 V
   --> U1.CE (+5V), in fault "VIN reversed"
-   = note: worst case -5.5 to -3.6 V
-   = note: ME6211C33M5G-N V14 p5
    = help: add a divider, clamp or series resistor, or choose a part rated higher
 ...
-error: 2 errors, 7 warnings, 29 unknown, 96 passed
+error: 2 errors, 3 warnings, 8 unknown, 102 passed
 ```
 
 An **error** means a part can be damaged or the board won't work; a **warning** is a risk worth a look. Each one
-gives the numbers it compared, the datasheet page they came from, and a fix. **Unknown** means Gerberus couldn't
+says what is wrong, where, and how to fix it. **Unknown** means Gerberus couldn't
 decide, usually because a part has no part file yet; it never counts as a pass. Add `--all` to list those and the
-passes too, and `--verbose` to see how each net got its voltage range. The sniffer's 2 errors
+passes too, and `--verbose` to see the numbers each finding compared, the datasheet pages they came from and how each
+net got its voltage range. `gerberus explain abs-max` says what a rule checks and why ([all rules](docs/rules.md)).
+The sniffer's 2 errors
 are its supply connected backwards, which damages the regulator; its warnings are headers with no ESD protection.
 
 To see the findings on the drawings, add `--html report.html`: one web page with the schematic and board, each

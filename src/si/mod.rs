@@ -547,7 +547,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
             },
             Severity::Error,
             format!(
-                "{} is {lp:.2} mm and {} is {ln:.2} mm: {skew:.2} mm apart ({:.0} ps), against {} mm ({})",
+                "{} and {} differ by {skew:.2} mm ({:.0} ps), against {} mm ({}); {lp:.2} mm and {ln:.2} mm long",
                 rp.net,
                 rn.net,
                 skew * 1e-3 * sp.first().map_or(1.8, |s| s.solution.odd.er_eff.sqrt()) / xsection::C0 * 1e12,
@@ -606,7 +606,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
                     (
                         Verdict::Fail,
                         Severity::Error,
-                        format!("against less than {} mm ({})", usb2::STUB, cite::TUSB1210),
+                        format!("at or over the {} mm limit ({})", usb2::STUB, cite::TUSB1210),
                     )
                 } else if same_connector {
                     (
@@ -626,15 +626,15 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
                     verdict,
                     severity,
                     format!(
-                        "{}: a {:.2} mm stub at {} reaching {reaches}{}: {why}",
+                        "{}: a {:.2} mm stub reaches {reaches}{}, {why}; at {}",
                         r.net,
                         s.length,
-                        fmt_pt(s.at),
                         if s.vias > 0 {
                             format!(" through {} via(s)", s.vias)
                         } else {
                             String::new()
-                        }
+                        },
+                        fmt_pt(s.at)
                     ),
                 );
             }
@@ -886,7 +886,8 @@ pub fn render(report: &Report, show: &Show) -> String {
             "no USB pairs found (nets ending in D+/D-, DP/DM, _P/_N with USB in the name)"
         );
     }
-    let section = |out: &mut String, header: &str, pair: &str, nets: &[&str]| {
+    let mut listed = crate::diag::Listed::default();
+    let section = |out: &mut String, listed: &mut crate::diag::Listed, header: &str, pair: &str, nets: &[&str]| {
         let _ = writeln!(out, "\n{}", style.paint("1", header));
         let mut sorted: Vec<&Finding> = report.findings.iter().filter(|f| f.pair == pair).collect();
         sorted.sort_by_key(|f| (f.verdict, f.severity));
@@ -900,6 +901,7 @@ pub fn render(report: &Report, show: &Show) -> String {
                     Some(at) => format!("{at}, pair {pair}"),
                     None => format!("pair {pair}"),
                 });
+                listed.add(&d);
                 d.render(out, style, show.verbose, width);
             }
         }
@@ -909,7 +911,7 @@ pub fn render(report: &Report, show: &Show) -> String {
             "{} ({} / {}): {} → {}, {:.1} / {:.1} mm, {} / {} vias",
             p.name, p.p, p.n, p.from, p.to, p.length_p, p.length_n, p.vias_p, p.vias_n
         );
-        section(&mut out, &header, &p.name, &[p.p.as_str(), p.n.as_str()]);
+        section(&mut out, &mut listed, &header, &p.name, &[p.p.as_str(), p.n.as_str()]);
     }
     // Pairs that couldn't be traced have findings but no report.
     let untraced: BTreeSet<&str> = report
@@ -919,7 +921,7 @@ pub fn render(report: &Report, show: &Show) -> String {
         .filter(|n| !report.pairs.iter().any(|p| p.name == *n))
         .collect();
     for name in untraced {
-        section(&mut out, &format!("{name}: not traced"), name, &[name]);
+        section(&mut out, &mut listed, &format!("{name}: not traced"), name, &[name]);
     }
     let count = |v: Verdict, s: Option<Severity>| {
         report
@@ -940,7 +942,7 @@ pub fn render(report: &Report, show: &Show) -> String {
             count(Verdict::Unknown, None),
             count(Verdict::Pass, None),
         ],
-        false,
+        &listed,
     );
     out
 }

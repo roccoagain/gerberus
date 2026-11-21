@@ -472,8 +472,7 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             (
                 Verdict::Fail,
                 format!(
-                    "{at} has no TVS or ESD clamp, and {}: a component rating covers handling in a factory, not a \
-                     discharge through a connector, which needs {need}",
+                    "{at} has no TVS or ESD clamp, and {}; a connector pin needs {need}",
                     weak.join("; ")
                 ),
             )

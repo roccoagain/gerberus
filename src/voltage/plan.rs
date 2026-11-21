@@ -492,7 +492,7 @@ impl Plan<'_> {
                         let (why, known) = match (rn, nd) {
                             (Some(rn), _) if sn < rn => (format!("below its recommended minimum of {rn} V"), true),
                             (None, _) => ("and its recommended minimum isn't known".into(), false),
-                            (_, Some(nd)) => (format!("below the {} V the output is specified at", round(nd)), true),
+                            (_, Some(nd)) => (format!("below the {} V its output needs", round(nd)), true),
                             (_, None) => ("and the part file gives no headroom the output needs".into(), false),
                         };
                         let text = format!("{} can fall to {} V, {why}", name(*supply), round(sn));

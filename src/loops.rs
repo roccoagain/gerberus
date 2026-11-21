@@ -114,19 +114,16 @@ pub fn check(design: &Design, lib: &Library, layout: &Layout, policy: &HotLoopPo
             .flatten()
             .max_by(|x, y| x.0.total_cmp(&y.0))
             .expect("checked above");
-        let what = format!(
-            "its longest input loop, from pin {spin} through {cap} to pin {gpin} and back, is {l:.1} mm round the \
-             pad centres"
-        );
+        let what = format!("its input loop from pin {spin} through {cap} to pin {gpin} is {l:.1} mm");
         out.push(if l <= policy.length {
             finding(
                 Verdict::Pass,
-                format!("{what}; within {} mm ({})", policy.length, policy.reason),
+                format!("{what}, within {} mm ({})", policy.length, policy.reason),
             )
         } else {
             finding(
                 Verdict::Fail,
-                format!("{what}; more than {} mm ({})", policy.length, policy.reason),
+                format!("{what}, more than {} mm ({})", policy.length, policy.reason),
             )
         });
     }

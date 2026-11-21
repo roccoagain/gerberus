@@ -188,6 +188,7 @@ fn a_pair_with_no_connector_is_shown_as_untraced() {
     let r = check(&l);
     let unknown = Show {
         all: true,
+        verbose: true,
         ..Show::default()
     };
     let text = si::render(&r, &unknown);

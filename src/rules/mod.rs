@@ -600,9 +600,8 @@ pub fn help(rule: &str) -> Option<&'static str> {
     })
 }
 
-/// A finding laid out as a diagnostic, with `help` for a FAIL and, for `--verbose`, how each net it read got its
-/// range.
-pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Finding) -> Diagnostic {
+/// A finding laid out as a diagnostic: headline, location, notes, and `help` for a FAIL.
+pub fn laid_out(f: &Finding) -> Diagnostic {
     let level = match (f.verdict, f.severity) {
         (Verdict::Fail, Severity::Error) => Level::Error,
         (Verdict::Fail, Severity::Warning) => Level::Warning,
@@ -630,6 +629,14 @@ pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Findin
     }
     if f.verdict == Verdict::Fail {
         d.help = help(f.rule).map(str::to_string);
+    }
+    d
+}
+
+/// [`laid_out`], with how each net a FAIL read got its range for `--verbose`.
+pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Finding) -> Diagnostic {
+    let mut d = laid_out(f);
+    if f.verdict == Verdict::Fail {
         let volts = f
             .case
             .as_ref()
@@ -652,7 +659,7 @@ pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Findin
 pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -> String {
     let mut out = String::new();
     let width = show.columns();
-    let mut details = false;
+    let mut listed = crate::diag::Listed::default();
     // Errors, then warnings, then unknowns and passes: `check` sorts its findings so, but `stress` doesn't.
     let mut sorted: Vec<&Finding> = report.findings.iter().collect();
     sorted.sort_by_key(|f| (f.verdict, f.severity));
@@ -661,7 +668,7 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -
         if !show.lists(d.level) {
             continue;
         }
-        details |= !d.details.is_empty();
+        listed.add(&d);
         d.render(&mut out, show.style, show.verbose, width);
     }
     if show.all {
@@ -678,7 +685,7 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -
         &mut out,
         show,
         [report.errors(), report.warnings(), report.unknowns(), report.passes()],
-        details,
+        &listed,
     );
     if !report.waived.is_empty() {
         let _ = writeln!(

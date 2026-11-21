@@ -248,9 +248,7 @@ fn symbol_vs_datasheet(design: &Design, c: &Component, part: &Part, fp: Option<&
                 .join(", ")
         };
         out.warning(format!(
-            "the symbol's pins ({}) show no polarity but {mpn} is polarised: cathode (K) is {}, anode (A) is {}; \
-             check that is the way round you meant",
-            sym_names.join(", "),
+            "the symbol shows no polarity but {mpn} is polarised: cathode (K) is {}, anode (A) is {}",
             side("K"),
             side("A")
         ));
@@ -274,11 +272,9 @@ fn symbol_vs_datasheet(design: &Design, c: &Component, part: &Part, fp: Option<&
         });
         match swapped_with {
             Some((m, other)) => {
-                let theirs = c.pins.get(m).and_then(|p| shown_name(&p.name));
                 out.error(format!(
-                    "symbol pin {num} is {sym:?}, but the datasheet puts {other} on pin {m} and {ds_name} on pin {num}{}: \
-                     pins look swapped",
-                    theirs.map(|t| format!(" (the symbol's pin {m} is {t:?})")).unwrap_or_default()
+                    "symbol pins {num} and {m} look swapped: the datasheet puts {other} on pin {m} and {ds_name} on \
+                     pin {num}"
                 ));
             }
             None => differ.push(format!("{num} {sym:?} (datasheet {ds_name})")),

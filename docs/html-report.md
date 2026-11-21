@@ -16,8 +16,9 @@ gerberus check amp-board.kicad_sch --html report.html
   multi-unit part gets its own ring) and on the board in the middle of its footprint's pads. The ring is red for
   an error, orange for a warning, blue for UNKNOWN and green for a pass, with an outline so it stands out on
   copper of the same colour. Click a ring to jump to its finding.
-- **The findings**, errors first, then warnings, UNKNOWNs and passes. Each links to its rings: click one to open
-  that drawing zoomed in on the part. Where several findings share a part, the worst one's ring is on top.
+- **The findings**, errors first, then warnings, UNKNOWNs and passes. Each gives where it is, its headline and the
+  fix, as the terminal does, with its numbers and datasheet citations folded under "details". Each links to its
+  rings: click one to open that drawing zoomed in on the part. Where several findings share a part, the worst one's ring is on top.
 - **Filters.** Errors and warnings show at first; click the UNKNOWN or passed count to add those, on the list and the
   drawings.
 - **Light and dark.** The page follows the system setting; the button at the top right switches it and

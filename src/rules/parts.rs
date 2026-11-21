@@ -32,8 +32,7 @@ pub(super) fn tvs(
             (Some(x), Some(b)) if x >= b => (
                 Verdict::Fail,
                 format!(
-                    "{head}: reaches {}, at or above the lowest breakdown voltage of {} ({}), so it conducts \
-                     continuously and overheats",
+                    "{head}: reaches {}, at or above its lowest breakdown voltage of {} ({})",
                     v(x),
                     v(b),
                     ctx.cite(bd)
@@ -164,7 +163,7 @@ pub(super) fn cap_voltage(
             Some((
                 Severity::Warning,
                 format!(
-                    "{} across it, past {} % of its {} rating ({source}) that policy.toml allows: {reason}",
+                    "{} across it, past {} % of its {} rating ({source}); {reason}",
                     v(x),
                     f * 100.0,
                     v(rv)
@@ -247,7 +246,7 @@ pub(super) fn resistor_power(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &
             let watts = x * x / rmin;
             let derate = policy.derate_for(ctx.part, limit);
             let w = |p: f64| format!("{} mW", (p * 1e4).round() / 10.0);
-            let detail = format!(
+            let worst = format!(
                 "{} at {} over {} Ω ({note})",
                 w(watts),
                 v(x),
@@ -258,7 +257,8 @@ pub(super) fn resistor_power(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &
                     Verdict::Fail,
                     Severity::Error,
                     format!(
-                        "{head}: up to {detail}, above its {} rating ({})",
+                        "{head}: up to {}, above its {} rating ({}); {worst}",
+                        w(watts),
                         w(p),
                         ctx.cite(&limit.recommended)
                     ),
@@ -268,7 +268,8 @@ pub(super) fn resistor_power(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &
                     Verdict::Fail,
                     Severity::Warning,
                     format!(
-                        "{head}: up to {detail}, above {} % of its {} rating that policy.toml allows: {}",
+                        "{head}: up to {}, above {} % of its {} rating; {worst}; {}",
+                        w(watts),
                         d.factor * 100.0,
                         w(p),
                         d.reason
@@ -279,7 +280,8 @@ pub(super) fn resistor_power(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &
                     Verdict::Pass,
                     Severity::Error,
                     format!(
-                        "{head}: up to {detail}, within its {} rating ({})",
+                        "{head}: up to {}, within its {} rating ({}); {worst}",
+                        w(watts),
                         w(p),
                         ctx.cite(&limit.recommended)
                     ),

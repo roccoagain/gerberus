@@ -187,7 +187,7 @@ pub fn check(design: &Design, layout: &Layout) -> Vec<Finding> {
             .expect("the net has tracks");
         let at = |t: &Track| {
             format!(
-                "the track on {} from ({:.2}, {:.2}) to ({:.2}, {:.2})",
+                "a track on {} (from {:.2}, {:.2} to {:.2}, {:.2})",
                 t.layer, t.start.0, t.start.1, t.end.0, t.end.1
             )
         };
@@ -199,15 +199,7 @@ pub fn check(design: &Design, layout: &Layout) -> Vec<Finding> {
                     net.name
                 ),
             ),
-            (Reference::Split, t) => (
-                Verdict::Fail,
-                format!(
-                    "{}: {} crosses a split: the plane under it is separate pieces and no neighbouring layer \
-                     has one unbroken plane under it, so its return current has to go around the gap",
-                    net.name,
-                    at(t)
-                ),
-            ),
+            (Reference::Split, t) => (Verdict::Fail, format!("{}: {} crosses a plane split", net.name, at(t))),
             (Reference::Missing, t) => (
                 Verdict::Unknown,
                 format!(

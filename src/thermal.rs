@@ -1041,9 +1041,7 @@ pub fn junction(
                 format!("within {:.0} °C of", max.value - tj)
             };
             f.headline = Some(format!(
-                "{reference} dissipates {}{lower}, so its junction reaches {tj:.0} °C at {ambient} °C ambient, {past} its \
-                 {} °C maximum",
-                mw(watts),
+                "{reference}'s junction reaches {tj:.0} °C at {ambient} °C ambient, {past} its {} °C maximum",
                 max.value
             ));
         }

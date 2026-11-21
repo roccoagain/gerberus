@@ -1236,6 +1236,7 @@ fn listing_note(h: &Health) -> Option<String> {
 pub fn render(report: &[Health], opts: Options, show: &crate::diag::Show) -> String {
     use crate::diag::{Diagnostic, Level};
     let mut out = String::new();
+    let mut listed = crate::diag::Listed::default();
     let (mut errors, mut warnings, mut unknown, mut passed) = (0, 0, 0, 0);
     let mut closing = vec![];
     for h in report {
@@ -1263,6 +1264,7 @@ pub fn render(report: &[Health], opts: Options, show: &crate::diag::Show) -> Str
             );
             d.location = Some(location.clone());
             d.notes = listing_note(h).into_iter().collect();
+            listed.add(&d);
             d.render(&mut out, show.style, show.verbose, show.columns());
         }
         let mut any = false;
@@ -1288,6 +1290,7 @@ pub fn render(report: &[Health], opts: Options, show: &crate::diag::Show) -> Str
                 help: f.help.clone(),
                 details: vec![],
             };
+            listed.add(&d);
             d.render(&mut out, show.style, show.verbose, show.columns());
         }
         if !any && show.lists(Level::Pass) {
@@ -1319,7 +1322,7 @@ pub fn render(report: &[Health], opts: Options, show: &crate::diag::Show) -> Str
             if opts.jlcpcb { ", assembled by JLCPCB" } else { "" }
         ),
     );
-    crate::diag::summary(&mut out, show, [errors, warnings, unknown, passed], false);
+    crate::diag::summary(&mut out, show, [errors, warnings, unknown, passed], &listed);
     out
 }
 

@@ -327,19 +327,20 @@ pub fn diagnose(
                         .map(|d| d.url.clone())
                         .filter(|u| !u.is_empty()),
                     file: file.clone(),
-                    notes: vec![format!("its part file is {file}")],
-                    help: format!(
-                        "read it from the datasheet into the part file (see parts/README.md){}; if the datasheet \
-                         doesn't give it, check those results by hand and waive each one that holds (see docs/waivers.md)",
-                        if file.ends_with("(built in)") {
-                            format!(
-                                ", copying the built-in file first with `gerberus part show {m} --out {}`",
-                                setup.parts.join(file_name(m)).display()
-                            )
-                        } else {
-                            String::new()
-                        }
-                    ),
+                    notes: vec![
+                        format!("its part file is {file}"),
+                        "if the datasheet doesn't give it, check those results by hand and waive each one that \
+                         holds (see docs/waivers.md)"
+                            .into(),
+                    ],
+                    help: if file.ends_with("(built in)") {
+                        format!(
+                            "copy the part file with `gerberus part show {m} --out {}`, then add it from the datasheet",
+                            setup.parts.join(file_name(m)).display()
+                        )
+                    } else {
+                        "add it to the part file from the datasheet (see parts/README.md)".into()
+                    },
                 });
             }
             Key::Temperature => items.push(Item {
@@ -389,8 +390,7 @@ pub fn diagnose(
                         report.waivers_file.clone()
                     },
                     notes,
-                    help: "`gerberus check --all` lists them; add a [[waiver]] with the reason for each one you have \
-                           checked (see docs/waivers.md)"
+                    help: "`gerberus check --all` lists them; waive each one you have checked (see docs/waivers.md)"
                         .into(),
                 });
             }
@@ -612,9 +612,8 @@ fn part_item(design: &Design, lib: &Library, setup: &Setup, m: &str, refs: Vec<S
         file: file.display().to_string(),
         notes,
         help: format!(
-            "start {} with `gerberus part new {} {}`, then fill it in from the datasheet: parts/README.md says \
-             how, and an agent can do it with the datasheet-to-part skill",
-            file.display(),
+            "start it with `gerberus part new {} {}`, then fill it in from the datasheet (parts/README.md, or the \
+             datasheet-to-part skill)",
             if setup.design.contains(char::is_whitespace) {
                 format!("\"{}\"", setup.design)
             } else {
@@ -694,7 +693,8 @@ fn list(items: &[String], and: &str) -> String {
     }
 }
 
-/// The to-do list for the terminal.
+/// The to-do list for the terminal. Its notes say where to act (the datasheet link, the file to save it as), so
+/// they are shown without `--verbose`.
 pub fn render(doctor: &Doctor, show: &Show) -> String {
     let mut out = String::new();
     for item in &doctor.items {
@@ -707,7 +707,7 @@ pub fn render(doctor: &Doctor, show: &Show) -> String {
             help: Some(item.help.clone()),
             details: vec![],
         };
-        d.render(&mut out, show.style, show.verbose, show.columns());
+        d.render(&mut out, show.style, true, show.columns());
     }
     let style = show.style;
     if doctor.items.is_empty() {
