@@ -119,3 +119,16 @@ fn a_fuse_before_the_rails_hides_nothing() {
     d.components.insert("F9".into(), f);
     assert_eq!(summary(&d), before);
 }
+
+/// A rail whose regulator may not hold it is to be measured against the regulator's output range, not the 0 V
+/// floor its low end has while the regulator may be out of regulation.
+#[test]
+fn an_unheld_rail_expects_the_regulated_range() {
+    let (d, p) = run("sniffer", "sniffer.kicad_sch");
+    let text = render(&d, &p);
+    assert!(
+        text.contains("Measure +3V3 (from +5V) at J2.1: expect 3.234 to 3.366 V."),
+        "{text}"
+    );
+    assert!(text.contains("U1 may not hold it"), "{text}");
+}

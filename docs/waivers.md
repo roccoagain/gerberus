@@ -4,6 +4,10 @@ Some findings are fine on purpose: a header only ever plugged in on the bench, a
 designers have checked by other means. A `waivers.toml` next to the schematic accepts such a finding, with the
 reason, so `check` stops counting it while the reason stays on record.
 
+To silence every warning of one rule for a run instead, as a compiler's `-A` does, pass `--allow RULE`
+(`--allow esd`, or `--allow warnings` for all of them). It only hides warnings and records no reason; errors
+always need a waiver.
+
 ```toml
 [[waiver]]
 rule = "esd"                 # the rule in brackets in the report: error[esd]

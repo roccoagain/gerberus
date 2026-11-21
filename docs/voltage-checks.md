@@ -20,14 +20,16 @@ error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V
    = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx
    = help: add a divider, clamp or series resistor, or choose a part rated higher
 
-error: 18 errors, 9 warnings, 109 unknown, 402 passed
-   = note: 109 unknown and 402 passed not shown; --all lists them
+error: 18 errors, 9 warnings, 29 unknown, 429 passed
+   = note: 29 unknown and 429 passed not shown; --all lists them
    = note: --verbose shows how each net in a finding got its voltage range
 ```
 
 Errors come first, then warnings. UNKNOWNs and passes are only counted unless `--all` asks for them, and how each net got its range is printed only with `--verbose` (`-v`). Colour is on when
-the output is a terminal and `NO_COLOR` isn't set. `stress`, `si` and
-`pinout` print the same way and take the same flags. The rules:
+the output is a terminal and `NO_COLOR` isn't set. `--allow RULE` silences a rule's warnings, as a compiler's
+`-A` does (`--allow esd`; `--allow warnings` silences all of them), and the summary says how many it silenced.
+Errors can't be silenced: a [waiver](waivers.md) accepts one, with its reason. `stress`, `si`, `traces`, `bom`
+and `pinout` print the same way and take the same flags. The rules:
 
 | Rule | FAILs when | Severity |
 | --- | --- | --- |
@@ -60,7 +62,8 @@ on it, sits between the nets around it, so a termination resistor behind a jumpe
 Fault cases in `inputs.toml` (such as VBUS shorted onto CANH) are each worked out on their own and checked
 against `abs-max`, `tvs-breakdown` and `cap-voltage` (without derating). Resistor power and other passives'
 ratings are checked too, but can only PASS or be UNKNOWN there, since a fault's two ends needn't move together.
-Their findings say which fault they come from; `voltages --fault CASE` shows one case's nets.
+Their findings say which fault they come from; `voltages --fault CASE` shows one case's nets. Once a fault case
+damages a part (an error FAILs), its UNKNOWNs are left out: settling them can't change what to do about the fault.
 
 Every supply input (one with a positive minimum) is also checked connected backwards, as the fault case
 `<name> reversed`, unless its `inputs.toml` entry says why it can't be (`reverse = "keyed connector"`). A series
@@ -70,7 +73,9 @@ minimum: pins on it come out UNKNOWN rather than PASS. `reverse-polarity` sums t
 findings that normal operation doesn't already have; the summary isn't counted again in the error total.
 
 The `esd` rule looks at every connector pin `inputs.toml` names (inputs and undriven pins, not their ground
-references). An undriven test point is left out: only a probe touches it, at the bench. A TVS or ESD diode on the net passes it, if it breaks down below the absolute maximum of the IC
+references). An undriven test point is left out: only a probe touches it, at the bench. So is a connector left
+out of the BOM, which is pads only (a Tag-Connect footprint, SWD pads): a probe is pressed on it at the bench,
+and no cable a person plugs in reaches it. A TVS or ESD diode on the net passes it, if it breaks down below the absolute maximum of the IC
 pins beside it (an SMF26A on a 3.3 V logic pin doesn't count). A pull-up or pull-down isn't followed onto its
 rail. So does a clamp behind the one series part between the
 connector and the ICs it protects (VBUS → D1 → TVS). A part with no part file on the way (other than a connector, test point or jumper) makes the net UNKNOWN,
@@ -89,6 +94,6 @@ On the test boards:
   of the time.
 - The sniffer's only errors are its supply connected backwards: nothing blocks VIN, so the ME6211's CE pin sees
   -5.5 V and its output sits above its reversed input. Both CAN encoders pass, as D1 blocks a reversed VBUS.
-- Every debug header (SWD) and the sniffer's UART reach STM32 pins rated only ±1 to ±2 kV HBM, so they fail `esd`
-  as warnings. The CAN pins pass on the transceivers' own system-level ratings: rev 1's TCAN330 is rated ±12 kV contact
+- The sniffer's UART reaches STM32 pins rated only ±1 kV HBM, so it fails `esd` as a warning. The debug pads
+  (the CAN encoder's SWD pads, the sniffer's Tag-Connect) are out of the BOM, so they aren't checked. The CAN pins pass on the transceivers' own system-level ratings: rev 1's TCAN330 is rated ±12 kV contact
   (its NUP2105L breaks down only at up to 32 V, above the TCAN330's 14 V bus pins), and rev 2's TCAN1044AV ±8 kV.

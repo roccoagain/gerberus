@@ -240,16 +240,20 @@ fn known_warnings() {
     );
 }
 
-/// A rail that may sag because its regulator isn't held never fails a minimum, only leaves it UNKNOWN.
+/// A rail that may sag because its regulator isn't held never fails a minimum. The pins on it aren't listed as
+/// UNKNOWN either: the regulator-headroom warning already says the rail may sag.
 #[test]
-fn a_sagging_rail_is_unknown_not_failed() {
+fn a_sagging_rail_is_left_to_the_headroom_warning() {
     let (_, _, r) = run("sniffer", "sniffer.kicad_sch");
-    let f = r
+    let vdd: Vec<_> = r
         .by_rule("recommended")
-        .find(|f| f.reference == "U2" && f.message.starts_with("U2.VDD"))
-        .unwrap();
-    assert_eq!(f.verdict, Verdict::Unknown, "{}", f.message);
-    assert!(f.message.contains("only a bound"), "{}", f.message);
+        .filter(|f| f.case.is_none() && f.reference == "U2" && f.message.starts_with("U2.VDD"))
+        .collect();
+    assert!(vdd.is_empty(), "{vdd:#?}");
+    assert!(
+        r.by_rule("regulator-headroom")
+            .any(|f| f.reference == "U1" && f.verdict == Verdict::Fail)
+    );
 }
 
 /// A pin limited to `VDD + 0.3 V` passes when everything driving it is bounded by that same VDD.
@@ -760,8 +764,8 @@ fn a_capacitor_keeps_a_node_from_tracking_its_pull() {
     assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
 }
 
-/// Connector pins: the bus pins are clamped or rated for system-level ESD; the debug headers and the sniffer's
-/// UART reach STM32 pins rated only for handling (HBM), which is a warning.
+/// Connector pins: the bus pins are clamped or rated for system-level ESD; the sniffer's UART reaches STM32 pins
+/// rated only for handling (HBM), which is a warning. Debug pads left out of the BOM aren't checked.
 #[test]
 fn esd_on_the_test_boards() {
     let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
@@ -774,7 +778,8 @@ fn esd_on_the_test_boards() {
     // VBUS reaches its ICs only through D1, with the SMF26A behind it.
     assert_eq!(esd(&r, "J1.1 (VBUS)"), Verdict::Pass);
     assert_eq!(esd(&r, "J1.2 (/CANH)"), Verdict::Pass);
-    assert_eq!(esd(&r, "J3.2 (/SWDIO)"), Verdict::Fail);
+    // J3 is SWD pads, left out of the BOM: a probe pressed on at the bench, so no connector ESD level.
+    assert!(r.by_rule("esd").all(|f| !f.message.contains("J3.")));
     let (_, _, r) = run("can-encoder-rev1", "can-encoder.kicad_sch");
     assert_eq!(esd(&r, "J1.2 (/CANH)"), Verdict::Pass);
     // The NUP2105L breaks down at up to 32 V, above the TCAN330's 14 V bus pins, so it isn't counted as their
@@ -795,6 +800,8 @@ fn esd_on_the_test_boards() {
     );
     let (_, _, r) = run("sniffer", "sniffer.kicad_sch");
     assert_eq!(esd(&r, "J1.2 (/UART_TX)"), Verdict::Fail);
+    // J2 is a Tag-Connect footprint, also out of the BOM.
+    assert!(r.by_rule("esd").all(|f| !f.message.contains("J2.")));
     // The ME6211 gives no ESD rating.
     assert_eq!(esd(&r, "J1.1 (+5V)"), Verdict::Unknown);
 }
@@ -849,6 +856,8 @@ fn reversal_failures_count_by_finding_not_by_pin() {
 #[test]
 fn esd_does_not_follow_pulls_onto_rails() {
     let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    // J2 is pads only on the real board; fitted here, so its pins are held to the connector ESD level.
+    d.components.get_mut("J2").unwrap().in_bom = true;
     let swo = d.components["J2"].pins["6"].net;
     let gnd = net(&d, "GND");
     add(
@@ -909,6 +918,8 @@ fn esd_leaves_out_test_points() {
 #[test]
 fn esd_skips_undescribed_pulls_and_connectors() {
     let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    // J2 is pads only on the real board; fitted here, so its pins are held to the connector ESD level.
+    d.components.get_mut("J2").unwrap().in_bom = true;
     let swo = d.components["J2"].pins["6"].net;
     let gnd = net(&d, "GND");
     add(
@@ -1209,6 +1220,8 @@ fn no_inputs_assumes_only_ground() {
 #[test]
 fn esd_weak_pin_beside_an_undescribed_part_is_unknown() {
     let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    // J2 is pads only on the real board; fitted here, so its pins are held to the connector ESD level.
+    d.components.get_mut("J2").unwrap().in_bom = true;
     let swdio = d.components["J2"].pins["2"].net;
     let gnd = net(&d, "GND");
     // A resistor or a module with no part file can't be the clamp: the pin still FAILs.

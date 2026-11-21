@@ -31,9 +31,12 @@ const USAGE: &str = "usage:
   gerberus skill install [DIR] [--force]
   gerberus --version
 
-REPORT is any of --all, --verbose (-v) and --json. Reports list errors then warnings, rustc-style. --all also
-lists UNKNOWNs and passes, and --verbose adds the long explanations (how each net got its range). Colour is on
-for a terminal unless NO_COLOR is set. --json prints the findings as JSON instead.
+REPORT is any of --all, --verbose (-v), --allow RULE and --json. Reports list errors then warnings, rustc-style.
+--all also lists UNKNOWNs and passes, and --verbose adds the long explanations (how each net got its range).
+--allow RULE silences the warnings of a rule, as the report names it in brackets (`--allow esd`), and
+`--allow warnings` silences every warning; it can be given more than once. Errors can't be silenced: a waiver
+accepts one (see docs/waivers.md). Colour is on for a terminal unless NO_COLOR is set. --json prints the
+findings as JSON instead.
 
 <design> is a KiCad root .kicad_sch, or a tscircuit board: its Circuit JSON (the circuit.json that `tsci build`
 writes) or the board's .tsx, which gerberus turns into Circuit JSON with the tscircuit CLI (`tsci`, from
@@ -513,7 +516,7 @@ fn analyse(
 }
 
 fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest);
+    let (show, rest) = Show::parse(rest)?;
     let json = rest.iter().any(|a| a == "--json");
     let mut rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
     let html = match rest.iter().position(|a| a == "--html") {
@@ -528,6 +531,7 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
     let policy = gerberus::policy::Policy::builtin()?;
     let mut report = gerberus::rules::check(&design, &lib, &policy, &inputs, &v);
     waive(path, &o, &design, &mut report)?;
+    let silenced = silence(&show, &mut report);
     if let Some(out) = html {
         write_html(path, &design, &report, &out)?;
     }
@@ -535,8 +539,17 @@ fn check(path: &Path, rest: &[String]) -> Result<bool, String> {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
         print!("{}", gerberus::rules::render(&design, &v, &report, &show));
+        print!("{}", show.silenced_note(silenced));
     }
     Ok(report.errors() == 0)
+}
+
+/// Takes the warnings `--allow` silences out of a report, returning how many.
+fn silence(show: &Show, report: &mut gerberus::rules::Report) -> usize {
+    use gerberus::finding::{Severity, Verdict};
+    show.silence(&mut report.findings, |f| {
+        (f.verdict == Verdict::Fail && f.severity == Severity::Warning).then_some(f.rule)
+    })
 }
 
 /// Writes `check --html`'s page: the findings, marked on drawings of the schematic and, when the board file sits
@@ -603,7 +616,7 @@ fn waive(
 }
 
 fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest);
+    let (show, rest) = Show::parse(rest)?;
     let json = rest.iter().any(|a| a == "--json");
     let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
     let o = options(path, &rest, &["--pcb", "--inputs"])?;
@@ -616,7 +629,7 @@ fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
     let hp = policy.hot_loop.ok_or("policy.toml has no [hot_loop]")?;
     let ep = policy.edges.ok_or("policy.toml has no [edges]")?;
     let th = gerberus::thermal::compute(&design, &lib, &inputs, &v);
-    let report = gerberus::rules::Report {
+    let mut report = gerberus::rules::Report {
         findings: gerberus::traces::check(&design, &layout, &th, &tp)
             .into_iter()
             .chain(gerberus::drop::check(&design, &lib, &inputs, &v, &layout, &th, &tp))
@@ -627,6 +640,7 @@ fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
             .collect(),
         ..Default::default()
     };
+    let silenced = silence(&show, &mut report);
     if json {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
@@ -634,6 +648,7 @@ fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
             eprintln!("note: {a}");
         }
         print!("{}", gerberus::rules::render(&design, &v, &report, &show));
+        print!("{}", show.silenced_note(silenced));
     }
     Ok(report.errors() == 0)
 }
@@ -731,7 +746,7 @@ fn init(path: &Path, rest: &[String]) -> Result<bool, String> {
 }
 
 fn doctor(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest);
+    let (show, rest) = Show::parse(rest)?;
     let json = rest.iter().any(|a| a == "--json");
     let rest: Vec<String> = rest.into_iter().filter(|a| a != "--json").collect();
     let mut o = options(path, &rest, &["--inputs", "--waivers"])?;
@@ -753,7 +768,7 @@ fn doctor(path: &Path, rest: &[String]) -> Result<bool, String> {
 const STRESS_SEED: u64 = 1;
 
 fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest);
+    let (show, rest) = Show::parse(rest)?;
     let mut json = false;
     let mut runs = None;
     let mut others = vec![];
@@ -779,23 +794,25 @@ fn stress(path: &Path, rest: &[String]) -> Result<bool, String> {
         sp.runs = n;
     }
     let sweep = gerberus::spice::sweep(&design, &lib, &inputs, &v, &sp, STRESS_SEED)?;
-    let report = gerberus::rules::Report {
+    let mut report = gerberus::rules::Report {
         findings: gerberus::spice::check(&design, &lib, &sweep, &sp),
         waived: vec![],
         waivers_file: String::new(),
         cases: vec![],
     };
+    let silenced = silence(&show, &mut report);
     if json {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
         print!("{}", gerberus::spice::describe(&design, &sweep));
         print!("{}", gerberus::rules::render(&design, &v, &report, &show));
+        print!("{}", show.silenced_note(silenced));
     }
     Ok(report.errors() == 0)
 }
 
 fn signal(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest);
+    let (show, rest) = Show::parse(rest)?;
     let mut json = false;
     let mut others = vec![];
     for a in rest {
@@ -807,17 +824,19 @@ fn signal(path: &Path, rest: &[String]) -> Result<bool, String> {
     let o = options(path, &others, &["--inputs"])?;
     let (design, lib, inputs, v) = analyse(path, &o)?;
     let levels = gerberus::signal::levels(&design, &lib, &inputs, &v)?;
-    let report = gerberus::rules::Report {
+    let mut report = gerberus::rules::Report {
         findings: gerberus::signal::check(&design, &lib, &levels),
         waived: vec![],
         waivers_file: String::new(),
         cases: vec![],
     };
+    let silenced = silence(&show, &mut report);
     if json {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
         print!("{}", gerberus::signal::describe(&design, &levels));
         print!("{}", gerberus::rules::render(&design, &v, &report, &show));
+        print!("{}", show.silenced_note(silenced));
     }
     Ok(report.errors() == 0)
 }
@@ -854,7 +873,7 @@ fn bringup(path: &Path, rest: &[String]) -> Result<bool, String> {
 fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
     use gerberus::bom::{Online, Options, Severity, check_with_parts};
     const CACHE_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
-    let (show, rest) = Show::parse(rest);
+    let (show, rest) = Show::parse(rest)?;
     let mut opts = Options::default();
     let mut dirs: Vec<PathBuf> = vec![];
     // Part files give resistors' and capacitors' ratings, to compare with LCSC's listing.
@@ -886,8 +905,17 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
     let mut lib = load_library(&dirs)?;
     lib.expand_families(&design);
     let mut source = Online::new(Online::default_cache_dir(), CACHE_MAX_AGE, false);
-    let report = check_with_parts(&design, &mut source, opts, Some(&lib));
+    let mut report = check_with_parts(&design, &mut source, opts, Some(&lib));
+    let silenced: usize = report
+        .iter_mut()
+        .map(|h| {
+            show.silence(&mut h.findings, |f| {
+                (f.severity == Severity::Warning).then(|| f.topic.name())
+            })
+        })
+        .sum();
     print!("{}", gerberus::bom::render(&report, opts, &show));
+    print!("{}", show.silenced_note(silenced));
     Ok(report
         .iter()
         .all(|h| h.findings.iter().all(|f| f.severity != Severity::Error)))
@@ -895,7 +923,7 @@ fn bom(path: &Path, rest: &[String]) -> Result<bool, String> {
 
 /// Returns whether the board passed (no errors).
 fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest);
+    let (show, rest) = Show::parse(rest)?;
     let opts = options(path, &rest, &["--pcb"])?;
     let mut lib = load_library(&opts.dirs)?;
     let design = load_design(path)?;
@@ -908,7 +936,10 @@ fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
         Some(p) => println!("board: {}", p.display()),
         None => println!("board: none found next to the schematic, so footprints are not checked"),
     }
-    let report = pinout::check(&design, footprints.as_deref(), &lib);
+    let mut report = pinout::check(&design, footprints.as_deref(), &lib);
+    let silenced = show.silence(&mut report.findings, |f| {
+        (f.severity == pinout::Severity::Warning).then_some("pinout")
+    });
     println!();
     let mut out = String::new();
     let mut sorted: Vec<&pinout::Finding> = report.findings.iter().collect();
@@ -971,6 +1002,7 @@ fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
             no_sheet.join(" ")
         );
     }
+    print!("{}", show.silenced_note(silenced));
     Ok(report.errors() == 0)
 }
 
@@ -979,7 +1011,7 @@ fn count(n: usize, what: &str) -> String {
 }
 
 fn si(path: &Path, rest: &[String]) -> Result<bool, String> {
-    let (show, rest) = Show::parse(rest);
+    let (show, rest) = Show::parse(rest)?;
     let json = rest.iter().any(|a| a == "--json");
     let mut plots = None;
     let mut others = Vec::new();
@@ -994,7 +1026,11 @@ fn si(path: &Path, rest: &[String]) -> Result<bool, String> {
     let o = options(path, &others, &[])?;
     let lib = load_library(&o.dirs)?;
     let layout = gerberus::kicad::pcb::load_layout(path)?;
-    let report = gerberus::si::check(&layout, &lib);
+    let mut report = gerberus::si::check(&layout, &lib);
+    let silenced = show.silence(&mut report.findings, |f| {
+        (f.verdict == gerberus::finding::Verdict::Fail && f.severity == gerberus::finding::Severity::Warning)
+            .then_some(f.rule)
+    });
     if let Some(dir) = plots {
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         for p in &report.pairs {
@@ -1016,6 +1052,7 @@ fn si(path: &Path, rest: &[String]) -> Result<bool, String> {
         println!("{}", serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?);
     } else {
         print!("{}", gerberus::si::render(&report, &show));
+        print!("{}", show.silenced_note(silenced));
     }
     Ok(report.errors() == 0)
 }

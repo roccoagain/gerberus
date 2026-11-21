@@ -360,7 +360,7 @@ fn the_report_reads_like_rustc() {
          above its 105 °C maximum\n",
         "warning[regulator-headroom]: U3 may not hold /power/+3V3A: /power/VAUX can fall to 3 V",
         "and 9 more like these (--verbose lists them)",
-        "error: 18 errors, 9 warnings, 53 unknown, 429 passed\n   = note: 53 unknown and 429 passed not shown; \
+        "error: 18 errors, 9 warnings, 29 unknown, 429 passed\n   = note: 29 unknown and 429 passed not shown; \
          --all lists them\n",
     ] {
         assert!(text.contains(want), "missing {want:?} in\n{text}");
@@ -385,7 +385,7 @@ fn the_report_reads_like_rustc() {
     assert!(verbose.contains("   = note: how /mcu/VSENSE gets 0 to 26 V:\n       /mcu/VSENSE: 0 to 26 V\n"));
     assert!(verbose.contains("the reference of input VIN (J1.4)"));
     let all = rules::render(design(), &v, r, &Show::everything());
-    assert_eq!(all.matches("\nunknown[").count(), 53);
+    assert_eq!(all.matches("\nunknown[").count(), 29);
     // Passes include the reverse-polarity summaries, which the totals leave out.
     let passes = r.findings.iter().filter(|f| f.verdict == Verdict::Pass).count();
     assert_eq!((passes, all.matches("\npass[").count()), (430, 430));

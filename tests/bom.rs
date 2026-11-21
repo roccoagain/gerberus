@@ -126,10 +126,8 @@ fn can_encoder_rev2() {
             .any(|(r, _, t)| r.starts_with('R') && *t == Topic::SecondSource),
         "{f:?}"
     );
-    assert!(
-        f.contains(&("U1".into(), Severity::Warning, Topic::SecondSource)),
-        "{f:?}"
-    );
+    // A part with one maker is only a note, not a warning.
+    assert!(!f.iter().any(|(_, _, t)| *t == Topic::SecondSource), "{f:?}");
 }
 
 #[test]
@@ -274,7 +272,7 @@ fn second_sources_need_another_maker_the_same_package_and_stock() {
     assert!(
         r[0].findings
             .iter()
-            .any(|f| f.severity == Severity::Warning && f.topic == Topic::SecondSource)
+            .any(|f| f.severity == Severity::Info && f.message.starts_with("single source"))
     );
 
     let mut ok = sims;
@@ -344,7 +342,7 @@ fn only_plain_resistors_and_capacitors_are_commodities() {
     assert!(
         r[0].findings
             .iter()
-            .any(|f| f.severity == Severity::Warning && f.topic == Topic::SecondSource)
+            .any(|f| f.severity == Severity::Info && f.message.starts_with("single source"))
     );
 }
 
@@ -374,7 +372,7 @@ fn a_missing_package_is_unknown_not_a_match() {
     assert!(
         r[0].findings
             .iter()
-            .any(|f| f.severity == Severity::Warning && f.topic == Topic::SecondSource)
+            .any(|f| f.severity == Severity::Info && f.message.starts_with("single source"))
     );
     l.package.clear();
     let r = run(vec![part("U1", "X:Y", "A", "C1")], vec![("C1", Some(l))], 1);
@@ -630,7 +628,7 @@ fn for_jlcpcb_a_missing_lcsc_number_is_an_error_with_a_search_link() {
         "{text}"
     );
     assert!(
-        text.contains("error: 1 error, 1 warning, 0 unknown, 0 passed"),
+        text.contains("error: 1 error, 0 warnings, 0 unknown, 1 passed"),
         "{text}"
     );
 }
@@ -697,7 +695,7 @@ fn no_capacitor_equivalent_is_offered_without_a_known_dielectric() {
 }
 
 #[test]
-fn for_jlcpcb_lcsc_running_out_of_a_basic_part_is_a_warning() {
+fn for_jlcpcb_lcsc_running_out_of_a_basic_part_is_only_a_note() {
     let r = jlcpcb(
         vec![
             passive("R1", "10k", R0603, "", "C1"),
@@ -709,7 +707,7 @@ fn for_jlcpcb_lcsc_running_out_of_a_basic_part_is_a_warning() {
         ],
     );
     let sev = |i: usize| r[i].findings.iter().find(|f| f.topic == Topic::Stock).unwrap().severity;
-    assert_eq!((sev(0), sev(1)), (Severity::Warning, Severity::Error));
+    assert_eq!((sev(0), sev(1)), (Severity::Info, Severity::Error));
 }
 
 #[test]
