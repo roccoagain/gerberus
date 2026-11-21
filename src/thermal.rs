@@ -239,7 +239,11 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
                         continue;
                     };
                     let Some(amps) = s.max() else {
-                        let what = format!("{reference} ({} gives no maximum for {})", part.mpn, s.pins.join(", "));
+                        let what = format!(
+                            "{reference} ({} gives no maximum supply current for {})",
+                            part.mpn,
+                            s.pins.join(", ")
+                        );
                         base[net].missing.push(what.clone());
                         missing.push(what);
                         continue;

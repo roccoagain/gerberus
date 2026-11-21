@@ -41,6 +41,7 @@ It lists the things to add, the ones that settle the most UNKNOWN results first,
 - `fill-in`: values the file marks not known yet; fill them in with the datasheet-to-part skill.
 - `part-data`: a supply current, efficiency, thermal resistance, ESD or current rating a check needs; add it
   from the datasheet. If the datasheet doesn't give it, the results waiting on it go to the person (step 4).
+- `temperature`: the board's ambient range in inputs.toml; ask the person for it, with its source.
 - `pin-limits`, `drive`: add the limit or `[[drive]]` from the datasheet to the part file it names. For a
   built-in file, its help gives the `gerberus part show <MPN> --out <file>` command that copies it next to the
   schematic first; use the path it gives.

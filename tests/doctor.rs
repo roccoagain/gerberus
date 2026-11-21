@@ -161,6 +161,13 @@ fn every_unknown_is_listed() {
     );
     assert!(d.items.iter().any(|i| i.rule == "review"), "{:?}", d.items);
     assert!(!render(&d, &Show::everything()).contains("nothing to add"));
+    // Its inputs.toml gives no board temperature, which a thermal check needs.
+    let t = d
+        .items
+        .iter()
+        .find(|i| i.rule == "temperature")
+        .expect("a temperature item");
+    assert!(t.unknown > 0 && t.file.ends_with("inputs.toml"), "{t:?}");
 }
 
 /// With no inputs.toml, writing one is always listed, even when no unknown traces to a connector pin.

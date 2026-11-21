@@ -9,7 +9,7 @@ every UNKNOWN back to what it waits on, then lists those things to add, the ones
 first. On the capstone audio board rev 2 it starts:
 
 ```
-todo[part-file]: write a part file for PESD5V0S1BAF: 20 unknown results wait on it
+todo[part-file]: write a part file for PESD5V0S1BAF: 21 unknown results wait on it
   --> D1, D2, D3, D4, D5
    = note: datasheet: https://assets.nexperia.com/documents/data-sheet/PESD5V0S1BA.pdf
    = note: if the link doesn't download, or you already have the PDF, save the PDF as
@@ -19,7 +19,7 @@ todo[part-file]: write a part file for PESD5V0S1BAF: 20 unknown results wait on 
            D1`, then fill it in from the datasheet: parts/README.md says how, and an agent can do it with the
            datasheet-to-part skill
 
-todo[part-file]: write a part file for MAX9722AEUE+: 17 unknown results wait on it
+todo[part-file]: write a part file for MAX9722AEUE+: 18 unknown results wait on it
   --> U2
    ...
 
@@ -48,11 +48,12 @@ What it lists:
 | `guess` | Entries `gerberus init` guessed, listed first whatever they settle: every result that rests on one is only as good as the guess. | `inputs.toml` |
 | `inputs` | What plugs into each connector pin: an `[[input]]` with its voltage range, or `[[undriven]]` if nothing outside drives it. With no `inputs.toml` at all, one item for the whole file, always listed. | `inputs.toml` next to the schematic ([inputs](../parts/README.md#board-inputs), [undriven](../parts/README.md#net-voltages)) |
 | `part-file` | A part file for a part number that has none, started with `gerberus part new`. The symbol's `Datasheet` link is shown when it has one, and the name to save the PDF under in `datasheets/` beside `parts/` (or where it is saved, once it is). Part numbers that share a datasheet are pointed at [part families](../parts/README.md#part-families). | `parts/<MPN>.toml` next to the schematic ([format](../parts/README.md)) |
-| `fill-in` | Values a part file marks not known yet: "not read from the datasheet yet" in a file `gerberus part new` started, or any other `{ unknown = "..." }`. | that part file |
+| `fill-in` | Values a part file marks not known yet: "not read from the datasheet yet" in a file `gerberus part new` started, or any other `{ unknown = "..." }`. Every UNKNOWN result on a part whose file has such values waits on them. | that part file |
 | `pin-limits` | A voltage limit for pins a part file doesn't cover. | the part file, or a copy of a built-in one made with `gerberus part show <MPN> --out <file>` |
 | `drive` | A `[[drive]]` saying what a power output gives. For a module that isn't fitted (plugged in by hand), an `[[input]]` for the net it supplies. | the part file, or a copy of a built-in one ([What a part drives](../parts/README.md#what-a-part-drives)) |
 | `part-data` | Data a check needs beyond the limits: a supply current, an efficiency, a thermal resistance, an ESD rating, a forward current rating. If the datasheet doesn't give it, the results waiting on it are checked by hand and waived. | the part file |
-| `review` | Everything nothing above settles: circuits gerberus can't work out (a bootstrap pin, a loop through a MOSFET and a Zener diode, a resistor whose two ends move apart in a fault case), with the nets whose range is UNKNOWN. Always last. Check each by hand and add a [waiver](waivers.md) for the ones that hold. | `waivers.toml` next to the schematic |
+| `temperature` | The ambient temperature range the board works in, for the thermal checks that compare a part's rating with it. | `inputs.toml` |
+| `review` | Everything nothing above settles: circuits gerberus can't work out (a bootstrap pin, a loop through a MOSFET and a Zener diode, a resistor whose two ends move apart in a fault case), with the nets whose range is UNKNOWN. Always last. Check each by hand and add a [waiver](waivers.md) for the ones that hold. | `waivers.toml` next to the schematic, or the file `--waivers` names |
 
 How it counts: each UNKNOWN finding on a net is followed back through how the net got its range (what
 `gerberus voltages --explain` prints) to the steps that made it unknown, and to the parts and connector pins those
@@ -62,8 +63,10 @@ against its part file. A single MOSFET's is: a `channel` drive in its part file 
 several things at once, so adding one may not settle it: each count is how many findings wait on that item, at
 most.
 
-Every UNKNOWN is listed: under the things to add it waits on, or else under `review`. A limit the datasheet
-doesn't give at all is `{ none = "..." }` in the part file and makes no result, so it never shows up here.
+Every UNKNOWN is listed: under the things to add it waits on, or else under `review`. A limit's `abs_max` or
+`recommended` range the datasheet doesn't give at all is `{ none = "..." }` in the part file and makes no result.
+A `breakdown` or `[[drive]]` range given as `{ none }` can't be checked against, so what rests on it is listed
+under `review`.
 
 Without an `inputs.toml`, `check` skips reverse polarity, ESD and fault cases, so writing one settles more results
 than the count shows.

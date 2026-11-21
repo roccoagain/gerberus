@@ -79,6 +79,8 @@ enum Key {
     /// A part number whose part file lacks data a check needs beyond its limits: a supply current, a thermal
     /// resistance, an ESD rating.
     Data(String),
+    /// inputs.toml gives no ambient temperature range for the board.
+    Temperature,
     /// Nothing to add settles it: a circuit gerberus can't work out, or a datasheet that gives too little.
     Review,
 }
@@ -135,8 +137,11 @@ pub fn diagnose(
             pins.entry(k.clone()).or_default().insert(pin.to_string());
             keys.insert(k);
         }
-        if unread(&f.reference) || (f.message.contains("isn't known yet") && gaps(&f.reference)) {
+        if unread(&f.reference) || gaps(&f.reference) {
             keys.insert(Key::Fill(mpn(&f.reference)));
+        }
+        if f.message.contains("inputs.toml gives no board temperature") {
+            keys.insert(Key::Temperature);
         }
         for (m, what) in data_gaps(&f.message, lib) {
             let k = Key::Data(m);
@@ -337,6 +342,20 @@ pub fn diagnose(
                     ),
                 });
             }
+            Key::Temperature => items.push(Item {
+                rule: "temperature",
+                title: format!("give the board's ambient temperature range: {}", waiting(found.len())),
+                unknown: found.len(),
+                references: vec![],
+                mpn: None,
+                pins: vec![],
+                datasheet: None,
+                file: setup.inputs.display().to_string(),
+                notes: vec!["the thermal checks compare each part's rating with the ambient the board works in".into()],
+                help: "add `temperature = { min = ..., max = ..., source = \"...\" }` to inputs.toml, in °C, with \
+                       where the range comes from"
+                    .into(),
+            }),
             Key::Review => {
                 let mut notes: Vec<String> = vec![format!(
                     "by rule: {}",
@@ -364,7 +383,11 @@ pub fn diagnose(
                     mpn: None,
                     pins: vec![],
                     datasheet: None,
-                    file: setup.parts.with_file_name("waivers.toml").display().to_string(),
+                    file: if report.waivers_file.is_empty() {
+                        setup.parts.with_file_name("waivers.toml").display().to_string()
+                    } else {
+                        report.waivers_file.clone()
+                    },
                     notes,
                     help: "`gerberus check --all` lists them; add a [[waiver]] with the reason for each one you have \
                            checked (see docs/waivers.md)"
@@ -730,7 +753,7 @@ fn data_gaps(text: &str, lib: &Library) -> Vec<(String, String)> {
     let mut out = vec![];
     let mut rest = text;
     while let Some(at) = rest.find(" gives no ") {
-        let mpn = rest[..at].rsplit([' ', '(']).next().unwrap_or("");
+        let mpn = rest[..at].rsplit([' ', '(']).next().unwrap_or("").trim_end_matches(')');
         let after = &rest[at + " gives no ".len()..];
         let end = after.find([')', ';', ',', '.', ':']).unwrap_or(after.len());
         let what = after[..end].split(" for ").next().unwrap_or("").trim();
