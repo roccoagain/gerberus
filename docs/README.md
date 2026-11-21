@@ -13,6 +13,7 @@ Using it:
 - [HTML report](html-report.md): `check --html`, the findings ringed on the schematic and board in one web page.
 - [Waivers](waivers.md): accepting a finding on purpose, with the reason on record.
 - [Voltage checks](voltage-checks.md): `voltages` and `check`, every rule, fault cases, reverse polarity and ESD.
+- [Rules](rules.md): what each rule a report names checks and why, as `gerberus explain RULE` prints it.
 - [Junction temperature and derating](thermal.md): junction temperature, forward current.
 - [Bring-up plan](bringup.md): `bringup`, the order to power a new board in and what to measure.
 - [Hot-plug stress](stress.md): `stress`, the SPICE simulation and what it models.

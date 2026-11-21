@@ -92,8 +92,7 @@ pub fn check(
                 (Some((d, cr, value)), _) if d <= policy.distance => finding(
                     Verdict::Pass,
                     format!(
-                        "the nearest decoupling capacitor, {cr} ({value}), is {d:.1} mm away, pad centre to pad \
-                         centre; within {} mm ({})",
+                        "the nearest decoupling capacitor, {cr} ({value}), is {d:.1} mm away, within {} mm ({})",
                         policy.distance, policy.reason
                     ),
                 ),
@@ -112,8 +111,7 @@ pub fn check(
                 (Some((d, cr, value)), _) => finding(
                     Verdict::Fail,
                     format!(
-                        "the nearest decoupling capacitor, {cr} ({value}), is {d:.1} mm away, pad centre to pad \
-                         centre; more than {} mm ({})",
+                        "the nearest decoupling capacitor, {cr} ({value}), is {d:.1} mm away, more than {} mm ({})",
                         policy.distance, policy.reason
                     ),
                 ),

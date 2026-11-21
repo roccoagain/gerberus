@@ -247,7 +247,7 @@ fn pinout_finds_the_swapped_led() {
     assert!(
         r.findings
             .iter()
-            .any(|f| f.reference == "D5" && f.message.contains("pins look swapped"))
+            .any(|f| f.reference == "D5" && f.message.contains("look swapped"))
     );
     // The known differences between KiCad's symbols and the datasheets, as on the other boards.
     assert_eq!(
@@ -337,9 +337,9 @@ fn bom_finds_the_wrong_lcsc_number_and_empty_stock() {
     assert!(line("J5").findings.iter().all(|f| f.severity == bom::Severity::Info));
 }
 
-/// The terminal report reads like rustc's: a headline per FAIL with where it is, its numbers and sources as
-/// notes and a suggested fix, errors before warnings, UNKNOWNs and passes counted but not listed, and the long
-/// explanations of each net only with --verbose. The JSON keeps every field as it was.
+/// The terminal report reads like rustc's: a headline per FAIL with where it is and a suggested fix, errors before
+/// warnings, UNKNOWNs and passes counted but not listed, and the numbers, sources and long explanations of each
+/// net only with --verbose. The JSON keeps every field as it was.
 #[test]
 fn the_report_reads_like_rustc() {
     use gerberus::diag::Show;
@@ -349,19 +349,19 @@ fn the_report_reads_like_rustc() {
     let r = report();
     let text = rules::render(design(), &v, r, &Show::default());
     assert!(text.starts_with(
-        "error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V\n  --> U6.PA4 (/mcu/VSENSE)\n   = note: worst \
-         case 0 to 26 V\n   = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx\n   = help: "
+        "error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V\n  --> U6.PA4 (/mcu/VSENSE)\n   = help: "
     ));
     for want in [
         "error[abs-max]: U5.CANH reaches 26 V, past the maximum of 14 V\n  --> U5.CANH (/CANH), in fault \"VIN \
          shorted onto CANH\"",
         "error[cap-voltage]: C2.1: 26 V across it, past its 25 V rating\n",
-        "error[junction-temperature]: U7 dissipates 371.4 mW, so its junction reaches 114 °C at 70 °C ambient, \
-         above its 105 °C maximum\n",
+        "error[junction-temperature]: U7's junction reaches 114 °C at 70 °C ambient, above its 105 °C maximum\n",
         "warning[regulator-headroom]: U3 may not hold /power/+3V3A: /power/VAUX can fall to 3 V",
-        "and 9 more like these (--verbose lists them)",
+        "warning[esd]: J3.1 has no TVS or ESD clamp, and U4.VIO is rated only ±4 kV HBM, not 8 kV \
+         contact\n  --> J3.1 (+3V3)\n",
         "error: 18 errors, 9 warnings, 45 unknown, 429 passed\n   = note: 45 unknown and 429 passed not shown; \
-         --all lists them\n",
+         --all lists them\n   = note: --verbose adds each finding's numbers and sources, and how each net got its \
+         range\n   = help: for more about a rule, try `gerberus explain abs-max`\n",
     ] {
         assert!(text.contains(want), "missing {want:?} in\n{text}");
     }
@@ -371,8 +371,8 @@ fn the_report_reads_like_rustc() {
     assert!(!text.contains("unknown[") && !text.contains("pass["));
     // The 18 errors and the reverse-polarity summary, which the totals leave out.
     assert_eq!(text.matches("error[").count(), 19);
-    // How +VDC gets to 26 V, and the GND reference list, only with --verbose.
-    assert!(!text.contains("the reference of input"));
+    // The numbers and sources, how +VDC gets to 26 V, and the GND reference list, only with --verbose.
+    assert!(!text.contains("the reference of input") && !text.contains("= note: worst case"));
     let verbose = rules::render(
         design(),
         &v,
@@ -382,6 +382,9 @@ fn the_report_reads_like_rustc() {
             ..Show::default()
         },
     );
+    assert!(verbose.contains(
+        "   = note: worst case 0 to 26 V\n   = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx\n"
+    ));
     assert!(verbose.contains("   = note: how /mcu/VSENSE gets 0 to 26 V:\n       /mcu/VSENSE: 0 to 26 V\n"));
     assert!(verbose.contains("the reference of input VIN (J1.4)"));
     let all = rules::render(design(), &v, r, &Show::everything());
@@ -391,6 +394,36 @@ fn the_report_reads_like_rustc() {
     assert_eq!((passes, all.matches("\npass[").count()), (430, 430));
     // No colour unless asked for.
     assert!(!text.contains('\x1b'));
+    // `gerberus explain` covers every rule a report can name.
+    let layout = [
+        "trace-current",
+        "voltage-drop",
+        "decoupling",
+        "plane-split",
+        "hot-loop",
+        "line-length",
+        "thermal-relief",
+        "tombstoning",
+        "fiducials",
+    ];
+    let others = [
+        "hot-plug",
+        "clipping",
+        "signal-level",
+        "signal-path",
+        "pinout",
+        "waiver",
+        "bom-identity",
+        "bom-stock",
+        "bom-lifecycle",
+        "bom-second-source",
+        "bom-assembly",
+    ];
+    let named = r.findings.iter().map(|f| f.rule);
+    let tables = rules::RULES.iter().chain(si::RULES.iter()).map(|(rule, _)| *rule);
+    for rule in named.chain(tables).chain(layout).chain(others) {
+        assert!(gerberus::explain::text(rule).is_some(), "no explanation for {rule}");
+    }
 
     let json: serde_json::Value = serde_json::to_value(r).unwrap();
     let keys: std::collections::BTreeSet<&str> = json["findings"]

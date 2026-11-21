@@ -18,6 +18,7 @@ pub mod diff;
 pub mod doctor;
 pub mod drop;
 pub mod edges;
+pub mod explain;
 pub mod finding;
 pub mod html;
 pub mod init;

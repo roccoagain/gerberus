@@ -215,6 +215,7 @@ pub fn render(
     for (n, &i) in order.iter().enumerate() {
         let f = &findings[i];
         let c = class(f);
+        let shown = crate::rules::laid_out(f);
         let mut links = vec![];
         for (d, drawing) in drawings.iter().enumerate() {
             let points: Vec<(f64, f64)> = match &drawing.sheet {
@@ -235,7 +236,7 @@ pub fn render(
                 // A halo under the coloured ring keeps it clear of copper drawn in the same colour.
                 marks[d].push(format!(
                     r##"<a class="ring {c}" href="#f{n}"><circle class="halo" cx="{x}" cy="{y}" r="{r}"/><circle id="{id}" class="mark {c}" cx="{x}" cy="{y}" r="{r}"><title>{}</title></circle></a>"##,
-                    escape(&format!("{} {}: {}", f.rule, f.reference, f.message))
+                    escape(&format!("{} {}: {}", f.rule, f.reference, shown.headline))
                 ));
                 links.push(format!(
                     r##"<a class="goto" href="#{id}" data-view="{d}" data-x="{x}" data-y="{y}">{}</a>"##,
@@ -243,13 +244,26 @@ pub fn render(
                 ));
             }
         }
-        // A fault case's findings already name it at the start of their message.
+        // The headline and help, as the terminal prints them; the notes fold away under them.
+        let help = shown
+            .help
+            .as_ref()
+            .map(|h| format!(r#"<p class="help">{}</p>"#, escape(h)));
+        let notes = (!shown.notes.is_empty()).then(|| {
+            let items = shown.notes.iter().fold(String::new(), |mut out, n| {
+                let _ = write!(out, "<li>{}</li>", escape(n));
+                out
+            });
+            format!("<details><summary>details</summary><ul>{items}</ul></details>")
+        });
         let _ = write!(
             list,
-            r#"<li id="f{n}" class="finding {c}"><div class="head"><i class="dot" role="img" aria-label="{c}" title="{c}"></i><b>{}</b><code>{}</code></div><p>{}</p><div class="links">{}</div></li>"#,
-            escape(&f.reference),
+            r#"<li id="f{n}" class="finding {c}"><div class="head"><i class="dot" role="img" aria-label="{c}" title="{c}"></i><b>{}</b><code>{}</code></div><p>{}</p>{}{}<div class="links">{}</div></li>"#,
+            escape(shown.location.as_deref().unwrap_or(&f.reference)),
             escape(f.rule),
-            escape(&f.message),
+            escape(&shown.headline),
+            help.unwrap_or_default(),
+            notes.unwrap_or_default(),
             links.join("")
         );
     }
@@ -368,6 +382,8 @@ nav{display:flex;gap:20px;padding:0 20px;border-bottom:1px solid var(--line)}
 .finding.hidden{display:none}.finding:target{background:var(--soft)}
 .head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.head b{font-weight:600}.head code{color:var(--muted)}
 .finding p{margin:4px 0 6px;color:var(--fg);opacity:.85;word-break:break-word}
+.finding p.help{color:var(--muted);opacity:1}
+details{margin:0 0 6px;color:var(--muted);font-size:12px}summary{cursor:pointer}details ul{margin:4px 0 0;padding-left:16px}
 .links{display:flex;gap:12px;flex-wrap:wrap}.goto{color:var(--muted);text-decoration:none;font-size:12px}.goto:hover{color:var(--fg)}
 .goto::after{content:" →"}
 "#;

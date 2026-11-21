@@ -55,7 +55,7 @@ fn a_fine_pitch_side_needs_three_fiducials() {
     assert_eq!(f.len(), 2, "{f:#?}");
     assert!(
         f.iter()
-            .any(|f| f.verdict == Verdict::Fail && f.message.starts_with("the top has 0 fiducials"))
+            .any(|f| f.verdict == Verdict::Fail && f.message.starts_with("the top has 0 of the 3 fiducials"))
     );
     assert!(
         f.iter()

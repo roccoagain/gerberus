@@ -99,7 +99,7 @@ fn swapped_differential_pair_is_an_error() {
     u4.pins.get_mut("7").unwrap().name = "OUT-".into();
     let report = run(&design, &fps, &lib);
     assert!(
-        has(&report, "U4", Severity::Error, "pins look swapped"),
+        has(&report, "U4", Severity::Error, "look swapped"),
         "{:#?}",
         report.findings
     );
@@ -114,7 +114,7 @@ fn swapped_datasheet_pins_are_an_error() {
     part.pins.insert("7".into(), "CANL".into());
     let report = run(&design, &fps, &lib);
     assert!(
-        has(&report, "U4", Severity::Error, "pins look swapped"),
+        has(&report, "U4", Severity::Error, "look swapped"),
         "{:#?}",
         report.findings
     );

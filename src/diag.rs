@@ -3,14 +3,13 @@
 //! ```text
 //! error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V
 //!   --> U6.PA4 (/mcu/VSENSE)
-//!    = note: worst case 0 to 26 V
-//!    = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx
-//!    = help: keep the pin inside its rating: a divider, clamp or series resistor, or a part rated higher
+//!    = help: add a divider, clamp or series resistor, or choose a part rated higher
 //! ```
 //!
 //! The checkers write each finding as one sentence that cites its numbers. [`Diagnostic::from_message`] splits
-//! that sentence into a headline, where it is, and notes, so the report reads at a glance while every word the
-//! checker wrote is still printed. The JSON output keeps the message whole.
+//! that sentence into a headline, where it is, and notes. A report prints the headline, location and help;
+//! `--verbose` adds the notes (the worst case, datasheet citations) and longer explanations, and
+//! `gerberus explain RULE` says what a rule checks and why. The JSON output keeps the message whole.
 use std::fmt::Write as _;
 use std::io::IsTerminal as _;
 
@@ -85,7 +84,7 @@ impl Style {
 pub struct Show {
     /// List UNKNOWNs and passes, not just count them.
     pub all: bool,
-    /// Print the longer explanations: how each net in a FAIL got its range, and long lists in full.
+    /// Print each finding's notes (its numbers and sources) and how each net in a FAIL got its range.
     pub verbose: bool,
     pub style: Style,
     /// Columns to wrap notes at; 0 means 100.
@@ -262,20 +261,21 @@ impl Diagnostic {
             let label = also.pop().unwrap_or_default();
             segs[0] = format!("{label}: {}", segs[0]);
         }
-        let mut details = vec![];
-        if also.len() > 4 {
-            notes.extend(also[..3].iter().cloned());
-            notes.push(format!("and {} more like these (--verbose lists them)", also.len() - 3));
-            details.push((format!("the other {}:", also.len() - 3), also[3..].to_vec()));
-        } else {
-            notes.extend(also);
-        }
+        notes.extend(also);
         notes.extend(shared);
         if !segs.is_empty() {
             let tail = segs.join(": ");
             notes.extend(split_top(&tail, ". ").iter().map(|s| tidy(s)));
         }
         let location = location.or_else(|| leading_pin(&headline, subjects));
+        // The location names the net, so the headline needn't: `J1.2 has no TVS`, not `J1.2 (/UART_TX) has no TVS`.
+        let headline = match &location {
+            Some(loc) if loc.contains(" (") => match headline.strip_prefix(loc.as_str()) {
+                Some(rest) => format!("{}{rest}", loc.split(' ').next().unwrap_or_default()),
+                None => headline,
+            },
+            _ => headline,
+        };
         Diagnostic {
             level,
             rule: rule.to_string(),
@@ -283,11 +283,12 @@ impl Diagnostic {
             location,
             notes: notes.into_iter().filter(|n| !n.is_empty()).collect(),
             help: None,
-            details,
+            details: vec![],
         }
     }
 
-    /// Writes the diagnostic, wrapping notes at `width` columns, and a blank line after it. A pass is one line.
+    /// Writes the diagnostic, wrapping notes at `width` columns, and a blank line after it. Notes and details are
+    /// written only when `verbose`. A pass is one line.
     pub fn render(&self, out: &mut String, style: Style, verbose: bool, width: usize) {
         let label = style.paint(self.level.color(), &format!("{}[{}]", self.level.label(), self.rule));
         let _ = writeln!(
@@ -314,10 +315,10 @@ impl Diagnostic {
                 }
             }
         };
-        for n in &self.notes {
-            line(out, "note", n);
-        }
         if verbose {
+            for n in &self.notes {
+                line(out, "note", n);
+            }
             for (title, lines) in &self.details {
                 line(out, "note", title);
                 for l in lines {
@@ -332,9 +333,34 @@ impl Diagnostic {
     }
 }
 
+/// What a report's listed diagnostics leave for its summary to point at.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Listed {
+    /// Some notes were left for `--verbose`.
+    pub notes: bool,
+    /// Some explanations of how a net got its range were left for `--verbose`.
+    pub ranges: bool,
+    /// The first error or warning's rule, for the `gerberus explain` hint.
+    pub rule: Option<String>,
+}
+
+impl Listed {
+    /// Counts in a diagnostic the report lists.
+    pub fn add(&mut self, d: &Diagnostic) {
+        self.notes |= !d.notes.is_empty();
+        self.ranges |= !d.details.is_empty();
+        if self.rule.is_none()
+            && matches!(d.level, Level::Error | Level::Warning)
+            && crate::explain::text(&d.rule).is_some()
+        {
+            self.rule = Some(d.rule.clone());
+        }
+    }
+}
+
 /// The closing line, cargo-style: `error: 18 errors, 9 warnings, 110 unknown, 402 passed`, then notes on what
-/// was left out and how to show it.
-pub fn summary(out: &mut String, show: &Show, counts: [usize; 4], has_details: bool) {
+/// was left out and how to show it, and, as rustc ends with `rustc --explain`, where to read more about a rule.
+pub fn summary(out: &mut String, show: &Show, counts: [usize; 4], listed: &Listed) {
     let [errors, warnings, unknown, passed] = counts;
     let style = show.style;
     let (level, word) = if errors > 0 {
@@ -377,10 +403,22 @@ pub fn summary(out: &mut String, show: &Show, counts: [usize; 4], has_details: b
             hidden.join(" and ")
         );
     }
-    if has_details && !show.verbose {
+    if (listed.notes || listed.ranges) && !show.verbose {
         let _ = writeln!(
             out,
-            "   {eq} {note}: --verbose shows the longer explanations, such as how each net got its voltage range"
+            "   {eq} {note}: --verbose adds {}",
+            match (listed.notes, listed.ranges) {
+                (true, true) => "each finding's numbers and sources, and how each net got its range",
+                (true, false) => "each finding's numbers and sources",
+                _ => "how each net got its range",
+            }
+        );
+    }
+    if let Some(rule) = &listed.rule {
+        let _ = writeln!(
+            out,
+            "   {eq} {}: for more about a rule, try `gerberus explain {rule}`",
+            style.paint(BOLD, "help")
         );
     }
 }
@@ -659,9 +697,10 @@ mod tests {
             "U3.3 (CE) is on unconnected-(U3-CE-Pad3), and nothing drives that net: UNKNOWN: only U3.3 is on this \
              net, so nothing sets it",
         );
+        // The location names the pin, so the headline leaves its name out.
         assert_eq!(
             g.headline,
-            "U3.3 (CE) is on unconnected-(U3-CE-Pad3), and nothing drives that net"
+            "U3.3 is on unconnected-(U3-CE-Pad3), and nothing drives that net"
         );
         assert_eq!(g.location.as_deref(), Some("U3.3 (CE)"));
         assert_eq!(g.notes, ["UNKNOWN: only U3.3 is on this net, so nothing sets it"]);
@@ -676,10 +715,7 @@ mod tests {
              for it) survive",
         );
         assert_eq!(g.location.as_deref(), Some("J5.A8 (unconnected-(J5-SBU1-PadA8))"));
-        assert!(
-            g.headline
-                .starts_with("J5.A8 (unconnected-(J5-SBU1-PadA8)) has no clamp")
-        );
+        assert!(g.headline.starts_with("J5.A8 has no clamp"));
     }
 
     #[test]
@@ -703,9 +739,11 @@ mod tests {
         g.render(&mut plain, Style::default(), false, 100);
         assert_eq!(
             plain,
-            "error[cap-voltage]: C2.1: 26 V across it, past its 25 V rating\n  --> C2.1 (+VDC)\n   = note: worst \
-             case 6.4 to 26 V\n\n"
+            "error[cap-voltage]: C2.1: 26 V across it, past its 25 V rating\n  --> C2.1 (+VDC)\n\n"
         );
+        let mut verbose = String::new();
+        g.render(&mut verbose, Style::default(), true, 100);
+        assert!(verbose.ends_with("  --> C2.1 (+VDC)\n   = note: worst case 6.4 to 26 V\n\n"));
         let mut colored = String::new();
         g.render(&mut colored, Style { color: true }, false, 100);
         assert!(colored.contains("\x1b[1;31merror[cap-voltage]\x1b[0m"));

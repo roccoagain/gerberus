@@ -29,10 +29,12 @@ const USAGE: &str = "usage:
   gerberus datasheet blank <part.toml>
   gerberus datasheet compare <first.toml> <second.toml>
   gerberus skill install [DIR] [--force]
+  gerberus explain <RULE>
   gerberus --version
 
 REPORT is any of --all, --verbose (-v), --allow RULE and --json. Reports list errors then warnings, rustc-style.
---all also lists UNKNOWNs and passes, and --verbose adds the long explanations (how each net got its range).
+--all also lists UNKNOWNs and passes, and --verbose adds each finding's numbers, datasheet citations and how
+each net got its range.
 --allow RULE silences the warnings of a rule, as the report names it in brackets (`--allow esd`), and
 `--allow warnings` silences every warning; it can be given more than once. Errors can't be silenced: a waiver
 accepts one (see docs/waivers.md). Colour is on for a terminal unless NO_COLOR is set. --json prints the
@@ -125,6 +127,9 @@ current folder, the board's repository): check-board (init, doctor, part files, 
 (reading a datasheet into a part file, verified and read twice). Run it again after updating gerberus to bring
 them up to date: it replaces the files it wrote, but not one someone has changed since, unless --force.
 
+`explain RULE` prints what a rule a report names in brackets checks and why (`gerberus explain esd`), as
+`rustc --explain` does for an error code; docs/rules.md has every rule.
+
 Every command exits with status 2 when it can't run (bad arguments, unreadable files).";
 
 fn main() -> ExitCode {
@@ -154,6 +159,7 @@ fn run(args: &[String]) -> ExitCode {
         [cmd, path, rest @ ..] if cmd == "si" => si(Path::new(path), rest),
         [cmd, sub, rest @ ..] if cmd == "datasheet" => datasheet(sub, rest),
         [cmd, sub, rest @ ..] if cmd == "skill" && sub == "install" => skill_install(rest),
+        [cmd, rule] if cmd == "explain" => explain(rule),
         [cmd, sub, mpn, rest @ ..] if cmd == "part" && sub == "show" && !mpn.starts_with("--") => part_show(mpn, rest),
         [cmd, sub, path, which, rest @ ..] if cmd == "part" && sub == "new" && !which.starts_with("--") => {
             part_new(Path::new(path), which, rest)
@@ -171,6 +177,18 @@ fn run(args: &[String]) -> ExitCode {
             ExitCode::from(gerberus::EXIT_CANNOT_RUN)
         }
     }
+}
+
+/// Prints what a rule checks and why.
+fn explain(rule: &str) -> Result<bool, String> {
+    let text = gerberus::explain::text(rule).ok_or_else(|| {
+        format!(
+            "no rule {rule:?}; the rules are {}",
+            gerberus::explain::rules().join(", ")
+        )
+    })?;
+    println!("{text}");
+    Ok(true)
 }
 
 fn part_new(path: &Path, which: &str, rest: &[String]) -> Result<bool, String> {
@@ -939,7 +957,8 @@ fn pinout(path: &Path, rest: &[String]) -> Result<bool, String> {
             pinout::Severity::Error => Level::Error,
             pinout::Severity::Warning => Level::Warning,
         };
-        let mut d = Diagnostic::from_message(level, "pinout", &[&f.reference], &f.message);
+        // Each pinout message is one short sentence, so it is the headline whole.
+        let mut d = Diagnostic::line(level, "pinout", &f.message);
         let mpn = design.components.get(&f.reference).map(gerberus::limits::component_mpn);
         d.location = Some(match mpn {
             Some(m) if !m.is_empty() => format!("{} ({m})", f.reference),

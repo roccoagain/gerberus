@@ -157,10 +157,7 @@ pub fn check(design: &Design, layout: &Layout, policy: &AssemblyPolicy) -> Vec<F
                     "thermal-relief",
                     Verdict::Fail,
                     &f.reference,
-                    format!(
-                        "{at} joins the {net} pour on {layer} without thermal relief: the plane draws the soldering \
-                         heat away, so the solder may not fill the hole"
-                    ),
+                    format!("{at} joins the {net} pour on {layer} without thermal relief"),
                     nets,
                 )),
                 Joint::Relief => out.push(finding(
@@ -193,9 +190,8 @@ pub fn check(design: &Design, layout: &Layout, policy: &AssemblyPolicy) -> Vec<F
                     Verdict::Fail,
                     &f.reference,
                     format!(
-                        "{}: pad {} joins the {net} pour on {} solidly and pad {} doesn't, so pad {} heats more \
-                         slowly in reflow and the part can stand up on it",
-                        f.reference, p.number, joints[s].1, q.number, p.number
+                        "{}: pad {} joins the {net} pour on {} solidly and pad {} doesn't",
+                        f.reference, p.number, joints[s].1, q.number
                     ),
                     nets,
                 )
@@ -231,7 +227,10 @@ pub fn check(design: &Design, layout: &Layout, policy: &AssemblyPolicy) -> Vec<F
                 "fiducials",
                 Verdict::Fail,
                 &f.reference,
-                format!("{what}: fine-pitch parts need {} ({})", policy.fiducials, policy.reason),
+                format!(
+                    "the {side} has {count} of the {} fiducials that {}'s {p:.2} mm pitch needs ({})",
+                    policy.fiducials, f.reference, policy.reason
+                ),
                 vec![],
             )
         });

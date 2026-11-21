@@ -15,9 +15,8 @@ todo[part-file]: write a part file for PESD5V0S1BAF: 21 unknown results wait on 
    = note: if the link doesn't download, or you already have the PDF, save the PDF as
            audio-board-rev2/datasheets/PESD5V0S1BAF.pdf: `datasheet verify` reads it from there, and an agent
            reads it to fill the file in
-   = help: start audio-board-rev2/parts/PESD5V0S1BAF.toml with `gerberus part new audio-board-rev2/board.kicad_sch
-           D1`, then fill it in from the datasheet: parts/README.md says how, and an agent can do it with the
-           datasheet-to-part skill
+   = help: start it with `gerberus part new audio-board-rev2/board.kicad_sch D1`, then fill it in from the
+           datasheet (parts/README.md, or the datasheet-to-part skill)
 
 todo[part-file]: write a part file for MAX9722AEUE+: 18 unknown results wait on it
   --> U2

@@ -16,16 +16,18 @@ cites the numbers, their datasheet pages and how each net got its range. The rep
 ```text
 error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V
   --> U6.PA4 (/mcu/VSENSE)
-   = note: worst case 0 to 26 V
-   = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx
    = help: add a divider, clamp or series resistor, or choose a part rated higher
 
 error: 18 errors, 9 warnings, 45 unknown, 429 passed
    = note: 45 unknown and 429 passed not shown; --all lists them
-   = note: --verbose shows how each net in a finding got its voltage range
+   = note: --verbose adds each finding's numbers and sources, and how each net got its range
+   = help: for more about a rule, try `gerberus explain abs-max`
 ```
 
-Errors come first, then warnings. UNKNOWNs and passes are only counted unless `--all` asks for them, and how each net got its range is printed only with `--verbose` (`-v`). Colour is on when
+Errors come first, then warnings. UNKNOWNs and passes are only counted unless `--all` asks for them. Each finding
+is its headline, where it is and a fix; `--verbose` (`-v`) adds its worst case, datasheet citations and how each
+net got its range. `gerberus explain RULE` says what a rule checks and why, as `rustc --explain` does; the same
+text is in [rules](rules.md). Colour is on when
 the output is a terminal and `NO_COLOR` isn't set. `--allow RULE` silences a rule's warnings, as a compiler's
 `-A` does (`--allow esd`; `--allow warnings` silences all of them), in the report, `--json` and `--html`, and the
 summary says how many it silenced, or that it matched none. Errors can't be silenced: a [waiver](waivers.md)

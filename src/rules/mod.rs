@@ -600,9 +600,8 @@ pub fn help(rule: &str) -> Option<&'static str> {
     })
 }
 
-/// A finding laid out as a diagnostic, with `help` for a FAIL and, for `--verbose`, how each net it read got its
-/// range.
-pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Finding) -> Diagnostic {
+/// A finding laid out as a diagnostic: headline, location, notes, and `help` for a FAIL.
+pub fn laid_out(f: &Finding) -> Diagnostic {
     let level = match (f.verdict, f.severity) {
         (Verdict::Fail, Severity::Error) => Level::Error,
         (Verdict::Fail, Severity::Warning) => Level::Warning,
@@ -621,8 +620,12 @@ pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Findin
     }
     let mut d = Diagnostic::from_message(level, f.rule, &[&f.reference], message);
     if let Some(h) = &f.headline {
-        d.headline.clone_from(h);
+        // The message's own opening, such as the part's dissipation, stays as the first note.
+        let lead = std::mem::replace(&mut d.headline, h.clone());
         d.notes.retain(|n| !h.contains(n.as_str()));
+        if !h.contains(&lead) {
+            d.notes.insert(0, lead);
+        }
     }
     if let Some(c) = &f.case {
         let at = d.location.take().unwrap_or_else(|| f.reference.clone());
@@ -630,6 +633,22 @@ pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Findin
     }
     if f.verdict == Verdict::Fail {
         d.help = help(f.rule).map(str::to_string);
+    }
+    // A waiver waiting for a person is what to do next, so it shows as the help.
+    if let Some(i) = d
+        .notes
+        .iter()
+        .position(|n| n.starts_with(crate::finding::PENDING_WAIVER))
+    {
+        d.help = Some(d.notes.remove(i));
+    }
+    d
+}
+
+/// [`laid_out`], with how each net a FAIL read got its range for `--verbose`.
+pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Finding) -> Diagnostic {
+    let mut d = laid_out(f);
+    if f.verdict == Verdict::Fail {
         let volts = f
             .case
             .as_ref()
@@ -652,7 +671,7 @@ pub fn diagnostic(design: &Design, volts: &Voltages, report: &Report, f: &Findin
 pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -> String {
     let mut out = String::new();
     let width = show.columns();
-    let mut details = false;
+    let mut listed = crate::diag::Listed::default();
     // Errors, then warnings, then unknowns and passes: `check` sorts its findings so, but `stress` doesn't.
     let mut sorted: Vec<&Finding> = report.findings.iter().collect();
     sorted.sort_by_key(|f| (f.verdict, f.severity));
@@ -661,7 +680,7 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -
         if !show.lists(d.level) {
             continue;
         }
-        details |= !d.details.is_empty();
+        listed.add(&d);
         d.render(&mut out, show.style, show.verbose, width);
     }
     if show.all {
@@ -678,7 +697,7 @@ pub fn render(design: &Design, volts: &Voltages, report: &Report, show: &Show) -
         &mut out,
         show,
         [report.errors(), report.warnings(), report.unknowns(), report.passes()],
-        details,
+        &listed,
     );
     if !report.waived.is_empty() {
         let _ = writeln!(

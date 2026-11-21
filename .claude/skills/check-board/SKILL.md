@@ -53,7 +53,7 @@ memory, from a similar part, or from what would make a check pass. A value the d
 ## 3. Check
 
 ```sh
-gerberus check <design>
+gerberus check <design> --verbose   # each finding with its numbers and datasheet pages
 gerberus check <design> --all       # also lists what is still UNKNOWN
 ```
 
@@ -78,6 +78,6 @@ reason = "the SWD header is only connected on the bench, by the designer"
 proposed = "Claude, 2026-11-17"
 ```
 
-A proposed waiver doesn't apply. The finding still counts, and its message says that a waiver is waiting. Tell the
+A proposed waiver doesn't apply. The finding still counts, and its help line says that a waiver is waiting. Tell the
 person what you proposed and why. Only a person approves it, by deleting the `proposed` line and adding
 `by = "<name>, <date>"`. Never delete or edit a `proposed` line yourself, and never write a waiver without one.
