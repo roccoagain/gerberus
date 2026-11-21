@@ -1,1 +1,4 @@
 node_modules/
+.tscircuit/
+# Boards tests/tscircuit.rs builds here.
+test-*/

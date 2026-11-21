@@ -249,11 +249,12 @@ fn check_runs_on_a_tscircuit_board() {
     }
 }
 
-/// `tsci export` on the board's `.tsx`, in a copy of its folder, so the files tsci leaves beside it stay out of
-/// the fixtures. This needs the tscircuit CLI (CI installs it).
+/// `tsci export` on the board's `.tsx`. A board is built inside its tscircuit project, so the copy goes in a folder
+/// of `ci/tscircuit`, the project CI installs (`npm ci --prefix ci/tscircuit`), which also keeps the files tsci
+/// leaves beside a board out of the fixtures. This needs the tscircuit CLI and Bun.
 #[test]
 fn reads_a_tsx_board_through_the_tscircuit_cli() {
-    let dir = std::env::temp_dir().join(format!("gerberus-tsx-test-{}", std::process::id()));
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("ci/tscircuit/test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let tsx = dir.join("ldo.circuit.tsx");
     std::fs::copy(fixture("ldo/ldo.circuit.tsx"), &tsx).unwrap();

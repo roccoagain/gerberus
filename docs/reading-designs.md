@@ -14,7 +14,8 @@ as warnings.
 
 Gerberus reads a [tscircuit](https://tscircuit.com) board as its Circuit JSON, the `circuit.json` that `tsci build`
 writes, or as the board's `.tsx`, which it hands to the tscircuit CLI (`tsci export`; install it with
-`npm install -g tscircuit`; it runs on [Bun](https://bun.sh)) to get that Circuit JSON. tsci runs in the board's folder and leaves there what it always does (its `.tscircuit/`
+`npm install -g tscircuit`; it runs on [Bun](https://bun.sh)) to get that Circuit JSON. The `.tsx` must sit in its tscircuit project (`tsci init`) with the project's
+packages installed, as `tsci` itself needs. tsci runs in the board's folder and leaves there what it always does (its `.tscircuit/`
 cache and a `.circuit.json` copy). Pass either where a command takes a design:
 
 ```sh
