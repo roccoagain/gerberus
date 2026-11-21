@@ -390,15 +390,16 @@ impl Ctx<'_> {
             self.reference,
             self.net_name(from)
         );
-        // A part's supply current is its own draw: what it drives out of its pins comes through here too.
+        // A part's supply current is its own draw: what it drives out of its pins comes through here too. Only a
+        // part whose other pins are all inputs drives nothing (a symbol's passive pin may be an output).
         let driving: Vec<&str> = ics
             .iter()
             .copied()
             .filter(|r| {
                 self.design.components[*r].pins.values().any(|p| {
-                    matches!(
+                    !matches!(
                         p.kind,
-                        PinKind::Output | PinKind::Bidirectional | PinKind::TriState | PinKind::PowerOut
+                        PinKind::Input | PinKind::PowerIn | PinKind::NoConnect | PinKind::Free
                     )
                 })
             })
