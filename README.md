@@ -1,8 +1,7 @@
 # Gerberus
 
 Gerberus checks a PCB design for electrical bugs before you order it: parts pushed past their datasheet limits,
-missing protection, swapped pins, parts you can't buy, and bad USB routing. It reads KiCad designs and
-[tscircuit](https://tscircuit.com) boards.
+missing protection, swapped pins, parts you can't buy, and bad USB routing. It reads KiCad designs.
 
 ## Install
 
@@ -17,8 +16,7 @@ cargo install --locked --path .
 That puts the `gerberus` command in `~/.cargo/bin`. To update, run `git pull` and the same `cargo install` again.
 
 Three commands need another program installed: `gerberus stress` and `gerberus signal` need [ngspice](https://ngspice.sourceforge.io/),
-and `gerberus datasheet verify` needs poppler's `pdftotext`. Reading a tscircuit `.tsx` board needs the tscircuit CLI
-(`npm install -g tscircuit`) and [Bun](https://bun.sh), which it runs on. More in [docs/install.md](docs/install.md).
+and `gerberus datasheet verify` needs poppler's `pdftotext`. More in [docs/install.md](docs/install.md).
 
 ## Quick start
 
@@ -50,8 +48,7 @@ are its supply connected backwards, which damages the regulator; its warnings ar
 To see the findings on the drawings, add `--html report.html`: one web page with the schematic and board, each
 finding ringed on its part. It needs KiCad's `kicad-cli` on the PATH. [More](docs/html-report.md)
 
-On your own board, point it at the root schematic (`.kicad_sch`), or at a tscircuit board's `circuit.json` or
-`.tsx` ([More](docs/reading-designs.md#tscircuit)). `check` runs
+On your own board, point it at the root schematic (`.kicad_sch`). `check` runs
 straight away, but without knowing what plugs into the board it can only take the net named GND as 0 V, so most
 nets come out unknown. Run `gerberus init` on the schematic to start an `inputs.toml` that says what voltages
 arrive on each connector pin (for example, 3.6 to 5.5 V on J1 pin 1). It guesses what it can from net names and

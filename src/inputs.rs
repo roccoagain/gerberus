@@ -170,7 +170,7 @@ impl BoardInputs {
     /// Every connector pin is left as whatever might be plugged in, so nets that only a connector reaches stay
     /// UNKNOWN.
     pub fn none(board: &str, design: &Design) -> BoardInputs {
-        // The board's own ground before one local to a sheet or subcircuit (`/A/GND`).
+        // The board's own ground before one local to a sheet (`/A/GND`).
         let ground = design
             .nets
             .iter()

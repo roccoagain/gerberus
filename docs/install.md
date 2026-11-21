@@ -14,8 +14,7 @@ adds to your `PATH`. It builds on macOS, Linux and Windows. To run it from the c
 
 The shared part library (`parts/`) and the derating policy (`policy.toml`) are built into the binary, so it needs
 nothing else beside it. `gerberus datasheet verify` also needs poppler's `pdftotext` (`brew install poppler`,
-`apt install poppler-utils`). Reading a tscircuit board's `.tsx` needs the tscircuit CLI, `tsci`
-(`npm install -g tscircuit`, with [Node.js](https://nodejs.org)), which runs on [Bun](https://bun.sh); its `circuit.json` needs nothing.
+`apt install poppler-utils`).
 
 ## Updating
 

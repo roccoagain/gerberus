@@ -5,7 +5,7 @@ The [README](../README.md) gets you running. These pages go into detail.
 Using it:
 
 - [Installing and updating](install.md): platforms, where it installs, updating.
-- [Reading designs](reading-designs.md): KiCad support and buses, and tscircuit boards.
+- [Reading designs](reading-designs.md): KiCad support and buses.
 - [Board inputs and part files](../parts/README.md): the `inputs.toml` format ([Board inputs](../parts/README.md#board-inputs)),
   the part file format, the derating policy, and how net voltages are worked out.
 - [What to add first](doctor.md): `doctor`, the ranked list of missing part files, inputs and limits.

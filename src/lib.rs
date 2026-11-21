@@ -38,7 +38,6 @@ pub mod spice;
 pub mod splits;
 pub mod thermal;
 pub mod traces;
-pub mod tscircuit;
 pub mod units;
 pub mod voltage;
 pub mod waivers;
