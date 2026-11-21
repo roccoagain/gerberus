@@ -57,8 +57,11 @@ jobs:
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: sudo apt-get update && sudo apt-get install -y ngspice
-      # tests/tscircuit.rs turns a .tsx board into Circuit JSON with the tscircuit CLI.
-      - run: npm install -g tscircuit@0.0.3266
+      # tests/tscircuit.rs turns a .tsx board into Circuit JSON with the tscircuit CLI, pinned in ci/tscircuit.
+      - name: Install the tscircuit CLI
+        run: |
+          npm ci --prefix ci/tscircuit
+          echo "$GITHUB_WORKSPACE/ci/tscircuit/node_modules/.bin" >> "$GITHUB_PATH"
       - run: cargo fetch --locked
       - name: Test with the network blocked by a dead proxy
         run: cargo test --all-targets --locked --offline
@@ -105,7 +108,10 @@ jobs:
         run: |
           ls "$MSYS2_ROOT"/ucrt64/bin/ngspice*
           cygpath -w "$MSYS2_ROOT/ucrt64/bin" >> "$GITHUB_PATH"
-      - run: npm install -g tscircuit@0.0.3266
+      - name: Install the tscircuit CLI
+        run: |
+          npm ci --prefix ci/tscircuit
+          echo "$GITHUB_WORKSPACE/ci/tscircuit/node_modules/.bin" >> "$GITHUB_PATH"
       - run: cargo fetch --locked
       - name: Test with the network blocked by a dead proxy
         run: cargo test --all-targets --locked --offline --no-fail-fast
@@ -157,7 +163,10 @@ jobs:
         with:
           tool: cargo-llvm-cov@0.9.1
       - run: sudo apt-get update && sudo apt-get install -y ngspice
-      - run: npm install -g tscircuit@0.0.3266
+      - name: Install the tscircuit CLI
+        run: |
+          npm ci --prefix ci/tscircuit
+          echo "$GITHUB_WORKSPACE/ci/tscircuit/node_modules/.bin" >> "$GITHUB_PATH"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo fetch --locked
       - name: Measure line coverage with the network blocked by a dead proxy
