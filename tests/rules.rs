@@ -725,6 +725,49 @@ fn floors_carry_through_resistors() {
     );
 }
 
+/// A resistor that alone feeds a supply pin drops only that pin's current, not the gap between the two rails'
+/// ranges: the sniffer's SCD41 fed from +3V3 through 120 Ω drops at most 18 mA × 122 Ω, 40 mW, inside the
+/// 0402's 62.5 mW rating; the whole 3.366 V of +3V3 across it would be 93 mW.
+#[test]
+fn a_series_resistor_feeding_a_supply_drops_its_load() {
+    let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    let v33 = net(&d, "+3V3");
+    let f = new_net(&mut d, "+3V3F");
+    add(
+        &mut d,
+        "R98",
+        "Device:R",
+        "120",
+        Some("0402WGF1200TCE"),
+        vec![pin("1", PinKind::Passive, v33), pin("2", PinKind::Passive, f)],
+    );
+    let u3 = d.components.get_mut("U3").unwrap();
+    let moved: Vec<String> = u3
+        .pins
+        .values_mut()
+        .filter(|p| p.net == v33 && p.kind == PinKind::PowerIn)
+        .map(|p| {
+            p.net = f;
+            p.number.clone()
+        })
+        .collect();
+    d.nets[v33].pins.retain(|(r, p)| !(r == "U3" && moved.contains(p)));
+    d.nets[f].pins.extend(moved.into_iter().map(|p| ("U3".to_string(), p)));
+    let (v, r) = run_on(&d, &inputs);
+    assert_eq!(v.nets[f].fed_through, Some(("R98".to_string(), v33)));
+    let f = r.by_rule("resistor-power").find(|f| f.reference == "R98").unwrap();
+    assert!(
+        f.verdict != Verdict::Fail || f.severity == Severity::Warning,
+        "{}",
+        f.message
+    );
+    assert!(
+        f.message.contains("+3V3F is fed only through R98 from +3V3"),
+        "{}",
+        f.message
+    );
+}
+
 /// A capacitor on a resistor's far end holds that node's old voltage, so the resistor can see the whole step
 /// from its supply: the node isn't kept between the nets around it.
 #[test]

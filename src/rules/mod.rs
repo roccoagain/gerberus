@@ -250,6 +250,7 @@ fn part_rules(
     fault: bool,
     r: &mut Report,
 ) {
+    let th = crate::thermal::compute(design, lib, inputs, volts);
     for (reference, c) in &design.components {
         if c.dnp {
             continue;
@@ -261,6 +262,8 @@ fn part_rules(
         };
         let ctx = Ctx {
             design,
+            lib,
+            loads: &th.loads,
             volts,
             inputs,
             reference,
@@ -301,6 +304,9 @@ fn rule_index(rule: &str) -> usize {
 
 struct Ctx<'a> {
     design: &'a Design,
+    lib: &'a Library,
+    /// What each net supplies, for the drop across a resistor that feeds a net on its own.
+    loads: &'a [crate::thermal::Load],
     volts: &'a Voltages,
     inputs: &'a BoardInputs,
     reference: &'a str,
@@ -336,9 +342,87 @@ impl Ctx<'_> {
     /// [`crate::voltage::NetVoltage::between`]), which at every moment sits between the nets around it.
     fn diff_why(&self, a: usize, b: usize) -> (Span, Vec<String>) {
         let mut notes = vec![];
+        if let Some(s) = self.series_drop(a, b, &mut notes) {
+            return (s, notes);
+        }
         let s = self.diff_depth(a, b, 0, &mut notes);
         notes.dedup();
         (s, notes)
+    }
+
+    /// `V(a) − V(b)` across this resistor when it alone feeds the net on one end, from the net on the other, and
+    /// that net holds only supply pins and their capacitors (a filtered supply): in steady state it drops just
+    /// the current those pins draw, not the gap between the two nets' ranges, which move together. Its power
+    /// and working-voltage ratings are steady-state ratings. UNKNOWN when that current isn't known.
+    fn series_drop(&self, a: usize, b: usize, notes: &mut Vec<String>) -> Option<Span> {
+        if self.part.class != Class::Resistor {
+            return None;
+        }
+        let (fed, from) = [(b, a), (a, b)].into_iter().find(|&(n, other)| {
+            self.volts.nets[n]
+                .fed_through
+                .as_ref()
+                .is_some_and(|(via, f)| via == self.reference && *f == other)
+        })?;
+        // Supply pins and their capacitors, with at least one supply pin: a node of only capacitors is an RC
+        // whose step is the point, and is left to the ranges.
+        let kinds: Option<Vec<bool>> = self.design.nets[fed]
+            .pins
+            .iter()
+            .filter(|(r, _)| r != self.reference)
+            .map(|(r, p)| {
+                let c = self.design.components.get(r)?;
+                if c.pins.get(p).is_some_and(|p| p.kind == crate::design::PinKind::PowerIn) {
+                    Some(true)
+                } else if self.lib.part_for(c).is_some_and(|p| p.class == Class::Capacitor) {
+                    Some(false)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !kinds.is_some_and(|k| k.contains(&true)) {
+            return None;
+        }
+        let load = &self.loads[fed];
+        let fed_name = self.net_name(fed);
+        let lead = format!(
+            "{fed_name} is fed only through {} from {}, so it drops only what {fed_name} draws",
+            self.reference,
+            self.net_name(from)
+        );
+        let drop = match crate::voltage::resistance_range(self.lib, self.inputs, self.reference, self.c) {
+            Ok((_, rmax, _)) if load.known() => {
+                notes.push(format!(
+                    "{lead}: {} mA × {} Ω",
+                    (load.amps * 1e5).round() / 100.0,
+                    (rmax * 100.0).round() / 100.0
+                ));
+                Some(load.amps * rmax)
+            }
+            Ok(_) => {
+                notes.push(format!(
+                    "{lead}, and the current of {} isn't known",
+                    load.missing.join(", ")
+                ));
+                None
+            }
+            Err(e) => {
+                notes.push(format!("{lead}: {e}"));
+                None
+            }
+        };
+        Some(if fed == b {
+            Span {
+                min: Some(0.0),
+                max: drop,
+            }
+        } else {
+            Span {
+                min: drop.map(|d| -d),
+                max: Some(0.0),
+            }
+        })
     }
 
     fn diff_depth(&self, a: usize, b: usize, depth: usize, notes: &mut Vec<String>) -> Span {
