@@ -1,0 +1,11 @@
+board = "ldo"
+
+temperature = { min = 0, max = 70, source = "ldo.circuit.tsx: a test board, given an ordinary 0 to 70 C ambient" }
+
+[[input]]
+name = "VBUS"
+pin = "J1.1"
+to = "J1.2"
+min = 4.75
+max = 5.5
+source = "USB 2.0 specification, table 7-7: VBUS 4.75 to 5.25 V at the host, rounded up to 5.5 V for a charger's overshoot"
