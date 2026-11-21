@@ -484,8 +484,9 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
                 let pins: Vec<&str> = unrated.iter().map(|(who, _)| who.as_str()).collect();
                 let parts: BTreeSet<&str> = unrated.iter().map(|(_, mpn)| *mpn).collect();
                 let parts: Vec<&str> = parts.into_iter().collect();
+                let verb = if parts.len() == 1 { "gives" } else { "give" };
                 why.push(format!(
-                    "nothing says what {} survive ({} gives no ESD rating for them)",
+                    "nothing says what {} survive ({} {verb} no ESD rating for them)",
                     pins.join(", "),
                     parts.join(", ")
                 ));

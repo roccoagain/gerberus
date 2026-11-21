@@ -725,13 +725,15 @@ fn floors_carry_through_resistors() {
     );
 }
 
-/// A resistor that alone feeds a supply pin drops only that pin's current, not the gap between the two rails'
-/// ranges: the sniffer's SCD41 fed from +3V3 through 120 Ω drops at most 18 mA × 122 Ω, 40 mW, inside the
-/// 0402's 62.5 mW rating; the whole 3.366 V of +3V3 across it would be 93 mW.
+/// A resistor that alone feeds a filtered supply drops only what the supply's parts draw, not the gap between the
+/// two rails' ranges: the sniffer's SCD41 behind 120 Ω and a capacitor. The whole 3.366 V of +3V3 across it would
+/// be 93 mW, past the 0402's 62.5 mW. The SCD41 drives its I²C pins, a current its supply figure leaves out, so that
+/// is only a bound and UNKNOWN; with those pins only inputs, 18 mA × 123 Ω is 42 mW: inside the rating, past only
+/// policy.toml's half-power derating, a warning.
 #[test]
 fn a_series_resistor_feeding_a_supply_drops_its_load() {
     let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
-    let v33 = net(&d, "+3V3");
+    let (v33, gnd) = (net(&d, "+3V3"), net(&d, "GND"));
     let f = new_net(&mut d, "+3V3F");
     add(
         &mut d,
@@ -740,6 +742,14 @@ fn a_series_resistor_feeding_a_supply_drops_its_load() {
         "120",
         Some("0402WGF1200TCE"),
         vec![pin("1", PinKind::Passive, v33), pin("2", PinKind::Passive, f)],
+    );
+    add(
+        &mut d,
+        "C98",
+        "Device:C",
+        "1uF 10V",
+        None,
+        vec![pin("1", PinKind::Passive, f), pin("2", PinKind::Passive, gnd)],
     );
     let u3 = d.components.get_mut("U3").unwrap();
     let moved: Vec<String> = u3
@@ -755,16 +765,33 @@ fn a_series_resistor_feeding_a_supply_drops_its_load() {
     d.nets[f].pins.extend(moved.into_iter().map(|p| ("U3".to_string(), p)));
     let (v, r) = run_on(&d, &inputs);
     assert_eq!(v.nets[f].fed_through, Some(("R98".to_string(), v33)));
-    let f = r.by_rule("resistor-power").find(|f| f.reference == "R98").unwrap();
-    assert!(
-        f.verdict != Verdict::Fail || f.severity == Severity::Warning,
+    let power = |r: &Report| {
+        r.by_rule("resistor-power")
+            .find(|f| f.reference == "R98")
+            .unwrap()
+            .clone()
+    };
+    let p = power(&r);
+    assert_eq!(p.verdict, Verdict::Unknown, "{}", p.message);
+    assert!(p.message.contains("what U3 drives out of its pins"), "{}", p.message);
+
+    for pin in d.components.get_mut("U3").unwrap().pins.values_mut() {
+        if pin.kind != PinKind::PowerIn {
+            pin.kind = PinKind::Input;
+        }
+    }
+    let (_, r) = run_on(&d, &inputs);
+    let p = power(&r);
+    assert_eq!(
+        (p.verdict, p.severity),
+        (Verdict::Fail, Severity::Warning),
         "{}",
-        f.message
+        p.message
     );
     assert!(
-        f.message.contains("+3V3F is fed only through R98 from +3V3"),
+        p.message.contains("+3V3F is fed only through R98 from +3V3"),
         "{}",
-        f.message
+        p.message
     );
 }
 

@@ -17,7 +17,7 @@ use std::fmt::Write as _;
 
 use serde::Serialize;
 
-use crate::design::{Component, Design};
+use crate::design::{Component, Design, PinKind};
 use crate::diag::{Diagnostic, Level, Show};
 use crate::finding::{Finding, Severity, Verdict};
 use crate::inputs::BoardInputs;
@@ -342,19 +342,23 @@ impl Ctx<'_> {
     /// [`crate::voltage::NetVoltage::between`]), which at every moment sits between the nets around it.
     fn diff_why(&self, a: usize, b: usize) -> (Span, Vec<String>) {
         let mut notes = vec![];
-        if let Some(s) = self.series_drop(a, b, &mut notes) {
-            return (s, notes);
+        match self.series_feed(a, b) {
+            // Never past the ranges' gap: a load too big for the resistor can't drop more than that.
+            Some(Ok((s, note))) => return (intersect(s, self.diff_depth(a, b, 0, &mut vec![])), vec![note]),
+            Some(Err(why)) => notes.push(why),
+            None => {}
         }
         let s = self.diff_depth(a, b, 0, &mut notes);
         notes.dedup();
         (s, notes)
     }
 
-    /// `V(a) − V(b)` across this resistor when it alone feeds the net on one end, from the net on the other, and
-    /// that net holds only supply pins and their capacitors (a filtered supply): in steady state it drops just
-    /// the current those pins draw, not the gap between the two nets' ranges, which move together. Its power
-    /// and working-voltage ratings are steady-state ratings. UNKNOWN when that current isn't known.
-    fn series_drop(&self, a: usize, b: usize, notes: &mut Vec<String>) -> Option<Span> {
+    /// The drop across this resistor when it alone feeds the net on one end from the net on the other, and that
+    /// net holds only ICs' supply pins and capacitors (a filtered supply). In steady state it drops just the
+    /// current those ICs draw, not the gap between the two nets' ranges, which move together; its power and
+    /// working-voltage ratings are steady-state ratings. `Ok` is `V(a) − V(b)`; `Err` says why that current
+    /// isn't known, and the ranges' gap is then only a bound: a check can pass on it but not fail.
+    fn series_feed(&self, a: usize, b: usize) -> Option<Result<(Span, String), String>> {
         if self.part.class != Class::Resistor {
             return None;
         }
@@ -364,65 +368,89 @@ impl Ctx<'_> {
                 .as_ref()
                 .is_some_and(|(via, f)| via == self.reference && *f == other)
         })?;
-        // Supply pins and their capacitors, with at least one supply pin: a node of only capacitors is an RC
-        // whose step is the point, and is left to the ranges.
-        let kinds: Option<Vec<bool>> = self.design.nets[fed]
-            .pins
-            .iter()
-            .filter(|(r, _)| r != self.reference)
-            .map(|(r, p)| {
-                let c = self.design.components.get(r)?;
-                if c.pins.get(p).is_some_and(|p| p.kind == crate::design::PinKind::PowerIn) {
-                    Some(true)
-                } else if self.lib.part_for(c).is_some_and(|p| p.class == Class::Capacitor) {
-                    Some(false)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        if !kinds.is_some_and(|k| k.contains(&true)) {
+        // ICs (whose supply current the loads count) and capacitors, with at least one IC: a node of only
+        // capacitors is an RC whose step is the point, and is left to the ranges.
+        let mut ics = BTreeSet::new();
+        for (r, p) in self.design.nets[fed].pins.iter().filter(|(r, _)| r != self.reference) {
+            let c = self.design.components.get(r)?;
+            let class = self.lib.part_for(c).map(|p| p.class);
+            let supply = c.pins.get(p).is_some_and(|p| p.kind == PinKind::PowerIn);
+            if supply && !c.dnp && matches!(class, Some(Class::Ic | Class::Oscillator)) {
+                ics.insert(r.as_str());
+            } else if !(c.lib_id.starts_with("Device:C") || class == Some(Class::Capacitor)) {
+                return None;
+            }
+        }
+        if ics.is_empty() {
             return None;
         }
-        let load = &self.loads[fed];
         let fed_name = self.net_name(fed);
         let lead = format!(
             "{fed_name} is fed only through {} from {}, so it drops only what {fed_name} draws",
             self.reference,
             self.net_name(from)
         );
-        let drop = match crate::voltage::resistance_range(self.lib, self.inputs, self.reference, self.c) {
-            Ok((_, rmax, _)) if load.known() => {
-                notes.push(format!(
-                    "{lead}: {} mA × {} Ω",
-                    (load.amps * 1e5).round() / 100.0,
-                    (rmax * 100.0).round() / 100.0
-                ));
-                Some(load.amps * rmax)
-            }
-            Ok(_) => {
-                notes.push(format!(
-                    "{lead}, and the current of {} isn't known",
-                    load.missing.join(", ")
-                ));
-                None
-            }
-            Err(e) => {
-                notes.push(format!("{lead}: {e}"));
-                None
-            }
+        // A part's supply current is its own draw: what it drives out of its pins comes through here too.
+        let driving: Vec<&str> = ics
+            .iter()
+            .copied()
+            .filter(|r| {
+                self.design.components[*r].pins.values().any(|p| {
+                    matches!(
+                        p.kind,
+                        PinKind::Output | PinKind::Bidirectional | PinKind::TriState | PinKind::PowerOut
+                    )
+                })
+            })
+            .collect();
+        let load = &self.loads[fed];
+        if !driving.is_empty() {
+            return Some(Err(format!(
+                "{lead}, and that includes what {} {} out of {} pins, which isn't known",
+                driving.join(", "),
+                if driving.len() == 1 { "drives" } else { "drive" },
+                if driving.len() == 1 { "its" } else { "their" }
+            )));
+        }
+        if !load.known() {
+            return Some(Err(format!(
+                "{lead}, and the current of {} isn't known",
+                load.missing.join(", ")
+            )));
+        }
+        let rmax = match crate::voltage::resistance_range(self.lib, self.inputs, self.reference, self.c) {
+            Ok((_, rmax, _)) => rmax,
+            Err(e) => return Some(Err(format!("{lead}: {e}"))),
         };
-        Some(if fed == b {
-            Span {
-                min: Some(0.0),
-                max: drop,
-            }
+        let drop = load.amps * rmax;
+        let note = format!(
+            "{lead}: {} mA × {} Ω",
+            (load.amps * 1e5).round() / 100.0,
+            (rmax * 100.0).round() / 100.0
+        );
+        // Current flows from the higher net: into the fed net from a positive supply, out of it to a negative one.
+        let fed_above = self.span(from).max.is_some_and(|m| m <= 0.0);
+        let from_minus_fed = if fed_above {
+            Span::new(-drop, 0.0)
         } else {
-            Span {
-                min: drop.map(|d| -d),
-                max: Some(0.0),
-            }
-        })
+            Span::new(0.0, drop)
+        };
+        Some(Ok((
+            if fed == b {
+                from_minus_fed
+            } else {
+                Span {
+                    min: from_minus_fed.max.map(|x| -x),
+                    max: from_minus_fed.min.map(|x| -x),
+                }
+            },
+            note,
+        )))
+    }
+
+    /// Why a FAIL across this resistor would rest only on a bound (see [`Ctx::series_feed`]).
+    fn only_bound(&self, a: usize, b: usize) -> Option<String> {
+        self.series_feed(a, b)?.err()
     }
 
     fn diff_depth(&self, a: usize, b: usize, depth: usize, notes: &mut Vec<String>) -> Span {
@@ -713,6 +741,7 @@ fn voltage_rules(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report) 
             })
         };
         let head = format!("{what}: {span}");
+        let bound = to.and_then(|t| ctx.only_bound(*nets.first()?, t));
 
         // An end the datasheet gives no limit for has nothing to check; with no end left there is no finding.
         if let Some((vd, why)) = verdict(&compare(span, floor, &limit.abs_max, &other)) {
@@ -720,6 +749,7 @@ fn voltage_rules(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report) 
                 Verdict::Pass => format!("{head}, inside abs max ({})", ctx.cite(&limit.abs_max)),
                 _ => format!("{head}: {why} ({})", ctx.cite(&limit.abs_max)),
             };
+            let (vd, msg) = on_bound(vd, msg, bound.as_ref());
             r.findings
                 .push(ctx.finding("abs-max", vd, Severity::Error, msg, nets.clone()));
         }
@@ -739,10 +769,19 @@ fn voltage_rules(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &mut Report) 
                     ),
                     _ => format!("{head}: {why} ({})", ctx.cite(&limit.recommended)),
                 };
+                let (vd, msg) = on_bound(vd, msg, bound.as_ref());
                 r.findings
                     .push(ctx.finding("recommended", vd, severity, msg, nets.clone()));
             }
         }
+    }
+}
+
+/// A FAIL that rests only on a bound is UNKNOWN, with why (see [`Ctx::series_feed`]).
+fn on_bound(vd: Verdict, msg: String, bound: Option<&String>) -> (Verdict, String) {
+    match bound {
+        Some(why) if vd == Verdict::Fail => (Verdict::Unknown, format!("{msg}; but that is only a bound: {why}")),
+        _ => (vd, msg),
     }
 }
 
@@ -768,7 +807,12 @@ fn seen(ctx: &Ctx<'_>, limit: &Limit) -> Vec<Seen> {
                 (Some(pn), Some(tn)) => {
                     // Signed: `bidirectional` only makes `breakdown` a magnitude.
                     let s = ctx.diff(pn, tn);
-                    let floor = (ctx.volts.nets[pn].floor, ctx.volts.nets[tn].floor);
+                    // A drop worked out from the load doesn't rest on how far a rail sags.
+                    let floor = if matches!(ctx.series_feed(pn, tn), Some(Ok(_))) {
+                        (false, false)
+                    } else {
+                        (ctx.volts.nets[pn].floor, ctx.volts.nets[tn].floor)
+                    };
                     let what = if ctx.span(tn) == Span::exact(0.0) {
                         ctx.at(p, pn)
                     } else {

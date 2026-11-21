@@ -216,7 +216,9 @@ pub(super) fn resistor_power(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &
     };
     let (diff, notes) = ctx.diff_why(a, b);
     let across = magnitude(diff);
-    let on_floor = magnitude_floor(diff, (ctx.volts.nets[a].floor, ctx.volts.nets[b].floor));
+    // A drop worked out from the load doesn't rest on how far a rail sags.
+    let on_floor = magnitude_floor(diff, (ctx.volts.nets[a].floor, ctx.volts.nets[b].floor))
+        && !matches!(ctx.series_feed(a, b), Some(Ok(_)));
     let notes = if notes.is_empty() {
         String::new()
     } else {
@@ -286,6 +288,7 @@ pub(super) fn resistor_power(ctx: &Ctx<'_>, policy: &Policy, limit: &Limit, r: &
         }
     };
     let (vd, msg) = unless_floor(vd, msg, on_floor);
+    let (vd, msg) = super::on_bound(vd, msg, ctx.only_bound(a, b).as_ref());
     r.findings
         .push(ctx.finding("resistor-power", vd, severity, msg, vec![a, b]));
 }
