@@ -1,0 +1,159 @@
+# Every TDK MPZ1608 chip bead for power lines, from its part number: MPZ1608S221ATA00 is material S, 221 (220 ohm
+# at 100 MHz), characteristic type A, packaging T, internal code A00. The table on page 2 lists one part number
+# per row, so each rating row names all of its codes.
+family = "TDK MPZ1608"
+manufacturer = "TDK"
+description = "chip ferrite bead for power lines, 1608 metric (0603)"
+class = "inductor"
+mpn = "MPZ1608{material}{impedance}{characteristic}T{internal}"
+
+[datasheet]
+title = "Chip beads for power line, MPZ series, MPZ1608 type"
+document = "beads_commercial_power_mpz1608_en, 20190424"
+url = "https://www.lcsc.com/datasheet/C76815.pdf"
+
+# Part number construction, page 1. It names the fields but lists no codes: these are the ones the table on
+# page 2 uses. T is the packaging style.
+[field.material]
+page = 1
+codes = ["B", "S", "R", "Y", "D"]
+
+# Impedance in ohms at 100 MHz: two digits and a number of zeros.
+[field.impedance]
+page = 1
+codes = ["260", "300", "600", "101", "121", "151", "181", "221", "331", "391", "471", "601", "102"]
+
+[field.characteristic]
+page = 1
+codes = ["A", "B"]
+
+[field.internal]
+page = 1
+codes = ["A00", "AH0"]
+
+[[rating]]
+temperature = { min = -55, max = 125 }
+page = 1
+note = "operating temperature range"
+
+# Characteristics specification table, page 2: rated current (A) max., derated above 85 °C per the graph on
+# the same page.
+[[rating]]
+when = { material = ["B"], impedance = ["471"], characteristic = ["A"], internal = ["A00"] }
+current = 1.0
+page = 2
+note = "rated current 1.0 A max; derated above 85 °C (graph, p2); 470 ohm ±25 % at 100 MHz, DC resistance 0.150 ohm max"
+
+[[rating]]
+when = { material = ["S"], impedance = ["260"], characteristic = ["A"], internal = ["AH0"] }
+current = 6.0
+page = 2
+note = "rated current 6.0 A max; derated above 85 °C (graph, p2); 26 ohm ±25 % at 100 MHz, DC resistance 0.007 ohm max"
+
+[[rating]]
+when = { material = ["S"], impedance = ["300"], characteristic = ["A"], internal = ["AH0"] }
+current = 5
+page = 2
+note = "rated current 5 A max; derated above 85 °C (graph, p2); 30 ohm ±10 ohm at 100 MHz, DC resistance 0.010 ohm max"
+
+[[rating]]
+when = { material = ["S"], impedance = ["600"], characteristic = ["A"], internal = ["AH0"] }
+current = 3.5
+page = 2
+note = "rated current 3.5 A max; derated above 85 °C (graph, p2); 60 ohm ±25 % at 100 MHz, DC resistance 0.020 ohm max"
+
+[[rating]]
+when = { material = ["S"], impedance = ["101"], characteristic = ["A"], internal = ["AH0"] }
+current = 3
+page = 2
+note = "rated current 3 A max; derated above 85 °C (graph, p2); 100 ohm ±25 % at 100 MHz, DC resistance 0.030 ohm max"
+
+[[rating]]
+when = { material = ["S"], impedance = ["121"], characteristic = ["A"], internal = ["AH0"] }
+current = 2.0
+page = 2
+note = "rated current 2.0 A max; derated above 85 °C (graph, p2); 120 ohm ±25 % at 100 MHz, DC resistance 0.045 ohm max"
+
+[[rating]]
+when = { material = ["S"], impedance = ["181"], characteristic = ["A"], internal = ["AH0"] }
+current = 2.0
+page = 2
+note = "rated current 2.0 A max; derated above 85 °C (graph, p2); 180 ohm ±25 % at 100 MHz, DC resistance 0.050 ohm max"
+
+[[rating]]
+when = { material = ["S"], impedance = ["221"], characteristic = ["A"], internal = ["A00"] }
+current = 2.2
+page = 2
+note = "rated current 2.2 A max; derated above 85 °C (graph, p2); 220 ohm ±25 % at 100 MHz, DC resistance 0.050 ohm max"
+
+[[rating]]
+when = { material = ["S"], impedance = ["331"], characteristic = ["A"], internal = ["A00"] }
+current = 1.7
+page = 2
+note = "rated current 1.7 A max; derated above 85 °C (graph, p2); 330 ohm ±25 % at 100 MHz, DC resistance 0.080 ohm max"
+
+[[rating]]
+when = { material = ["S"], impedance = ["471"], characteristic = ["A"], internal = ["A00"] }
+current = 1.0
+page = 2
+note = "rated current 1.0 A max; derated above 85 °C (graph, p2); 470 ohm ±25 % at 100 MHz, DC resistance 0.150 ohm max"
+
+[[rating]]
+when = { material = ["S"], impedance = ["601"], characteristic = ["A"], internal = ["A00"] }
+current = 1
+page = 2
+note = "rated current 1 A max; derated above 85 °C (graph, p2); 600 ohm ±25 % at 100 MHz, DC resistance 0.150 ohm max"
+
+[[rating]]
+when = { material = ["S"], impedance = ["102"], characteristic = ["A"], internal = ["A00"] }
+current = 0.8
+page = 2
+note = "rated current 0.8 A max; derated above 85 °C (graph, p2); 1000 ohm ±25 % at 100 MHz, DC resistance 0.300 ohm max"
+
+[[rating]]
+when = { material = ["R"], impedance = ["391"], characteristic = ["A"], internal = ["A00"] }
+current = 1.2
+page = 2
+note = "rated current 1.2 A max; derated above 85 °C (graph, p2); 390 ohm ±25 % at 100 MHz, DC resistance 0.120 ohm max"
+
+[[rating]]
+when = { material = ["Y"], impedance = ["600"], characteristic = ["B"], internal = ["A00"] }
+current = 2.3
+page = 2
+note = "rated current 2.3 A max; derated above 85 °C (graph, p2); 60 ohm ±25 % at 100 MHz, DC resistance 0.030 ohm max"
+
+[[rating]]
+when = { material = ["Y"], impedance = ["101"], characteristic = ["B"], internal = ["A00"] }
+current = 2
+page = 2
+note = "rated current 2 A max; derated above 85 °C (graph, p2); 100 ohm ±25 % at 100 MHz, DC resistance 0.040 ohm max"
+
+[[rating]]
+when = { material = ["Y"], impedance = ["151"], characteristic = ["B"], internal = ["A00"] }
+current = 1.8
+page = 2
+note = "rated current 1.8 A max; derated above 85 °C (graph, p2); 150 ohm ±25 % at 100 MHz, DC resistance 0.050 ohm max"
+
+[[rating]]
+when = { material = ["Y"], impedance = ["221"], characteristic = ["B"], internal = ["A00"] }
+current = 1.5
+page = 2
+note = "rated current 1.5 A max; derated above 85 °C (graph, p2); 220 ohm ±25 % at 100 MHz, DC resistance 0.100 ohm max"
+
+[[rating]]
+when = { material = ["D"], impedance = ["300"], characteristic = ["B"], internal = ["A00"] }
+current = 1.8
+page = 2
+note = "rated current 1.8 A max; derated above 85 °C (graph, p2); 30 ohm ±10 ohm at 100 MHz, DC resistance 0.060 ohm max"
+
+[[rating]]
+when = { material = ["D"], impedance = ["600"], characteristic = ["B"], internal = ["A00"] }
+current = 1.2
+page = 2
+note = "rated current 1.2 A max; derated above 85 °C (graph, p2); 60 ohm ±25 % at 100 MHz, DC resistance 0.100 ohm max"
+
+[[rating]]
+when = { material = ["D"], impedance = ["101"], characteristic = ["B"], internal = ["A00"] }
+current = 1
+page = 2
+note = "rated current 1 A max; derated above 85 °C (graph, p2); 100 ohm ±25 % at 100 MHz, DC resistance 0.150 ohm max"

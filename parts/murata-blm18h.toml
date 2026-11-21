@@ -1,0 +1,133 @@
+# Every Murata BLM18H_SN chip ferrite bead, from its part number: BLM18HG601SN1D is characteristics HG, 601
+# (600 ohm at 100 MHz), S N 1 (performance, category, one circuit), packaging D (taping). The rating table on
+# page 1 lists one part number per row, so each rating row names its characteristics and impedance codes.
+family = "Murata BLM18H"
+manufacturer = "Murata"
+description = "GHz-range chip ferrite bead, 1608 metric (0603)"
+class = "inductor"
+mpn = "BLM18{characteristics}{impedance}SN1{packaging}"
+
+[datasheet]
+title = "GHz Noise Suppression Chip Ferrite Bead BLM18H_SN1 Reference Specification"
+document = "JENF243A-0004P-01"
+url = "https://www.lcsc.com/datasheet/C85830.pdf"
+
+# Part numbering, page 1. Only the packaging codes are spelled out there; the characteristics codes are the
+# ones the rating table on the same page uses.
+[field.characteristics]
+page = 1
+codes = ["HE", "HG", "HD", "HB", "HK"]
+
+# Typical impedance in ohms at 100 MHz: two digits and a number of zeros.
+[field.impedance]
+page = 1
+codes = ["121", "221", "331", "471", "601", "102", "152"]
+
+# D is taping, B is bulk.
+[field.packaging]
+page = 1
+codes = ["D", "B"]
+
+[[rating]]
+temperature = { min = -55, max = 125 }
+page = 1
+note = "operating temperature range"
+
+# Rating table, page 1. Only the HE parts derate, from their 85 °C rating to their 125 °C one (the note and
+# graph on page 2); the rest are rated over the whole operating range.
+
+[[rating]]
+when = { characteristics = ["HE"], impedance = ["601"] }
+current = 0.8
+page = 1
+note = "rated current 800 mA; 600 ohm ±25 % at 100 MHz; 800 mA up to 85 °C, derated to 600 mA at 125 °C (p2); DC resistance 0.25 ohm max"
+
+[[rating]]
+when = { characteristics = ["HE"], impedance = ["102"] }
+current = 0.6
+page = 1
+note = "rated current 600 mA; 1000 ohm ±25 % at 100 MHz; 600 mA up to 85 °C, derated to 500 mA at 125 °C (p2); DC resistance 0.35 ohm max"
+
+[[rating]]
+when = { characteristics = ["HE"], impedance = ["152"] }
+current = 0.5
+page = 1
+note = "rated current 500 mA; 1500 ohm ±25 % at 100 MHz; 500 mA up to 85 °C, derated to 400 mA at 125 °C (p2); DC resistance 0.50 ohm max"
+
+[[rating]]
+when = { characteristics = ["HG"], impedance = ["471"] }
+current = 0.2
+page = 1
+note = "rated current 200 mA; 470 ohm ±25 % at 100 MHz; DC resistance 0.85 ohm max"
+
+[[rating]]
+when = { characteristics = ["HG"], impedance = ["601"] }
+current = 0.2
+page = 1
+note = "rated current 200 mA; 600 ohm ±25 % at 100 MHz; DC resistance 1.0 ohm max"
+
+[[rating]]
+when = { characteristics = ["HG"], impedance = ["102"] }
+current = 0.1
+page = 1
+note = "rated current 100 mA; 1000 ohm ±25 % at 100 MHz; DC resistance 1.6 ohm max"
+
+[[rating]]
+when = { characteristics = ["HD"], impedance = ["471"] }
+current = 0.1
+page = 1
+note = "rated current 100 mA; 470 ohm ±25 % at 100 MHz; DC resistance 1.2 ohm max"
+
+[[rating]]
+when = { characteristics = ["HD"], impedance = ["601"] }
+current = 0.1
+page = 1
+note = "rated current 100 mA; 600 ohm ±25 % at 100 MHz; DC resistance 1.5 ohm max"
+
+[[rating]]
+when = { characteristics = ["HD"], impedance = ["102"] }
+current = 0.05
+page = 1
+note = "rated current 50 mA; 1000 ohm ±25 % at 100 MHz; DC resistance 1.8 ohm max"
+
+[[rating]]
+when = { characteristics = ["HB"], impedance = ["121"] }
+current = 0.2
+page = 1
+note = "rated current 200 mA; 120 ohm ±25 % at 100 MHz; DC resistance 0.5 ohm max"
+
+[[rating]]
+when = { characteristics = ["HB"], impedance = ["221"] }
+current = 0.1
+page = 1
+note = "rated current 100 mA; 220 ohm ±25 % at 100 MHz; DC resistance 0.8 ohm max"
+
+[[rating]]
+when = { characteristics = ["HB"], impedance = ["331"] }
+current = 0.05
+page = 1
+note = "rated current 50 mA; 330 ohm ±25 % at 100 MHz; DC resistance 1.2 ohm max"
+
+[[rating]]
+when = { characteristics = ["HK"], impedance = ["331"] }
+current = 0.2
+page = 1
+note = "rated current 200 mA; 330 ohm ±25 % at 100 MHz; DC resistance 0.5 ohm max"
+
+[[rating]]
+when = { characteristics = ["HK"], impedance = ["471"] }
+current = 0.2
+page = 1
+note = "rated current 200 mA; 470 ohm ±25 % at 100 MHz; DC resistance 0.7 ohm max"
+
+[[rating]]
+when = { characteristics = ["HK"], impedance = ["601"] }
+current = 0.1
+page = 1
+note = "rated current 100 mA; 600 ohm ±25 % at 100 MHz; DC resistance 0.9 ohm max"
+
+[[rating]]
+when = { characteristics = ["HK"], impedance = ["102"] }
+current = 0.05
+page = 1
+note = "rated current 50 mA; 1000 ohm ±25 % at 100 MHz; DC resistance 1.5 ohm max"

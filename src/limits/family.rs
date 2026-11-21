@@ -1,5 +1,5 @@
-//! Part families: one file that covers a whole series of resistors or capacitors by decoding the part number,
-//! such as Yageo's `RC0805FR-0710KL` (size 0805, ±1 %, paper reel, 7 inch, 10 kΩ).
+//! Part families: one file that covers a whole series of resistors, capacitors, inductors or ferrite beads by
+//! decoding the part number, such as Yageo's `RC0805FR-0710KL` (size 0805, ±1 %, paper reel, 7 inch, 10 kΩ).
 //!
 //! A family file names the part number's fields and what each code means, then gives the series datasheet's
 //! rating rows, each for the codes and values it applies to. For a part number it decodes, it writes the part
@@ -25,7 +25,7 @@ pub struct Family {
     pub mpn: String,
     pub datasheet: Datasheet,
     pub field: BTreeMap<String, Field>,
-    /// Ratings by size and code: power, working voltage, rated voltage, temperature.
+    /// Ratings by size and code: power, working voltage, rated voltage, rated current, temperature.
     #[serde(default)]
     pub rating: Vec<Rating>,
     /// Resistors: temperature coefficient rows.
@@ -150,6 +150,8 @@ pub struct Rating {
     pub max_working_voltage: Option<f64>,
     /// Capacitors: rated voltage, in volts.
     pub voltage: Option<f64>,
+    /// Inductors and ferrite beads: rated current, in amps, in either direction.
+    pub current: Option<f64>,
     /// Operating temperature range, in °C.
     pub temperature: Option<MinMax>,
     pub page: u32,
@@ -261,7 +263,8 @@ impl Family {
                     out.push("a capacitor family needs a `tolerance` field".into());
                 }
             }
-            _ => out.push("only resistor and capacitor families are supported".into()),
+            Class::Inductor => {}
+            _ => out.push("only resistor, capacitor and inductor families are supported".into()),
         }
         out
     }
@@ -407,12 +410,17 @@ impl Family {
             ));
         }
         let temperature = pick("temperature range", &|r| r.temperature.is_some())?;
-        let tol_field = &self.field["tolerance"];
-        let tol_code = &d.codes["tolerance"];
-        let tol = tol_field
-            .codes
-            .value(tol_code)
-            .or_else(|| tol_field.values.get(tol_code).copied());
+        // Resistor and capacitor families always have a tolerance field; an inductor family may not.
+        let tol = self
+            .field
+            .get("tolerance")
+            .zip(d.codes.get("tolerance"))
+            .and_then(|(f, c)| {
+                f.codes
+                    .value(c)
+                    .or_else(|| f.values.get(c).copied())
+                    .map(|v| (v, f.page, c))
+            });
         let ds = &self.datasheet;
         let mut t = String::new();
         let note = |n: &Option<String>| n.as_ref().map(|n| format!(", note = {}", q(n))).unwrap_or_default();
@@ -441,14 +449,7 @@ impl Family {
                     ))
                 );
                 let _ = writeln!(t, "class = \"resistor\"");
-                if let Some(v) = tol {
-                    let _ = writeln!(
-                        t,
-                        "tolerance = {{ value = {v}, page = {}, note = {} }}",
-                        tol_field.page,
-                        q(&format!("tolerance code {tol_code}"))
-                    );
-                }
+                tolerance_line(&mut t, tol);
                 let tcrs: Vec<&TcrRow> = self
                     .tcr
                     .iter()
@@ -525,17 +526,13 @@ impl Family {
                     .trim_start())
                 );
                 let _ = writeln!(t, "class = \"capacitor\"");
-                if let Some(tv) = tol.filter(|_| {
-                    d.value
-                        .is_none_or(|f| f >= SMALLEST_CAPACITANCE_WITH_FRACTIONAL_TOLERANCE)
-                }) {
-                    let _ = writeln!(
-                        t,
-                        "tolerance = {{ value = {tv}, page = {}, note = {} }}",
-                        tol_field.page,
-                        q(&format!("tolerance code {tol_code}"))
-                    );
-                }
+                tolerance_line(
+                    &mut t,
+                    tol.filter(|_| {
+                        d.value
+                            .is_none_or(|f| f >= SMALLEST_CAPACITANCE_WITH_FRACTIONAL_TOLERANCE)
+                    }),
+                );
                 temperature_line(&mut t, temperature);
                 datasheet_section(&mut t, ds);
                 let _ = writeln!(t, "\n[pins]\n1 = \"1\"\n2 = \"2\"\n");
@@ -546,14 +543,57 @@ impl Family {
                     note(&rating.note)
                 );
             }
+            Class::Inductor => {
+                // The tables list one part number per row, so a part number no row covers isn't in the datasheet.
+                let rating = pick("rated current", &|r| r.current.is_some())?.ok_or_else(|| {
+                    format!(
+                        "{} family: the datasheet doesn't list {mpn} ({codes_text}): no rating row covers it",
+                        self.family
+                    )
+                })?;
+                let a = rating.current.unwrap_or_default();
+                let _ = writeln!(
+                    t,
+                    "description = {}",
+                    q(&format!(
+                        "{}{size}; {}, from the part number: {codes_text}",
+                        self.description, self.family
+                    ))
+                );
+                let _ = writeln!(t, "class = \"inductor\"");
+                temperature_line(&mut t, temperature);
+                datasheet_section(&mut t, ds);
+                let _ = writeln!(t, "\n[pins]\n1 = \"1\"\n2 = \"2\"\n");
+                // The voltage across it is its current times its impedance, so the datasheet rates the current.
+                let _ = writeln!(
+                    t,
+                    "[[limit]]\npins = [\"1\"]\nto = \"2\"\nabs_max = {{ none = \"the datasheet gives no voltage rating\" }}\nrecommended = {{ none = \"the datasheet gives no voltage rating\" }}\n"
+                );
+                let _ = writeln!(
+                    t,
+                    "[[limit]]\nquantity = \"current\"\npins = [\"1\"]\nto = \"2\"\nabs_max = {{ none = \"the datasheet gives a rated current, not an absolute maximum\" }}\nrecommended = {{ min = -{a}, max = {a}, page = {}{} }}",
+                    rating.page,
+                    note(&rating.note)
+                );
+            }
             _ => {
                 return Err(format!(
-                    "{} family: only resistors and capacitors are supported",
+                    "{} family: only resistors, capacitors and inductors are supported",
                     self.family
                 ));
             }
         }
         Ok(t)
+    }
+}
+
+fn tolerance_line(t: &mut String, tol: Option<(f64, u32, &String)>) {
+    if let Some((v, page, code)) = tol {
+        let _ = writeln!(
+            t,
+            "tolerance = {{ value = {v}, page = {page}, note = {} }}",
+            q(&format!("tolerance code {code}"))
+        );
     }
 }
 

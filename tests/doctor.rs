@@ -106,13 +106,20 @@ fn missing_part_file_is_listed_with_its_references() {
     );
 }
 
-/// The kitchen sink: a built-in part file with pins it gives no limit for.
+/// The kitchen sink, with L1's part file lacking its voltage limit: a part file with pins it gives no limit for.
 #[test]
 fn kitchen_sink_gaps_in_part_files() {
     let dir = root("tests/fixtures/kitchen-sink");
     let design = kicad::load(&dir.join("kitchen-sink.kicad_sch")).unwrap();
     let inputs = BoardInputs::load(&dir.join("inputs.toml")).unwrap();
-    let lib = Library::load_dir(&root("parts")).unwrap();
+    let own = std::env::temp_dir().join(format!("gerberus-doctor-pins-{}", std::process::id()));
+    std::fs::create_dir_all(&own).unwrap();
+    let full = std::fs::read_to_string(root("parts/FNR4030S6R8MT.toml")).unwrap();
+    let voltage = "\n[[limit]]\npins = [\"1\"]\nto = \"2\"\nabs_max = { none = \"the datasheet gives no voltage rating\" }\nrecommended = { none = \"the datasheet gives no voltage rating\" }\n";
+    assert!(full.contains(voltage), "FNR4030S6R8MT's voltage limit");
+    std::fs::write(own.join("FNR4030S6R8MT.toml"), full.replace(voltage, "")).unwrap();
+    let lib = Library::load_dirs(&[&root("parts"), &own]).unwrap();
+    std::fs::remove_dir_all(&own).unwrap();
     let d = doctor(&design, &lib, &inputs, false);
     let pins = d.items.iter().find(|i| i.rule == "pin-limits").expect("pin limits");
     assert_eq!(pins.references, ["L1"]);

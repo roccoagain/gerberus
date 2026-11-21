@@ -299,7 +299,7 @@ Each placed part's limits come from the first of these that covers it:
 
 ### Part families
 
-Most resistors and capacitors come in series whose part number spells out the size, tolerance, value and rating,
+Most resistors, capacitors and ferrite beads come in series whose part number spells out the size, tolerance, value and rating,
 all from one datasheet. A family file covers the whole series: a file with a top-level `family` key, in any part
 folder. For a part number with no part file, gerberus decodes it with each family (a later folder's family first)
 and writes the part file a person would have written for that one part, every value cited to the series
@@ -310,7 +310,7 @@ other file.
 family = "Yageo RC_L"
 manufacturer = "Yageo"
 description = "thick-film chip resistor"
-class = "resistor"                                  # resistor or capacitor
+class = "resistor"                                  # resistor, capacitor or inductor
 mpn = "RC{size}{tolerance}{packing}-{reel}{value}L" # each {field} is one coded part of the number
 
 [datasheet]                                         # the series datasheet, as in a part file
@@ -355,10 +355,13 @@ page = 5
 A resistor family also gives `rcwv_page`, the page that says the rated voltage is √(P·R) or the maximum
 working voltage, whichever is less.
 
-Capacitor rows give `voltage` (the rated voltage) instead of `power`. A field can list its codes and give
+Capacitor rows give `voltage` (the rated voltage) instead of `power`. Inductor and ferrite-bead rows give
+`current` (the rated current, in amps); the part gets that as a current limit in either direction, and a voltage
+limit of `none`, since the voltage across it is set by the current through it. A bead series' table usually
+lists one part number per row, so each row's `when` names every code that picks it out. A field can list its codes and give
 `values` for only some of them: a capacitor tolerance in picofarads (B, C, D) or +80/−20 % (Z) gives no fraction,
 so the part gets no tolerance. Each rating comes from the one row that covers the part number and gives it: no
-row leaves it out (power or rated voltage left out makes the part unchecked, with the reason), and two rows are an
+row leaves it out (power, rated voltage or rated current left out makes the part unchecked, with the reason), and two rows are an
 error. So is a missing temperature coefficient when the family has `[[tcr]]` rows, and a part number that splits
 into fields more than one way. A resistor's rated voltage is √(P·R) from the decoded value, capped by the maximum working voltage. A 0 Ω
 jumper isn't rated, since it has a current rating rather than a power one.
@@ -369,8 +372,9 @@ as `check` on what it prints. `cargo test` checks that every hand-written
 file a family also decodes agrees with it. The built-in families are Yageo RC_L resistors (`yageo-rc.toml`),
 UNI-ROYAL thick-film resistors (`uniroyal-thick-film.toml`, such as 0402WGF1001TCE, most of the JLCPCB basic
 resistors), Samsung CL capacitors (`samsung-cl.toml`), Yageo CC X7R capacitors (`yageo-cc-x7r.toml`) and
-Fenghua general MLCCs up to 50 V (`fenghua-general.toml`, such as 0603B104K500NT). The capacitor families rate a
-part by its voltage code; they don't check that the datasheet's capacitance tables list that value.
+Fenghua general MLCCs up to 50 V (`fenghua-general.toml`, such as 0603B104K500NT), TDK MPZ1608 power-line beads
+(`tdk-mpz1608.toml`) and Murata BLM18H beads (`murata-blm18h.toml`, such as BLM18HG601SN1D). The capacitor families
+rate a part by its voltage code; they don't check that the datasheet's capacitance tables list that value.
 
 ### Derating policy
 
