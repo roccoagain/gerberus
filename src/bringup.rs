@@ -141,9 +141,21 @@ pub fn plan(design: &Design, lib: &Library, inputs: &BoardInputs, v: &Voltages, 
                         Hold::NotHeld(why) => Some(format!("{} may not hold it: {why}", r.reference)),
                         Hold::Unknown(why) => Some(format!("whether {} holds it isn't known: {why}", r.reference)),
                     });
+                // A regulator that may not hold the rail leaves its low end a 0 V floor, which says nothing to
+                // measure against: expect the range it gives while it holds, beside the warning. Only when it
+                // alone sets the top of the rail: a second source (a diode-OR'd battery) can take it higher.
+                let held = v
+                    .regulators
+                    .iter()
+                    .filter(|r| r.output == m && r.sets_output && v.nets[m].floor)
+                    .find_map(|r| r.held_at)
+                    .filter(|h| v.nets[m].span.max == Some(h.max));
                 rails.push(Rail {
                     net: m,
-                    span: v.nets[m].span,
+                    span: held.map_or(v.nets[m].span, |h| Span {
+                        min: Some(h.min),
+                        max: Some(h.max),
+                    }),
                     probe: probe(design, lib, m),
                     from: from
                         .into_iter()

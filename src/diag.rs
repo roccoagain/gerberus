@@ -81,7 +81,7 @@ impl Style {
 }
 
 /// What a report shows besides errors and warnings.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Show {
     /// List UNKNOWNs and passes, not just count them.
     pub all: bool,
@@ -90,6 +90,8 @@ pub struct Show {
     pub style: Style,
     /// Columns to wrap notes at; 0 means 100.
     pub width: usize,
+    /// Rules whose warnings `--allow` silences, as a report prints them in brackets; `warnings` silences all.
+    pub allow: Vec<String>,
 }
 
 impl Show {
@@ -100,6 +102,7 @@ impl Show {
             verbose: true,
             style: Style::default(),
             width: 0,
+            allow: vec![],
         }
     }
 
@@ -108,20 +111,59 @@ impl Show {
         if self.width == 0 { 100 } else { self.width }
     }
 
-    /// Reads `--all` and `--verbose`/`-v` out of `args`, returning the rest.
-    pub fn parse(args: &[String]) -> (Show, Vec<String>) {
+    /// Reads `--all`, `--verbose`/`-v` and `--allow RULE` out of `args`, returning the rest.
+    pub fn parse(args: &[String]) -> Result<(Show, Vec<String>), String> {
         let mut show = Show::default();
         let mut rest = vec![];
-        for a in args {
+        let mut it = args.iter();
+        while let Some(a) = it.next() {
             match a.as_str() {
                 "--all" => show.all = true,
                 "--verbose" | "-v" => show.verbose = true,
+                "--allow" => show.allow.push(
+                    it.next()
+                        .filter(|r| !r.starts_with('-'))
+                        .ok_or("--allow takes a rule, such as esd, or `warnings` for every warning")?
+                        .clone(),
+                ),
                 _ => rest.push(a.clone()),
             }
         }
         show.style = Style::detect();
         show.width = width();
-        (show, rest)
+        Ok((show, rest))
+    }
+
+    /// Whether `--allow` silences the warnings of `rule`.
+    pub fn allows(&self, rule: &str) -> bool {
+        self.allow.iter().any(|a| a == rule || a == "warnings")
+    }
+
+    /// Takes the warnings `--allow` silences out of `items`, where `warning` gives an item's rule when it is a
+    /// warning, and returns how many it took.
+    pub fn silence<T>(&self, items: &mut Vec<T>, warning: impl Fn(&T) -> Option<&str>) -> usize {
+        let before = items.len();
+        items.retain(|i| !warning(i).is_some_and(|rule| self.allows(rule)));
+        before - items.len()
+    }
+
+    /// The closing note for `--allow`: how many warnings it silenced, or that it matched none, which catches a
+    /// misspelt rule.
+    pub fn silenced_note(&self, n: usize) -> String {
+        if self.allow.is_empty() {
+            return String::new();
+        }
+        let what = if n == 0 {
+            "no warnings matched".to_string()
+        } else {
+            format!("{} silenced by", plural(n, "warning"))
+        };
+        format!(
+            "   {} {}: {what} --allow {}\n",
+            self.style.paint(BLUE, "="),
+            self.style.paint(BOLD, "note"),
+            self.allow.join(", --allow ")
+        )
     }
 
     /// Whether a finding at `level` is listed.
@@ -672,9 +714,12 @@ mod tests {
 
     #[test]
     fn flags() {
-        let args: Vec<String> = ["--all", "-v", "x"].map(String::from).to_vec();
-        let (show, rest) = Show::parse(&args);
+        let args: Vec<String> = ["--all", "-v", "--allow", "esd", "x"].map(String::from).to_vec();
+        let (show, rest) = Show::parse(&args).unwrap();
         assert!(show.all && show.verbose);
+        assert!(show.allows("esd") && !show.allows("abs-max"));
         assert_eq!(rest, ["x"]);
+        assert!(Show::parse(&["--allow".to_string()]).is_err());
+        assert!(Show::parse(&["--allow".to_string(), "--json".to_string()]).is_err());
     }
 }

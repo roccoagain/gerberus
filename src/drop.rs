@@ -639,14 +639,8 @@ pub fn check(
                 continue;
             };
             let margin = low - gnd - min;
+            // Nothing is left for the copper: the pin's own limit check reports that, so this would only repeat it.
             if margin <= 0.0 {
-                push(
-                    Verdict::Unknown,
-                    format!(
-                        "the net's lowest {low} V leaves nothing above the {min} V it needs, before any copper (the \
-                         pin's own limit check reports that)"
-                    ),
-                );
                 continue;
             }
             let (hot, cold, from) = match (&inputs.temperature, &part.temperature) {

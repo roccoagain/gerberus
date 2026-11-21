@@ -188,12 +188,19 @@ pub fn check(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInpu
         let cv = crate::voltage::compute(design, lib, &case_inputs);
         let mut fr = Report::default();
         part_rules(design, lib, &Policy::default(), &case_inputs, &cv, true, &mut fr);
+        // A supply connected backwards that damages a part is fixed at the input (a series diode or an
+        // ideal-diode MOSFET), which settles the whole case, so its UNKNOWNs only add to the list.
+        let mut reversal_fails = false;
         if let Some((_, input)) = reversed.iter().find(|(c, _)| c == fault) {
             let summary =
                 crate::protection::reverse_polarity(design, lib, inputs, input, fault, &fr.findings, &r.findings, &cv);
+            reversal_fails = summary.verdict == Verdict::Fail;
             r.findings.push(summary);
         }
         for mut f in fr.findings {
+            if reversal_fails && f.verdict == Verdict::Unknown {
+                continue;
+            }
             // The same finding, word for word, in normal operation: the fault changes nothing it read.
             let same = |n: &Finding| {
                 n.case.is_none()

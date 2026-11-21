@@ -268,3 +268,31 @@ fn a_proposed_waiver_waits_for_a_person() {
     let both: Waivers = toml::from_str(&text("by = \"Rocco\"\nproposed = \"Claude\"\n")).unwrap();
     assert!(!both.problems(&design).is_empty());
 }
+
+/// `--allow RULE` silences that rule's warnings, as a compiler's `-A` does, and says how many; errors stay.
+#[test]
+fn allow_silences_warnings_but_not_errors() {
+    let run = |args: &[&str]| -> (Option<i32>, String) {
+        let out = Command::new(env!("CARGO_BIN_EXE_gerberus"))
+            .args(["check", "sniffer.kicad_sch"])
+            .args(args)
+            .current_dir(root("tests/fixtures/sniffer"))
+            .output()
+            .unwrap();
+        (out.status.code(), String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+    let (code, text) = run(&["--allow", "esd"]);
+    assert_eq!(code, Some(1), "{text}");
+    assert!(
+        !text.contains("warning[esd]") && text.contains("warning[regulator-headroom]"),
+        "{text}"
+    );
+    assert!(text.contains("2 warnings silenced by --allow esd"), "{text}");
+    let (_, text) = run(&["--allow", "warnings", "--allow", "abs-max"]);
+    assert!(
+        !text.contains("\nwarning[") && text.contains("error[abs-max]"),
+        "{text}"
+    );
+    assert!(text.contains("error: 2 errors, 0 warnings"), "{text}");
+    assert_eq!(run(&["--allow"]).0, Some(2));
+}

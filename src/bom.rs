@@ -934,10 +934,10 @@ fn judge(
     };
     let mut stock: Option<usize> = None;
     // JLCPCB keeps its own stock of its basic parts, apart from LCSC's retail stock, so LCSC running short of one
-    // is a warning for a JLCPCB build.
+    // says nothing about a JLCPCB build: only a note.
     let basic_for_jlcpcb = opts.jlcpcb && l.assembly.as_deref() == Some("basic");
     let short = if basic_for_jlcpcb {
-        Severity::Warning
+        Severity::Info
     } else {
         Severity::Error
     };
@@ -1103,21 +1103,13 @@ fn judge(
         } else {
             "lists no similar part from another maker in the same package with enough stock".to_string()
         };
-        if line.commodity {
-            push(
-                out,
-                Severity::Info,
-                Topic::SecondSource,
-                format!("LCSC {why}, but a plain resistor or capacitor of this value and size is made by many others"),
-            );
+        // Only a note: most parts on a board have one maker, and nothing is wrong with the line.
+        let message = if line.commodity {
+            format!("LCSC {why}, but a plain resistor or capacitor of this value and size is made by many others")
         } else {
-            push(
-                out,
-                Severity::Warning,
-                Topic::SecondSource,
-                format!("single source: LCSC {why}"),
-            );
-        }
+            format!("single source: LCSC {why}")
+        };
+        push(out, Severity::Info, Topic::SecondSource, message);
     } else {
         let names: Vec<String> = others
             .iter()

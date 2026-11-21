@@ -760,8 +760,8 @@ fn a_capacitor_keeps_a_node_from_tracking_its_pull() {
     assert_eq!(f.verdict, Verdict::Fail, "{}", f.message);
 }
 
-/// Connector pins: the bus pins are clamped or rated for system-level ESD; the debug headers and the sniffer's
-/// UART reach STM32 pins rated only for handling (HBM), which is a warning.
+/// Connector pins: the bus pins are clamped or rated for system-level ESD; the sniffer's UART reaches STM32 pins
+/// rated only for handling (HBM), which is a warning. Debug pads left out of the BOM aren't checked.
 #[test]
 fn esd_on_the_test_boards() {
     let (_, _, r) = run("can-encoder", "can-encoder.kicad_sch");
@@ -774,7 +774,8 @@ fn esd_on_the_test_boards() {
     // VBUS reaches its ICs only through D1, with the SMF26A behind it.
     assert_eq!(esd(&r, "J1.1 (VBUS)"), Verdict::Pass);
     assert_eq!(esd(&r, "J1.2 (/CANH)"), Verdict::Pass);
-    assert_eq!(esd(&r, "J3.2 (/SWDIO)"), Verdict::Fail);
+    // J3 is SWD pads, left out of the BOM: a probe pressed on at the bench, so no connector ESD level.
+    assert!(r.by_rule("esd").all(|f| !f.message.contains("J3.")));
     let (_, _, r) = run("can-encoder-rev1", "can-encoder.kicad_sch");
     assert_eq!(esd(&r, "J1.2 (/CANH)"), Verdict::Pass);
     // The NUP2105L breaks down at up to 32 V, above the TCAN330's 14 V bus pins, so it isn't counted as their
@@ -795,6 +796,8 @@ fn esd_on_the_test_boards() {
     );
     let (_, _, r) = run("sniffer", "sniffer.kicad_sch");
     assert_eq!(esd(&r, "J1.2 (/UART_TX)"), Verdict::Fail);
+    // J2 is a Tag-Connect footprint, also out of the BOM.
+    assert!(r.by_rule("esd").all(|f| !f.message.contains("J2.")));
     // The ME6211 gives no ESD rating.
     assert_eq!(esd(&r, "J1.1 (+5V)"), Verdict::Unknown);
 }
@@ -849,6 +852,8 @@ fn reversal_failures_count_by_finding_not_by_pin() {
 #[test]
 fn esd_does_not_follow_pulls_onto_rails() {
     let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    // J2 is pads only on the real board; fitted here, so its pins are held to the connector ESD level.
+    d.components.get_mut("J2").unwrap().in_bom = true;
     let swo = d.components["J2"].pins["6"].net;
     let gnd = net(&d, "GND");
     add(
@@ -909,6 +914,8 @@ fn esd_leaves_out_test_points() {
 #[test]
 fn esd_skips_undescribed_pulls_and_connectors() {
     let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    // J2 is pads only on the real board; fitted here, so its pins are held to the connector ESD level.
+    d.components.get_mut("J2").unwrap().in_bom = true;
     let swo = d.components["J2"].pins["6"].net;
     let gnd = net(&d, "GND");
     add(
@@ -1209,6 +1216,8 @@ fn no_inputs_assumes_only_ground() {
 #[test]
 fn esd_weak_pin_beside_an_undescribed_part_is_unknown() {
     let (mut d, inputs) = board("sniffer", "sniffer.kicad_sch");
+    // J2 is pads only on the real board; fitted here, so its pins are held to the connector ESD level.
+    d.components.get_mut("J2").unwrap().in_bom = true;
     let swdio = d.components["J2"].pins["2"].net;
     let gnd = net(&d, "GND");
     // A resistor or a module with no part file can't be the clamp: the pin still FAILs.
@@ -1269,4 +1278,27 @@ fn esd_counts_a_tvs_with_only_a_clamping_voltage() {
     let f: Vec<_> = r.by_rule("esd").filter(|f| f.message.starts_with("J1.2")).collect();
     assert!(f.len() == 1 && f[0].verdict == Verdict::Pass, "{f:#?}");
     assert!(f[0].message.contains("U99 (USBLC6-2SC6)"), "{}", f[0].message);
+}
+
+/// A supply connected backwards that damages a part drops the case's UNKNOWNs: input protection settles it all.
+/// Any other fault case keeps them, since its fix is local and can leave them open (R3 across the shorted bus).
+#[test]
+fn only_a_failing_reversal_drops_its_unknowns() {
+    let (_, _, r) = run("kitchen-sink", "kitchen-sink.kicad_sch");
+    let unknown = |case: &str| {
+        r.findings
+            .iter()
+            .filter(|f| f.case.as_deref() == Some(case) && f.verdict == Verdict::Unknown)
+            .count()
+    };
+    assert_eq!(unknown("VAUX reversed"), 0);
+    assert!(
+        r.findings
+            .iter()
+            .any(|f| f.case.as_deref() == Some("VIN shorted onto CANH")
+                && f.verdict == Verdict::Unknown
+                && f.reference == "R3"),
+        "{:#?}",
+        r.by_rule("resistor-power").collect::<Vec<_>>()
+    );
 }

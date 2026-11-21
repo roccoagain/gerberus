@@ -9,9 +9,9 @@ field at LCSC and reports:
 
 - **ERROR** when LCSC has too little stock for the number of boards (default 10), or when the LCSC number is a
   different part from the `MPN` field.
-- **WARNING** when LCSC no longer lists the part or lists it with a status other than `normal`, or when LCSC
-  shows no similar part from another maker in the same package with enough stock (single source). Plain
-  resistors and capacitors are exempt from the single-source warning.
+- **WARNING** when LCSC no longer lists the part or lists it with a status other than `normal`. A part with no
+  similar part from another maker at LCSC (single source) is only a note on its line (`--all` shows it):
+  most parts on a board have one maker, and nothing is wrong with the line.
 - **UNKNOWN** when there is no LCSC number to look up.
 
 Similar parts are LCSC's suggestions and are shown as candidates only: nobody has checked their pinout or
@@ -61,8 +61,8 @@ For a board JLCPCB will assemble from LCSC's stock:
   capacitor on an extended part gets a `todo[bom-assembly]` line naming a basic equivalent when LCSC's similar
   parts include one.
 - Stock is LCSC's retail stock. JLCPCB keeps its own assembly stock of the same C numbers, which can differ.
-  LCSC running short of a JLCPCB basic part is therefore a warning, not an error; check JLCPCB's parts library
-  before replacing it.
+  LCSC running short of a JLCPCB basic part is therefore only a note with `--jlcpcb`, not an error; check
+  JLCPCB's parts library before replacing it.
 
 The report is rustc-style like `check`'s, and its counts are of BOM lines, each at its worst finding: `--all` lists the lines with nothing wrong, and
 `--parts DIR` adds a part folder (a `parts/` folder next to the schematic is read anyway).

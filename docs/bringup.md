@@ -22,7 +22,8 @@ The plan has these steps:
    - the range to expect;
    - where to probe: a test point on the net, else a connector pin, else a pin of a part on it.
 
-   A rail whose regulator may not hold its output (its supply can fall below what it needs) gets a note.
+   A rail whose regulator may not hold its output (its supply can fall below what it needs) gets a note, and
+   the range to expect is the regulator's output range while it holds.
 
 A rail is a net that something holds (an input, a regulator, or a diode or ferrite bead from one), and that
 either powers a part or is a regulator's output. A rail the voltage engine can't reach, for example behind a

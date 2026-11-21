@@ -20,14 +20,17 @@ error[abs-max]: U6.PA4 reaches 26 V, past the maximum of 4 V
    = note: STM32G0B1KBT6TR DS13560 Rev 3 p66, any pin other than FT_xx
    = help: add a divider, clamp or series resistor, or choose a part rated higher
 
-error: 18 errors, 9 warnings, 109 unknown, 402 passed
-   = note: 109 unknown and 402 passed not shown; --all lists them
+error: 18 errors, 9 warnings, 45 unknown, 429 passed
+   = note: 45 unknown and 429 passed not shown; --all lists them
    = note: --verbose shows how each net in a finding got its voltage range
 ```
 
 Errors come first, then warnings. UNKNOWNs and passes are only counted unless `--all` asks for them, and how each net got its range is printed only with `--verbose` (`-v`). Colour is on when
-the output is a terminal and `NO_COLOR` isn't set. `stress`, `si` and
-`pinout` print the same way and take the same flags. The rules:
+the output is a terminal and `NO_COLOR` isn't set. `--allow RULE` silences a rule's warnings, as a compiler's
+`-A` does (`--allow esd`; `--allow warnings` silences all of them), in the report, `--json` and `--html`, and the
+summary says how many it silenced, or that it matched none. Errors can't be silenced: a [waiver](waivers.md)
+accepts one, with its reason. `stress`, `signal`, `si`, `traces`, `bom` and `pinout` print the same way and take
+the same flags. The rules:
 
 | Rule | FAILs when | Severity |
 | --- | --- | --- |
@@ -67,10 +70,14 @@ Every supply input (one with a positive minimum) is also checked connected backw
 diode blocks it: its cathode stays at 0 V or above. A regulator fed a negative supply may pass it to its output (many CMOS
 regulators have a body diode from output to input), so its output's low end becomes a floor at the supply's
 minimum: pins on it come out UNKNOWN rather than PASS. `reverse-polarity` sums the case up, counting only
-findings that normal operation doesn't already have; the summary isn't counted again in the error total.
+findings that normal operation doesn't already have; the summary isn't counted again in the error total. When it
+FAILs, the case's UNKNOWNs are left out: protection at the input settles the whole case. A connector that can't
+be plugged in backwards takes `reverse = "..."` in `inputs.toml` rather than a waiver, which drops the case.
 
 The `esd` rule looks at every connector pin `inputs.toml` names (inputs and undriven pins, not their ground
-references). An undriven test point is left out: only a probe touches it, at the bench. A TVS or ESD diode on the net passes it, if it breaks down below the absolute maximum of the IC
+references). An undriven test point is left out: only a probe touches it, at the bench. So is a connector left
+out of the BOM, which is pads only (a Tag-Connect footprint, SWD pads): a probe is pressed on it at the bench,
+and no cable a person plugs in reaches it. A TVS or ESD diode on the net passes it, if it breaks down below the absolute maximum of the IC
 pins beside it (an SMF26A on a 3.3 V logic pin doesn't count). A pull-up or pull-down isn't followed onto its
 rail. So does a clamp behind the one series part between the
 connector and the ICs it protects (VBUS → D1 → TVS). A part with no part file on the way (other than a connector, test point or jumper) makes the net UNKNOWN,
@@ -89,6 +96,6 @@ On the test boards:
   of the time.
 - The sniffer's only errors are its supply connected backwards: nothing blocks VIN, so the ME6211's CE pin sees
   -5.5 V and its output sits above its reversed input. Both CAN encoders pass, as D1 blocks a reversed VBUS.
-- Every debug header (SWD) and the sniffer's UART reach STM32 pins rated only ±1 to ±2 kV HBM, so they fail `esd`
-  as warnings. The CAN pins pass on the transceivers' own system-level ratings: rev 1's TCAN330 is rated ±12 kV contact
+- The sniffer's UART reaches STM32 pins rated only ±1 kV HBM, so it fails `esd` as a warning. The debug pads
+  (the CAN encoder's SWD pads, the sniffer's Tag-Connect) are out of the BOM, so they aren't checked. The CAN pins pass on the transceivers' own system-level ratings: rev 1's TCAN330 is rated ±12 kV contact
   (its NUP2105L breaks down only at up to 32 V, above the TCAN330's 14 V bus pins), and rev 2's TCAN1044AV ±8 kV.

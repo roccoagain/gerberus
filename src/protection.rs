@@ -303,7 +303,16 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
         .filter_map(|p| p.split('.').next())
         .map(str::to_string)
         .collect();
-    for (net, pins) in external {
+    for (net, mut pins) in external {
+        // A connector left out of the BOM is pads only, like a Tag-Connect footprint: a probe is pressed on it
+        // at the bench, and no cable a person plugs in reaches it, so the connector ESD level doesn't apply.
+        pins.retain(|p| {
+            let reference = p.split('.').next().unwrap_or_default();
+            design.components.get(reference).is_none_or(|c| c.in_bom)
+        });
+        if pins.is_empty() {
+            continue;
+        }
         let at = format!("{} ({})", pins.join(", "), design.nets[net].name);
         let (clamps, ics, too_high, unknown) = reached(design, lib, net, &named);
         // A part with no part file behind a series part clamped on its far side is sheltered by that clamp, like

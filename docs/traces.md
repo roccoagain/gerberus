@@ -39,7 +39,7 @@ current makes exactly that.
 |---|---|
 | PASS | the net's whole current times `Z` leaves the pin its minimum, with the thinnest copper (½ oz when there is no stackup) at the hottest board (inputs.toml's temperature, else the pin's part's rated maximum, plus `[traces] rise`), and the pin's ground has a pour, whose drop is far smaller than a track's. |
 | FAIL (warning) | the pin's own maximum current (a supply entry for that pin alone) times `Z`, with the thickest copper, vias counted as no resistance, at the coldest board, is already too much, and the net has no copper pour. |
-| UNKNOWN | anything between; a pin joined to its supply only through a pour, whose resistance isn't worked out; a ground return with no pour; a net whose voltage leaves no margin before any copper (the pin's own limit check reports that). |
+| UNKNOWN | anything between; a pin joined to its supply only through a pour, whose resistance isn't worked out; a ground return with no pour. A net whose voltage leaves no margin before any copper gets no voltage-drop finding: the pin's own limit check reports that. |
 
 ## Decoupling distance
 
