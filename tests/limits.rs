@@ -464,9 +464,9 @@ fn regulators_and_diodes_describe_what_they_drive() {
     }
 }
 
-/// Every pin a part has is either limited or reported as uncovered, and the gaps are the known ones.
+/// Every pin a built-in part has is limited.
 #[test]
-fn uncovered_pins_are_the_known_gaps() {
+fn every_pin_is_limited() {
     let lib = library();
     let mut gaps = Vec::new();
     for (mpn, part) in &lib.parts {
@@ -474,20 +474,8 @@ fn uncovered_pins_are_the_known_gaps() {
             gaps.push(format!("{mpn}.{pin}"));
         }
     }
-    // Inductors and ferrite beads have only a current limit; ground and reference pins appear as `to`.
-    assert_eq!(
-        gaps,
-        [
-            "FNR4030S6R8MT.1",
-            "FNR4030S6R8MT.2",
-            "MPZ1608S221ATA00.1",
-            "MPZ1608S221ATA00.2",
-            "SRP1038A-100M.1",
-            "SRP1038A-100M.2",
-            "SWPA252012S100MT.1",
-            "SWPA252012S100MT.2"
-        ]
-    );
+    // Inductors and ferrite beads give their voltage limit as `none`; ground and reference pins appear as `to`.
+    assert_eq!(gaps, Vec::<String>::new());
 }
 
 #[test]

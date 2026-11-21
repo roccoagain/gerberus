@@ -359,10 +359,26 @@ fn families_agree_with_hand_written_part_files() {
             if tcr(&made).is_some() {
                 assert_eq!(tcr(&made), tcr(by_hand), "{mpn}: tcr");
             }
-            assert!(matches!(made.limits[0].recommended, Range::Known { page: Some(_), .. }));
+            let current = |p: &gerberus::limits::Part| {
+                p.limits
+                    .iter()
+                    .find(|l| l.quantity == Quantity::Current)
+                    .and_then(|l| l.recommended.values())
+            };
+            if current(&made).is_some() {
+                assert_eq!(current(&made), current(by_hand), "{mpn}: rated current");
+            }
+            // Every rating it gives is cited; a range the datasheet doesn't give is `none`.
+            for l in &made.limits {
+                assert!(
+                    matches!(l.recommended, Range::Known { page: Some(_), .. } | Range::None(_)),
+                    "{mpn}: {:?}",
+                    l.recommended
+                );
+            }
         }
     }
     // The six Samsung CL files, less CL05B104KB54PNC, whose codes 4 and P the 2015 catalogue doesn't list, and
-    // the nine UNI-ROYAL files, the two Yageo CC and the one Fenghua file.
-    assert!(compared >= 17, "only {compared} parts compared");
+    // the nine UNI-ROYAL files, the two Yageo CC, the one Fenghua and the one TDK MPZ1608 file.
+    assert!(compared >= 18, "only {compared} parts compared");
 }
