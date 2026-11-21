@@ -1,4 +1,4 @@
-# Layout checks: trace current, voltage drop, decoupling, plane splits, hot loops and line length
+# Layout checks: trace current, voltage drop, decoupling, plane splits, hot loops, line length and assembly
 
 ```sh
 gerberus traces board.kicad_sch
@@ -92,5 +92,18 @@ at `c / √εr` through the stackup's highest-εr dielectric.
 |---|---|
 | PASS | all of the net's tracks together are no longer than a sixth of the edge's length, so no path is. |
 | UNKNOWN | longer, so it may ring: whether it does depends on the driver's strength and the far end's load. A series resistor beside the driver damps it. |
+
+## Assembly: thermal reliefs, tombstoning and fiducials
+
+`traces` also checks three things that make a board solder or place badly. A pad counts as in a pour when its centre
+is inside the drawn outline of a filled zone of its net on one of its layers; how the pour joins it is the pad's own
+zone connection, else its footprint's, else the zone's (KiCad's "Pad connections": thermal reliefs, solid, reliefs
+for through-hole pads only, or none).
+
+| Rule | Warns when |
+|---|---|
+| `thermal-relief` | a through-hole pad joins a pour solidly: the plane draws the soldering heat away, so the solder may not fill the hole. A pad on a relief passes. |
+| `tombstoning` | a two-pad part of 0603 or smaller (by the size in its footprint name, such as `C_0402_1005Metric`) has one pad joined solidly to a pour and the other not: that pad heats more slowly in reflow, so the other end's solder melts first and can stand the part up. Both alike passes. |
+| `fiducials` | a side of the board carries a part of six or more pads whose closest two are `[assembly] fine_pitch` (0.5 mm) or less apart, centre to centre, and has fewer than `[assembly] fiducials` (3) fiducials: footprints from KiCad's `Fiducial` library, or references starting `FID`. |
 
 Not yet checked: vias' current and a pour's narrowest neck.

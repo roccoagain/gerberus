@@ -25,6 +25,8 @@ pub struct Policy {
     pub hot_loop: Option<HotLoopPolicy>,
     /// How fast a digital output's edge is taken to be, for `gerberus traces`.
     pub edges: Option<EdgePolicy>,
+    /// When a board side needs fiducials, for `gerberus traces`.
+    pub assembly: Option<AssemblyPolicy>,
 }
 
 /// Keep every junction `margin` °C below its maximum temperature: reliability derating.
@@ -164,6 +166,17 @@ pub struct DecouplingPolicy {
     pub distance: f64,
     /// Farads: a bigger capacitor is a bulk capacitor, which needn't be close.
     pub largest: f64,
+    pub reason: String,
+}
+
+/// When a board side needs fiducials, from `policy.toml`'s `[assembly]`.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssemblyPolicy {
+    /// Millimetres between pad centres at or below which a part is fine-pitch.
+    pub fine_pitch: f64,
+    /// Global fiducials a side with a fine-pitch part needs.
+    pub fiducials: usize,
     pub reason: String,
 }
 

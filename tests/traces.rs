@@ -21,6 +21,7 @@ fn pad(r: &str, at: (f64, f64)) -> PlacedFootprint {
         value: String::new(),
         lib_id: String::new(),
         at,
+        back: false,
         pads: vec![PlacedPad {
             number: "1".into(),
             net: Some("VIN".into()),
@@ -28,6 +29,8 @@ fn pad(r: &str, at: (f64, f64)) -> PlacedFootprint {
             size: (1.0, 1.0),
             rotation: 0.0,
             layers: vec!["F.Cu".into()],
+            through_hole: false,
+            zone_connect: None,
         }],
     }
 }
@@ -176,6 +179,8 @@ mod voltage_drop {
             size: (0.5, 0.5),
             rotation: 0.0,
             layers: vec![layer.into()],
+            through_hole: false,
+            zone_connect: None,
         }
     }
 

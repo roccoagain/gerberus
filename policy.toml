@@ -79,3 +79,11 @@ reason = "an input capacitor within a few millimetres of the switcher's supply a
 [edges]
 rise = 1e-9
 reason = "1 ns, a microcontroller GPIO at its fastest speed setting"
+
+# `gerberus traces`: a board side carrying a part whose pads are `fine_pitch` mm apart or closer (centre to centre,
+# a part of six pads or more) needs `fiducials` global fiducials, so the placement machine can correct for where the
+# board really sits. Project judgement from common assembly guidance (IPC-7351 and assemblers' design rules).
+[assembly]
+fine_pitch = 0.5
+fiducials = 3
+reason = "three global fiducials let the placement machine correct the board's offset, rotation and stretch"
