@@ -55,8 +55,9 @@ them out for one of the fault cases in the inputs instead of normal operation.
 another) is wide enough for the worst-case current its net supplies, by IPC-2221 at policy.toml's temperature rise,
 that every power pin still gets its recommended minimum after the voltage drop in the copper from its supply,
 that every power pin has a decoupling capacitor within policy.toml's distance, that no driven signal track crosses
-a split in the plane beneath it, that each switching regulator's input loop is short, and that each SPI and I²S
-line is short enough for its edge not to ring.
+a split in the plane beneath it, that each switching regulator's input loop is short, that each SPI and I²S
+line is short enough for its edge not to ring, and that the board assembles well: through-hole pads on thermal
+reliefs, both pads of a small chip part joined to a pour alike, and fiducials on a side with fine-pitch parts.
 
 `diff` compares two revisions of a design, or one against a git revision with --rev: the parts added, removed or
 changed, the connections made or broken (nets matched by their pins, not their names), and the `check` findings
@@ -615,6 +616,7 @@ fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
     let dp = policy.decoupling.ok_or("policy.toml has no [decoupling]")?;
     let hp = policy.hot_loop.ok_or("policy.toml has no [hot_loop]")?;
     let ep = policy.edges.ok_or("policy.toml has no [edges]")?;
+    let ap = policy.assembly.ok_or("policy.toml has no [assembly]")?;
     let th = gerberus::thermal::compute(&design, &lib, &inputs, &v);
     let mut report = gerberus::rules::Report {
         findings: gerberus::traces::check(&design, &layout, &th, &tp)
@@ -624,6 +626,7 @@ fn traces(path: &Path, rest: &[String]) -> Result<bool, String> {
             .chain(gerberus::splits::check(&design, &layout))
             .chain(gerberus::loops::check(&design, &lib, &layout, &hp))
             .chain(gerberus::edges::check(&design, &layout, &ep))
+            .chain(gerberus::assembly::check(&design, &layout, &ap))
             .collect(),
         ..Default::default()
     };

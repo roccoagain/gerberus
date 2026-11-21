@@ -21,23 +21,7 @@
 use crate::design::{Design, PinKind};
 use crate::edges::is_bus_line;
 use crate::finding::{Finding, Severity, Verdict};
-use crate::kicad::pcb::{Layout, Point, Track};
-
-/// Whether `p` is inside `polygon`, by the even-odd rule.
-fn inside(p: Point, polygon: &[Point]) -> bool {
-    let mut odd = false;
-    let n = polygon.len();
-    for i in 0..n {
-        let (a, b) = (polygon[i], polygon[(i + 1) % n]);
-        if (a.1 > p.1) != (b.1 > p.1) {
-            let x = a.0 + (p.1 - a.1) / (b.1 - a.1) * (b.0 - a.0);
-            if p.0 < x {
-                odd = !odd;
-            }
-        }
-    }
-    odd
-}
+use crate::kicad::pcb::{Layout, Point, Track, inside};
 
 /// A polygon with its bounding box, so most points are ruled out without walking its edges.
 struct Shape<'a> {

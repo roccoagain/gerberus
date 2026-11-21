@@ -1,4 +1,4 @@
-# Layout checks: trace current, voltage drop, decoupling, plane splits, hot loops and line length
+# Layout checks: trace current, voltage drop, decoupling, plane splits, hot loops, line length and assembly
 
 ```sh
 gerberus traces board.kicad_sch
@@ -92,5 +92,20 @@ at `c / √εr` through the stackup's highest-εr dielectric.
 |---|---|
 | PASS | all of the net's tracks together are no longer than a sixth of the edge's length, so no path is. |
 | UNKNOWN | longer, so it may ring: whether it does depends on the driver's strength and the far end's load. A series resistor beside the driver damps it. |
+
+## Assembly: thermal reliefs, tombstoning and fiducials
+
+`traces` also checks three things that make a board solder or place badly. How a pour joins a pad is read from
+KiCad's last fill, so zone settings, pad and footprint overrides, DRC rules, keepouts and higher-priority zones all
+count as KiCad applied them. The fill of each zone of the pad's net, on each of the pad's layers, is sampled 0.05 mm
+outside the pad: copper at any of four points where a relief always leaves a gap (a rectangular pad's corners, or a
+round pad at 0°, 90°, 180° and 270°, as KiCad's spokes leave a rectangle's sides and a circle at 45°) is a solid
+joint; otherwise copper anywhere round the pad is a thermal relief; none is no joint. Refill the zones before checking.
+
+| Rule | Warns when |
+|---|---|
+| `thermal-relief` | a through-hole pad joins a pour solidly: the plane draws the soldering heat away, so the solder may not fill the hole. A pad on a relief passes. |
+| `tombstoning` | a two-pad part of 0603 or smaller (by the size in its footprint name, such as `C_0402_1005Metric`) has one pad joined solidly to a pour and the other not: that pad heats more slowly in reflow, so the other end's solder melts first and can stand the part up. Both alike passes. |
+| `fiducials` | a side of the board carries a part of six or more pads whose closest two are `[assembly] fine_pitch` (0.5 mm) or less apart, centre to centre, and has fewer than `[assembly] fiducials` (3) fiducials: footprints from KiCad's `Fiducial` library, or references starting `FID`. |
 
 Not yet checked: vias' current and a pour's narrowest neck.

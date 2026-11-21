@@ -187,6 +187,8 @@ pub struct PlacedFootprint {
     pub value: String,
     pub lib_id: String,
     pub at: Point,
+    /// Placed on the bottom side.
+    pub back: bool,
     pub pads: Vec<PlacedPad>,
 }
 
@@ -202,6 +204,10 @@ pub struct PlacedPad {
     pub rotation: f64,
     /// Copper layers the pad is on.
     pub layers: Vec<String>,
+    /// `smd`, `thru_hole`, `np_thru_hole` or `connect`.
+    pub kind: String,
+    /// True for a round pad (`circle`); other shapes are taken as their rectangle.
+    pub round: bool,
 }
 
 impl PlacedPad {
@@ -250,6 +256,22 @@ impl Layout {
             })
             .sum()
     }
+}
+
+/// Whether `p` is inside `polygon`, by the even-odd rule.
+pub fn inside(p: Point, polygon: &[Point]) -> bool {
+    let mut odd = false;
+    let n = polygon.len();
+    for i in 0..n {
+        let (a, b) = (polygon[i], polygon[(i + 1) % n]);
+        if (a.1 > p.1) != (b.1 > p.1) {
+            let x = a.0 + (p.1 - a.1) / (b.1 - a.1) * (b.0 - a.0);
+            if p.0 < x {
+                odd = !odd;
+            }
+        }
+    }
+    odd
 }
 
 pub fn dist(a: Point, b: Point) -> f64 {
@@ -515,6 +537,8 @@ fn parse_layout(tree: &Sexp) -> Layout {
                     // when it is 0.
                     rotation: at.arg_f64(3).unwrap_or(0.0),
                     layers,
+                    kind: pad.arg(2).unwrap_or_default().to_string(),
+                    round: pad.arg(3) == Some("circle"),
                 })
             })
             .collect();
@@ -523,6 +547,7 @@ fn parse_layout(tree: &Sexp) -> Layout {
             value: text_of("value"),
             lib_id: fp.arg(1).unwrap_or_default().to_string(),
             at: (fx, fy),
+            back: fp.child("layer").and_then(|l| l.arg(1)) == Some("B.Cu"),
             pads,
         });
     }

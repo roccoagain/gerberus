@@ -56,6 +56,8 @@ fn pad(num: &str, net: &str, at: Point, size: f64) -> PlacedPad {
         size: (size, size),
         rotation: 0.0,
         layers: vec!["F.Cu".into()],
+        kind: "smd".into(),
+        round: false,
     }
 }
 
@@ -65,6 +67,7 @@ fn fp(reference: &str, value: &str, pads: Vec<PlacedPad>) -> PlacedFootprint {
         value: value.into(),
         lib_id: "lib:fp".into(),
         at: (0.0, 0.0),
+        back: false,
         pads,
     }
 }

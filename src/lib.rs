@@ -7,6 +7,7 @@
 pub const EXIT_CHECK_FAILED: u8 = 1;
 pub const EXIT_CANNOT_RUN: u8 = 2;
 
+pub mod assembly;
 pub mod bom;
 pub mod bringup;
 pub mod datasheet;
