@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<defs>
+<path id="gerberus-head" fill-rule="evenodd" d="M-15-27L-5-13H5L15-27L18-3L10 11L5 24H-5L-10 11L-18-3ZM-11-1L-3 2L-9 5ZM11-1L3 2L9 5Z"/>
+<mask id="gerberus-gap"><rect width="100" height="100" fill="#fff"/><use href="#gerberus-head" transform="translate(50 46)" stroke="#000" stroke-width="7" stroke-linejoin="round"/></mask>
+</defs>
+<g fill="#16a34a" transform="translate(50 52) scale(1.1) translate(-50 -50)">
+<g mask="url(#gerberus-gap)"><use href="#gerberus-head" transform="translate(24 56) rotate(-20) scale(.78)"/><use href="#gerberus-head" transform="translate(76 56) rotate(20) scale(.78)"/></g>
+<use href="#gerberus-head" transform="translate(50 46)"/>
+</g>
+</svg>

@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::design::Design;
+use crate::diag::plural;
 use crate::finding::{Finding, Severity, Verdict};
 use crate::kicad::pcb::{Layout, PlacedFootprint, Point};
 use crate::rules::Report;
@@ -231,8 +232,9 @@ pub fn render(
             let r = if drawing.sheet.is_some() { 6 } else { 3 };
             for (k, (x, y)) in points.into_iter().enumerate() {
                 let id = format!("m{n}-{d}-{k}");
+                // A white halo under the coloured ring keeps it clear of copper drawn in the same colour.
                 marks[d].push(format!(
-                    r##"<a href="#f{n}"><circle id="{id}" class="mark {c}" cx="{x}" cy="{y}" r="{r}"><title>{}</title></circle></a>"##,
+                    r##"<a class="ring {c}" href="#f{n}"><circle class="halo" cx="{x}" cy="{y}" r="{r}"/><circle id="{id}" class="mark {c}" cx="{x}" cy="{y}" r="{r}"><title>{}</title></circle></a>"##,
                     escape(&format!("{} {}: {}", f.rule, f.reference, f.message))
                 ));
                 links.push(format!(
@@ -241,19 +243,14 @@ pub fn render(
                 ));
             }
         }
-        let case = f
-            .case
-            .as_deref()
-            .map(|c| format!(r#"<span class="case">fault "{}"</span>"#, escape(c)))
-            .unwrap_or_default();
+        // A fault case's findings already name it at the start of their message.
         let _ = write!(
             list,
-            r#"<li id="f{n}" class="finding {c}"><div class="head"><span class="badge {c}">{}</span><code>{}</code> <b>{}</b>{case}</div><p>{}</p><div class="links">{}</div></li>"#,
-            c,
-            escape(f.rule),
+            r#"<li id="f{n}" class="finding {c}"><div class="head"><i class="dot" role="img" aria-label="{c}" title="{c}"></i><b>{}</b><code>{}</code></div><p>{}</p><div class="links">{}</div></li>"#,
             escape(&f.reference),
+            escape(f.rule),
             escape(&f.message),
-            links.join(" ")
+            links.join("")
         );
     }
     let mut views = String::new();
@@ -284,13 +281,14 @@ pub fn render(
         r#"<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
+<link rel="icon" href="{icon}">
 <style>{STYLE}</style></head>
 <body>
-<header><h1>{title}</h1>
-<div class="counts"><label><input type="checkbox" data-show="error" checked> {e} errors</label>
-<label><input type="checkbox" data-show="warning" checked> {w} warnings</label>
-<label><input type="checkbox" data-show="unknown"> {u} unknown</label>
-<label><input type="checkbox" data-show="pass"> {p} passed</label></div></header>
+<header>{LOGO}<h1>{title}</h1>
+<div class="filters"><label class="error"><input type="checkbox" data-show="error" checked><i class="dot"></i>{e}</label>
+<label class="warning"><input type="checkbox" data-show="warning" checked><i class="dot"></i>{w}</label>
+<label class="unknown"><input type="checkbox" data-show="unknown"><i class="dot"></i>{u} unknown</label>
+<label class="pass"><input type="checkbox" data-show="pass"><i class="dot"></i>{p} passed</label></div></header>
 <main>
 <section class="drawings">{drawn}</section>
 <section class="list"><ol>{list}</ol></section>
@@ -299,42 +297,71 @@ pub fn render(
 </body></html>
 "#,
         title = escape(title),
+        icon = data_url(LOGO),
         drawn = match note {
-            Some(n) => format!(r#"<p class="hint">No drawings: {}</p>"#, escape(n)),
-            None => format!(
-                r#"<nav>{tabs}</nav>{views}<p class="hint">Scroll to zoom, drag to pan, double-click to see it all. Click a ring to see its finding.</p>"#
-            ),
+            Some(n) => format!(r#"<p class="note">No drawings: {}</p>"#, escape(n)),
+            None => format!(r"<nav>{tabs}</nav>{views}"),
         },
-        e = report.errors(),
-        w = report.warnings(),
+        e = plural(report.errors(), "error"),
+        w = plural(report.warnings(), "warning"),
         u = report.unknowns(),
         p = report.passes(),
     );
     page
 }
 
+/// The Gerberus logo, a green three-headed dog, in the header and as the tab's icon.
+const LOGO: &str = include_str!("../docs/logo.svg");
+
+/// `svg` as a `data:` URL, for the page's icon.
+fn data_url(svg: &str) -> String {
+    let svg = svg
+        .trim()
+        .replace('"', "'")
+        .replace('%', "%25")
+        .replace('#', "%23")
+        .replace('<', "%3C")
+        .replace('>', "%3E")
+        .replace('\n', " ");
+    format!("data:image/svg+xml,{svg}")
+}
+
 const STYLE: &str = r#"
-:root{--bg:#fbfbfa;--fg:#1d1d1b;--muted:#6b6b66;--line:#deddd8;--card:#ffffff;--error:#c62828;--warning:#b26a00;--unknown:#5c6bc0;--pass:#2e7d32}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#181816;--fg:#ecebe6;--muted:#a3a29b;--line:#34332f;--card:#22211e;--error:#ef6b6b;--warning:#f0a43a;--unknown:#9aa5e8;--pass:#6cc070}}
-:root[data-theme="dark"]{--bg:#181816;--fg:#ecebe6;--muted:#a3a29b;--line:#34332f;--card:#22211e;--error:#ef6b6b;--warning:#f0a43a;--unknown:#9aa5e8;--pass:#6cc070}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif}
-header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline}
-h1{font-size:18px;margin:0}.counts{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted)}
-main{display:grid;grid-template-columns:minmax(0,3fr) minmax(280px,2fr);height:calc(100vh - 54px)}
-@media (max-width:800px){main{grid-template-columns:1fr;height:auto}.view{height:60vh}}
+:root{--bg:#fff;--fg:#18181b;--muted:#71717a;--line:#ececef;--soft:#f6f6f7;--paper:#f5f4ef;--error:#dc2626;--warning:#d97706;--unknown:#6366f1;--pass:#16a34a}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#111113;--fg:#ededef;--muted:#8b8b93;--line:#26262a;--soft:#1c1c1f;--error:#f87171;--warning:#fbbf24;--unknown:#a5b4fc;--pass:#4ade80}}
+:root[data-theme="dark"]{--bg:#111113;--fg:#ededef;--muted:#8b8b93;--line:#26262a;--soft:#1c1c1f;--error:#f87171;--warning:#fbbf24;--unknown:#a5b4fc;--pass:#4ade80}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+header{height:52px;padding:0 20px;border-bottom:1px solid var(--line);display:flex;gap:24px;align-items:center}
+header>svg{width:26px;height:26px;flex:none;margin-right:-14px}
+h1{font-size:14px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.filters{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+.filters label{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap}
+.filters label:hover{background:var(--soft)}.filters label:has(:checked){background:var(--soft);color:var(--fg)}
+.filters input{position:absolute;opacity:0;pointer-events:none}.filters label:not(:has(:checked)) .dot{opacity:.35}
+.filters label:has(:focus-visible){outline:2px solid var(--fg);outline-offset:1px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none;background:var(--muted)}
+.error .dot{background:var(--error)}.warning .dot{background:var(--warning)}.unknown .dot{background:var(--unknown)}.pass .dot{background:var(--pass)}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);height:calc(100vh - 52px)}
+@media (max-width:800px){header{height:auto;padding:12px 16px;flex-wrap:wrap}.filters{margin-left:0}main{grid-template-columns:1fr;height:auto}.view{height:60vh}}
 .drawings{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line)}
-nav{display:flex;gap:4px;padding:8px 16px;flex-wrap:wrap}.tab{border:1px solid var(--line);background:var(--card);color:var(--fg);padding:4px 10px;border-radius:6px;cursor:pointer}
-.tab.on{border-color:var(--fg)}.view{display:none;flex:1;overflow:hidden;background:#f5f4ef;cursor:grab}.view.on{display:block}
-.view svg{width:100%;height:100%}.hint{margin:4px 16px 8px;color:var(--muted);font-size:12px}
-.mark{fill:none;stroke-width:1.2;pointer-events:visibleFill;cursor:pointer}.mark.error{stroke:#c62828}.mark.warning{stroke:#e08a00}.mark.unknown{stroke:#5c6bc0}.mark.pass{stroke:#2e7d32}
-.mark.hidden{display:none}.mark.hot{stroke-width:2;animation:pulse 1s ease-in-out 3}@keyframes pulse{50%{stroke-opacity:.3}}
-.list{overflow:auto;padding:0 16px}.list ol{list-style:none;margin:0;padding:8px 0}
-.finding{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--muted);border-radius:6px;padding:8px 12px;margin:8px 0}
-.finding.error{border-left-color:var(--error)}.finding.warning{border-left-color:var(--warning)}.finding.unknown{border-left-color:var(--unknown)}.finding.pass{border-left-color:var(--pass)}
-.finding.hidden{display:none}.finding:target{outline:2px solid var(--fg)}
-.finding p{margin:4px 0;word-break:break-word}.head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
-.badge{font-size:11px;text-transform:uppercase;font-weight:600}.badge.error{color:var(--error)}.badge.warning{color:var(--warning)}.badge.unknown{color:var(--unknown)}.badge.pass{color:var(--pass)}
-.case{color:var(--muted)}.links{display:flex;gap:8px;flex-wrap:wrap}.goto{color:var(--fg)}
+nav{display:flex;gap:20px;padding:0 20px;border-bottom:1px solid var(--line)}
+.tab{border:0;background:none;color:var(--muted);font:inherit;padding:12px 0 10px;border-bottom:2px solid transparent;cursor:pointer}
+.tab:hover{color:var(--fg)}.tab.on{color:var(--fg);border-bottom-color:var(--fg)}
+.view{display:none;flex:1;overflow:hidden;background:var(--paper);cursor:grab}.view.on{display:block}.view:active{cursor:grabbing}
+.view svg{width:100%;height:100%}.note{margin:20px;color:var(--muted)}
+.halo,.mark{fill:none;vector-effect:non-scaling-stroke;pointer-events:visibleFill;cursor:pointer}
+.halo{stroke:#fff;stroke-width:6px}.mark{stroke-width:2.5px}
+.mark.error{stroke:#dc2626}.mark.warning{stroke:#f59e0b}.mark.unknown{stroke:#6366f1}.mark.pass{stroke:#16a34a}
+.ring.hidden{display:none}.mark.hot{stroke-width:3.5px;animation:pulse 1s ease-in-out 3}@keyframes pulse{50%{stroke-opacity:.25}}
+.list{overflow:auto}.list ol{list-style:none;margin:0;padding:0}
+.finding{padding:14px 20px;border-bottom:1px solid var(--line);scroll-margin-top:8px}
+.finding.hidden{display:none}.finding:target{background:var(--soft)}
+.head{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.head b{font-weight:600}.head code{color:var(--muted)}
+.finding p{margin:4px 0 6px;color:var(--fg);opacity:.85;word-break:break-word}
+.links{display:flex;gap:12px;flex-wrap:wrap}.goto{color:var(--muted);text-decoration:none;font-size:12px}.goto:hover{color:var(--fg)}
+.goto::after{content:" →"}
 "#;
 
 const SCRIPT: &str = r"
@@ -361,6 +388,6 @@ document.querySelectorAll('.goto').forEach(a=>a.onclick=e=>{e.preventDefault();c
  const m=document.getElementById(a.getAttribute('href').slice(1));if(m)m.classList.add('hot')});
 function filter(){const on=new Set([...document.querySelectorAll('[data-show]')].filter(c=>c.checked).map(c=>c.dataset.show));
  document.querySelectorAll('.finding').forEach(f=>f.classList.toggle('hidden',![...on].some(c=>f.classList.contains(c))));
- document.querySelectorAll('.mark').forEach(m=>m.classList.toggle('hidden',![...on].some(c=>m.classList.contains(c))))}
+ document.querySelectorAll('.ring').forEach(m=>m.classList.toggle('hidden',![...on].some(c=>m.classList.contains(c))))}
 document.querySelectorAll('[data-show]').forEach(c=>c.onchange=filter);filter();
 ";
