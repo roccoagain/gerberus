@@ -8,7 +8,7 @@
 //!   `[assembly] fiducials` global fiducials for the placement machine to find the board accurately.
 //!
 //! How a pour joins a pad is read from KiCad's last fill, not from the zone's settings, so DRC-rule overrides,
-//! keepouts and higher-priority zones count: the fill is sampled just outside the pad (see [`around`]).
+//! keepouts and higher-priority zones count: the fill is sampled just outside the pad (see `around`).
 use crate::design::Design;
 use crate::finding::{Finding, Severity, Verdict};
 use crate::kicad::pcb::{Layout, PlacedFootprint, PlacedPad, Point, dist, inside};
