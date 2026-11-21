@@ -334,7 +334,7 @@ fn data_url(svg: &str) -> String {
 
 const STYLE: &str = r#"
 :root{--bg:#fff;--fg:#18181b;--muted:#71717a;--line:#ececef;--soft:#f6f6f7;--paper:#f5f4ef;--halo:#fff;--error:#dc2626;--warning:#d97706;--unknown:#6366f1;--pass:#16a34a}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#111113;--fg:#ededef;--muted:#8b8b93;--line:#26262a;--soft:#1c1c1f;--paper:#0b0b0d;--halo:#000;--error:#f87171;--warning:#fbbf24;--unknown:#a5b4fc;--pass:#4ade80}.art.sheet{filter:invert(1) hue-rotate(180deg)}}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#111113;--fg:#ededef;--muted:#8b8b93;--line:#26262a;--soft:#1c1c1f;--paper:#0b0b0d;--halo:#000;--error:#f87171;--warning:#fbbf24;--unknown:#a5b4fc;--pass:#4ade80}:root:not([data-theme="light"]) .art.sheet{filter:invert(1) hue-rotate(180deg)}}
 :root[data-theme="dark"]{--bg:#111113;--fg:#ededef;--muted:#8b8b93;--line:#26262a;--soft:#1c1c1f;--paper:#0b0b0d;--halo:#000;--error:#f87171;--warning:#fbbf24;--unknown:#a5b4fc;--pass:#4ade80}
 :root[data-theme="dark"] .art.sheet{filter:invert(1) hue-rotate(180deg)}
 *{box-sizing:border-box}
