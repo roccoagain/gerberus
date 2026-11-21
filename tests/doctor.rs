@@ -137,7 +137,10 @@ fn kitchen_sink_gaps_in_part_files() {
         "{:?}",
         review.notes
     );
-    assert_eq!(review.file, "board/waivers.toml");
+    assert_eq!(
+        review.file,
+        PathBuf::from("board").join("waivers.toml").display().to_string()
+    );
 }
 
 /// Data a part file lacks beyond its limits (a thermal resistance, an ESD rating) is a thing to add, and what
