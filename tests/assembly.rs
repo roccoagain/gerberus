@@ -41,6 +41,11 @@ fn small_chips_need_both_pads_joined_alike() {
     for c in ["C3", "C4", "C5", "C6"] {
         assert_eq!(verdict(&r, "tombstoning", c), Verdict::Fail, "{c}");
     }
+    // A solid GND pad hemmed in on one side by another net's copper is still solid.
+    let r = run("can-encoder");
+    for c in ["C11", "R6"] {
+        assert_eq!(verdict(&r, "tombstoning", c), Verdict::Fail, "{c}");
+    }
 }
 
 #[test]

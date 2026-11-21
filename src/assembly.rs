@@ -8,23 +8,26 @@
 //!   `[assembly] fiducials` global fiducials for the placement machine to find the board accurately.
 //!
 //! How a pour joins a pad is read from KiCad's last fill, not from the zone's settings, so DRC-rule overrides,
-//! keepouts and higher-priority zones count: the fill is sampled on a ring just outside the pad. Copper all round
-//! it is solid; copper on part of it is a relief's spokes (or a pad partly hemmed in, taken as a relief).
+//! keepouts and higher-priority zones count: the fill is sampled just outside the pad (see [`around`]).
 use crate::design::Design;
 use crate::finding::{Finding, Severity, Verdict};
 use crate::kicad::pcb::{Layout, PlacedFootprint, PlacedPad, Point, dist, inside};
 use crate::policy::AssemblyPolicy;
 
-/// Points on a ring 0.05 mm outside the pad: its circle, or its rectangle for any other shape.
-fn ring(pad: &PlacedPad) -> Vec<Point> {
+/// Points 0.05 mm outside the pad: a ring all round it (its circle, or its rectangle for any other shape), and
+/// four probes where a thermal relief always leaves a gap (the rectangle's corners, or the circle at 0°, 90°, 180°
+/// and 270°: KiCad runs spokes straight out of a rectangle's sides and at 45° from a circle).
+fn around(pad: &PlacedPad) -> (Vec<Point>, Vec<Point>) {
     const N: usize = 32;
     const GAP: f64 = 0.05;
     let (w, h) = (pad.size.0 / 2.0 + GAP, pad.size.1 / 2.0 + GAP);
     let (c, s) = (pad.rotation.to_radians().cos(), pad.rotation.to_radians().sin());
-    (0..N)
+    // From the pad's frame to the board's (the inverse of `PlacedPad::contains`).
+    let board = |(lx, ly): (f64, f64)| (pad.at.0 + lx * c + ly * s, pad.at.1 - lx * s + ly * c);
+    let ring = (0..N)
         .map(|i| {
             let t = i as f64 / N as f64;
-            let (lx, ly) = if pad.round {
+            if pad.round {
                 let a = t * std::f64::consts::TAU;
                 (w * a.cos(), w * a.sin())
             } else {
@@ -36,11 +39,16 @@ fn ring(pad: &PlacedPad) -> Vec<Point> {
                     d if d < 4.0 * w + 2.0 * h => (w - (d - 2.0 * w - 2.0 * h), h),
                     d => (-w, h - (d - 4.0 * w - 2.0 * h)),
                 }
-            };
-            // Back from the pad's frame to the board's (the inverse of `PlacedPad::contains`).
-            (pad.at.0 + lx * c + ly * s, pad.at.1 - lx * s + ly * c)
+            }
         })
-        .collect()
+        .map(board)
+        .collect();
+    let probes = if pad.round {
+        [(w, 0.0), (0.0, w), (-w, 0.0), (0.0, -w)]
+    } else {
+        [(w, h), (-w, h), (-w, -h), (w, -h)]
+    };
+    (ring, probes.into_iter().map(board).collect())
 }
 
 /// How the pours join a pad.
@@ -56,20 +64,21 @@ fn joint<'a>(layout: &'a Layout, pad: &PlacedPad) -> (Joint, &'a str) {
     let Some(net) = pad.net.as_deref() else {
         return (Joint::None, "");
     };
-    let points = ring(pad);
+    let (ring, probes) = around(pad);
     layout
         .zones
         .iter()
         .filter(|z| z.net == net && pad.layers.contains(&z.layer))
         .map(|z| {
-            let filled = points
-                .iter()
-                .filter(|&&p| z.polygons.iter().any(|poly| inside(p, poly)))
-                .count();
-            let j = match filled {
-                0 => Joint::None,
-                n if n * 10 >= points.len() * 9 => Joint::Solid,
-                _ => Joint::Relief,
+            let filled = |p: &Point| z.polygons.iter().any(|poly| inside(*p, poly));
+            // Copper at a probe means no relief gap there. A solid pad hemmed in by another net's copper on one
+            // side still has copper at the other probes.
+            let j = if probes.iter().any(filled) {
+                Joint::Solid
+            } else if ring.iter().any(filled) {
+                Joint::Relief
+            } else {
+                Joint::None
             };
             (j, z.layer.as_str())
         })

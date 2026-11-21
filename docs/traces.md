@@ -97,9 +97,10 @@ at `c / √εr` through the stackup's highest-εr dielectric.
 
 `traces` also checks three things that make a board solder or place badly. How a pour joins a pad is read from
 KiCad's last fill, so zone settings, pad and footprint overrides, DRC rules, keepouts and higher-priority zones all
-count as KiCad applied them: the fill of each zone of the pad's net, on each of the pad's layers, is sampled on a
-ring 0.05 mm outside the pad. Copper all round it (nine tenths of the ring or more) is a solid joint; copper on part
-of it is a thermal relief's spokes; none is no joint. Refill the zones before checking.
+count as KiCad applied them. The fill of each zone of the pad's net, on each of the pad's layers, is sampled 0.05 mm
+outside the pad: copper at any of four points where a relief always leaves a gap (a rectangular pad's corners, or a
+round pad at 0°, 90°, 180° and 270°, as KiCad's spokes leave a rectangle's sides and a circle at 45°) is a solid
+joint; otherwise copper anywhere round the pad is a thermal relief; none is no joint. Refill the zones before checking.
 
 | Rule | Warns when |
 |---|---|
