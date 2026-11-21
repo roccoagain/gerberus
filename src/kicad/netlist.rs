@@ -828,7 +828,7 @@ impl Builder {
             for &m in members {
                 let g = &mut self.subgraphs[m];
                 pins.append(&mut g.pins);
-                drivers.extend(best_candidate(&g.candidates, true).cloned());
+                drivers.extend(best_candidate(&g.candidates, Among::OneGroup).cloned());
                 labels.extend(g.labels.iter().cloned());
             }
             if pins.is_empty() {
@@ -913,14 +913,20 @@ fn low_quality(name: &str) -> bool {
     name.contains("-Pad")
 }
 
-/// Picks a name source as KiCad's `ResolveDrivers` does. The power-symbol rank only applies within one group
-/// (`with_rank`); across groups KiCad compares priority and then name.
-fn best_candidate(candidates: &[Candidate], with_rank: bool) -> Option<&Candidate> {
+/// Where name sources compete: inside one connected group, or between the groups joined into one net.
+#[derive(Clone, Copy)]
+enum Among {
+    OneGroup,
+    Groups,
+}
+
+/// Picks a name source as KiCad's `ResolveDrivers` does. The power-symbol rank only applies within one group;
+/// across groups KiCad compares priority and then name.
+fn best_candidate(candidates: &[Candidate], among: Among) -> Option<&Candidate> {
     candidates.iter().min_by(|a, b| {
-        let rank = if with_rank {
-            a.rank.cmp(&b.rank)
-        } else {
-            Ordering::Equal
+        let rank = match among {
+            Among::OneGroup => a.rank.cmp(&b.rank),
+            Among::Groups => Ordering::Equal,
         };
         b.priority
             .cmp(&a.priority)
@@ -943,7 +949,7 @@ fn net_name(drivers: &[Candidate], pins: &[PlacedPin], pin_items: usize) -> Stri
         .filter(|c| c.bus || c.priority >= Priority::GlobalPower || !bus_sheets.contains(c.sheet.as_str()))
         .cloned()
         .collect();
-    if let Some(c) = best_candidate(&offered, false) {
+    if let Some(c) = best_candidate(&offered, Among::Groups) {
         return c.name.clone();
     }
     if let ([p], 1) = (pins, pin_items) {

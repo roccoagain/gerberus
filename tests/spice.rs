@@ -8,7 +8,7 @@ use gerberus::inputs::BoardInputs;
 use gerberus::kicad;
 use gerberus::limits::Library;
 use gerberus::policy::SpicePolicy;
-use gerberus::spice::{self, Measured, Rng};
+use gerberus::spice::{self, Measured, Rng, Worst};
 use gerberus::units::{parse_farads, parse_henries};
 use gerberus::voltage::{Voltages, compute};
 
@@ -155,7 +155,7 @@ fn limits_between_two_pins_are_measured() {
     let (d, sweep, f) = stress("can-encoder-rev1", 0);
     finding(&f, "D1.K (+12V) from A (VBUS)");
     // The bus rings back below the rail the diode holds up, reverse biasing it by several volts.
-    let (max, _, min, _) = sweep.peak(net(&d, "+12V"), Some(net(&d, "VBUS"))).unwrap();
+    let Worst { max, min, .. } = sweep.peak(net(&d, "+12V"), Some(net(&d, "VBUS"))).unwrap();
     assert!(max > 5.0 && min < -1.0, "{max} {min}");
     // Every pair a limit reads got a measurement.
     assert!(!sweep.limits().is_empty());
@@ -332,7 +332,7 @@ fn worst_run_is_reported() {
     assert_eq!(sweep.runs.len(), 4);
     assert!(sweep.runs.iter().all(|r| r.starts_with("cable ")));
     let vdc = d.nets.iter().position(|n| n.name == "+VDC").unwrap();
-    let (max, _, _, _) = sweep.peak(vdc, None).unwrap();
+    let max = sweep.peak(vdc, None).unwrap().max;
     assert!(max > sweep.settled(vdc, None).unwrap() + 1.0, "{max}");
     // A series diode holds the input capacitors at the peak of the ring: twice the bus, past the regulator's
     // 38 V and the 50 V capacitors.

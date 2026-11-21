@@ -97,8 +97,13 @@ pub fn check(design: &Design, lib: &Library, layout: &Layout, policy: &HotLoopPo
             }
             best
         };
-        let loops: Vec<_> = supply.iter().map(shortest).collect();
-        if loops.is_empty() || loops.iter().any(Option::is_none) {
+        // The longest of each supply pin's shortest loop; none when any pin has no loop.
+        let longest = supply
+            .iter()
+            .map(shortest)
+            .collect::<Option<Vec<_>>>()
+            .and_then(|loops| loops.into_iter().max_by(|x, y| x.0.total_cmp(&y.0)));
+        let Some((l, spin, cap, gpin)) = longest else {
             out.push(finding(
                 Verdict::Unknown,
                 format!(
@@ -108,12 +113,7 @@ pub fn check(design: &Design, lib: &Library, layout: &Layout, policy: &HotLoopPo
                 ),
             ));
             continue;
-        }
-        let (l, spin, cap, gpin) = loops
-            .into_iter()
-            .flatten()
-            .max_by(|x, y| x.0.total_cmp(&y.0))
-            .expect("checked above");
+        };
         let what = format!("its input loop from pin {spin} through {cap} to pin {gpin} is {l:.1} mm");
         out.push(if l <= policy.length {
             finding(

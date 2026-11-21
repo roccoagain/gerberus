@@ -4,15 +4,15 @@ use gerberus::finding::Verdict;
 use gerberus::kicad::pcb::{Layout, PlacedFootprint, PlacedPad, StackLayer, Track, Zone};
 use gerberus::policy::TracePolicy;
 use gerberus::thermal::{Load, Thermal};
-use gerberus::traces::{check, ipc2221};
+use gerberus::traces::{Layer, check, ipc2221};
 
 /// 10 mil of 1 oz copper on an outer layer takes about 0.88 A for a 10 °C rise: IPC-2221's fit.
 #[test]
 fn ipc2221_matches_the_fit() {
-    let i = ipc2221(0.254, 0.035, true, 10.0);
+    let i = ipc2221(0.254, 0.035, Layer::Outer, 10.0);
     assert!((i - 0.88).abs() < 0.02, "{i}");
     // Inner layers take half.
-    assert!((ipc2221(0.254, 0.035, false, 10.0) - i / 2.0).abs() < 1e-9);
+    assert!((ipc2221(0.254, 0.035, Layer::Inner, 10.0) - i / 2.0).abs() < 1e-9);
 }
 
 fn pad(r: &str, at: (f64, f64)) -> PlacedFootprint {

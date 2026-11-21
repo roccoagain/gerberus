@@ -12,7 +12,7 @@ use crate::finding::{Finding, Severity, Verdict};
 use crate::inputs::BoardInputs;
 use crate::limits::{Bound, Class, DriveKind, Library, Lookup, Part, Range};
 use crate::policy::Policy;
-use crate::voltage::{Driver, Hold, Voltages, resistance_range};
+use crate::voltage::{Driver, Hold, ResistanceRange, Voltages, resistance_range};
 
 /// The current a net supplies, worst case.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -123,12 +123,22 @@ fn is_ground(volts: &Voltages, net: usize) -> bool {
     volts.nets[net].span.min == Some(0.0) && volts.nets[net].span.max == Some(0.0)
 }
 
-/// A forward drive's (anode, cathode, Vf range) for a diode or LED.
-fn forward(part: &Part) -> Option<(&str, &str, &Range)> {
+/// A diode's or LED's forward drive.
+struct Forward<'a> {
+    anode: &'a str,
+    cathode: &'a str,
+    vf: &'a Range,
+}
+
+fn forward(part: &Part) -> Option<Forward<'_>> {
     part.drives
         .iter()
         .find(|d| d.kind == DriveKind::Forward)
-        .map(|d| (d.pin.as_str(), d.to.as_str(), &d.range))
+        .map(|d| Forward {
+            anode: &d.pin,
+            cathode: &d.to,
+            vf: &d.range,
+        })
 }
 
 /// A regulator's `regulates` drive on `pin`.
@@ -316,7 +326,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
             continue;
         }
         let what = format!("{reference} ({})", part.mpn);
-        let ends = forward(part).and_then(|(a, k, vf)| Some((pin_net(c, part, a)?, pin_net(c, part, k)?, vf)));
+        let ends = forward(part).and_then(|f| Some((pin_net(c, part, f.anode)?, pin_net(c, part, f.cathode)?, f.vf)));
         let chain = match ends {
             Some((an, kn, vf)) if is_ground(volts, kn) => {
                 let feeds: Vec<(&String, &Component)> = design.nets[an]
@@ -408,7 +418,7 @@ pub fn compute(design: &Design, lib: &Library, inputs: &BoardInputs, volts: &Vol
             .find(|d| d.kind == DriveKind::Forward)
             .and_then(|d| d.current);
         let (amps, text) = match (resistance_range(lib, inputs, &r, rc), vmax(far)) {
-            (Ok((rmin, _, _)), Some(vs)) => {
+            (Ok(ResistanceRange { min: rmin, .. }), Some(vs)) => {
                 let i = (vs / rmin).max(0.0);
                 let why = match (vf_min, tested) {
                     (Some(vf), Some(t)) => format!("its {} minimum holds only at {} and 25 °C", v(vf), ma(t)),
@@ -760,7 +770,14 @@ impl Ctx<'_> {
             if part.class != Class::Diode {
                 continue;
             }
-            let Some((a, k, vf)) = forward(part) else { continue };
+            let Some(Forward {
+                anode: a,
+                cathode: k,
+                vf,
+            }) = forward(part)
+            else {
+                continue;
+            };
             let (Some(an), Some(kn)) = (pin_net(c, part, a), pin_net(c, part, k)) else {
                 continue;
             };
@@ -868,7 +885,7 @@ impl Ctx<'_> {
                 volts.nets[net].span.max,
                 volts.nets[other].span.min,
             ) {
-                (Ok((rmin, _, _)), Some(a), Some(b)) => {
+                (Ok(ResistanceRange { min: rmin, .. }), Some(a), Some(b)) => {
                     let i = (a - b) / rmin;
                     if i > 0.0 {
                         load.add(i, format!("{reference} {} to {}", ma(i), design.nets[other].name));
@@ -1057,7 +1074,12 @@ pub fn forward_current(design: &Design, lib: &Library, policy: &Policy, th: &The
             continue;
         };
         let Some(part) = part_of(lib, c) else { continue };
-        let Some((a, k, _)) = forward(part) else { continue };
+        let Some(Forward {
+            anode: a, cathode: k, ..
+        }) = forward(part)
+        else {
+            continue;
+        };
         let finding = |verdict, severity, message: String| Finding {
             rule: "forward-current",
             verdict,

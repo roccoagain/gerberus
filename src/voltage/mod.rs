@@ -25,11 +25,11 @@ mod channels;
 mod groups;
 mod plan;
 
-pub use channels::fet_pins;
+pub use channels::is_mosfet;
 use channels::{decide, find_channels};
 use groups::build_groups;
-pub use plan::resistance_range;
 use plan::{Plan, plan_drive};
+pub use plan::{ResistanceRange, resistance_range};
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Write as _};
@@ -429,12 +429,19 @@ fn compute_with(design: &Design, lib: &Library, inputs: &BoardInputs, channels: 
             progress = true;
         }
         for (&t, list) in &beads {
-            if out[t].is_some() || !list.iter().all(|&(_, f)| out[f].is_some()) {
+            if out[t].is_some() {
                 continue;
             }
+            // Every net the bead joins this one to must be known first.
+            let Some(froms) = list
+                .iter()
+                .map(|&(k, f)| Some((k, f, out[f].as_ref()?)))
+                .collect::<Option<Vec<_>>>()
+            else {
+                continue;
+            };
             let mut nv: Option<NetVoltage> = None;
-            for &(k, f) in list {
-                let from = out[f].as_ref().expect("checked above");
+            for &(k, f, from) in &froms {
                 let s = &shorts[k];
                 merge(
                     &mut nv,
@@ -448,9 +455,9 @@ fn compute_with(design: &Design, lib: &Library, inputs: &BoardInputs, channels: 
                 );
             }
             if let Some(nv) = nv.as_mut() {
-                nv.driver = list
+                nv.driver = froms
                     .iter()
-                    .map(|&(_, f)| out[f].as_ref().map_or(Driver::Floating, |o| o.driver))
+                    .map(|(_, _, from)| from.driver)
                     .min_by_key(|d| *d as u8)
                     .unwrap_or(Driver::Floating);
                 // As for a plan's net: a connector pin here can bring in anything.

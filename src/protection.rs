@@ -155,9 +155,16 @@ fn could_clamp(design: &Design, reference: &str) -> bool {
 /// Parts with no part file, keyed like [`Clamps`] by the series part they sit behind.
 type Unknown = BTreeMap<Option<String>, Vec<String>>;
 
-/// What the discharge reaches from a net: clamps (by the series part they sit behind), ICs, clamps that break
-/// down too high, and parts with no part file.
-type Reach<'a> = (Clamps, Vec<Reached<'a>>, Vec<String>, Unknown);
+/// What the discharge reaches from a net.
+struct Reach<'a> {
+    /// Clamps, by the series part they sit behind.
+    clamps: Clamps,
+    ics: Vec<Reached<'a>>,
+    /// Clamps that break down too high.
+    too_high: Vec<String>,
+    /// Parts with no part file.
+    unknown: Unknown,
+}
 
 fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<String>) -> Reach<'a> {
     let mut clamps = Clamps::new();
@@ -290,7 +297,12 @@ fn reached<'a>(design: &Design, lib: &'a Library, net: usize, named: &BTreeSet<S
         v.sort();
         v.dedup();
     }
-    (clamps, ics, too_high, unknown)
+    Reach {
+        clamps,
+        ics,
+        too_high,
+        unknown,
+    }
 }
 
 /// The `esd` rule: every net an external connector pin is on is clamped by a TVS or ESD diode, or everything on
@@ -314,7 +326,12 @@ pub fn esd(design: &Design, lib: &Library, policy: &Policy, inputs: &BoardInputs
             continue;
         }
         let at = format!("{} ({})", pins.join(", "), design.nets[net].name);
-        let (clamps, ics, too_high, unknown) = reached(design, lib, net, &named);
+        let Reach {
+            clamps,
+            ics,
+            too_high,
+            unknown,
+        } = reached(design, lib, net, &named);
         // A part with no part file behind a series part clamped on its far side is sheltered by that clamp, like
         // an IC there.
         let unknown: Vec<(Option<String>, String)> = unknown

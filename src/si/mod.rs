@@ -215,6 +215,15 @@ fn is_connector(f: &PlacedFootprint) -> bool {
     numbered("J") || numbered("P") || f.lib_id.starts_with("Connector")
 }
 
+/// The capacitance pads add to a line.
+struct PadLoad {
+    pf: f64,
+    /// Parts with no capacitance figure.
+    unknown: Vec<String>,
+    /// The figures used, for the report.
+    used: Vec<String>,
+}
+
 /// Pad capacitance on a line from the part library: per part, the capacitance its pin adds.
 struct Loads<'a> {
     layout: &'a Layout,
@@ -223,9 +232,9 @@ struct Loads<'a> {
 
 impl Loads<'_> {
     /// Capacitance in pF of the pads in `pads` (each part counted once per pin name), with the parts that
-    /// have no figure. The pair's own driver and connector are left out: their capacitance is part of the
-    /// USB budget the templates already cover.
-    fn of(&self, pads: &[(String, String)], ends: &[&str]) -> (f64, Vec<String>, Vec<String>) {
+    /// have no figure and the figures used. The pair's own driver and connector are left out: their capacitance
+    /// is part of the USB budget the templates already cover.
+    fn of(&self, pads: &[(String, String)], ends: &[&str]) -> PadLoad {
         let mut seen = BTreeSet::new();
         let (mut total, mut unknown, mut used) = (0.0, Vec::new(), Vec::new());
         for (r, num) in pads {
@@ -264,7 +273,11 @@ impl Loads<'_> {
                 None => unknown.push(format!("{r} ({}, no capacitance in its part file)", part.mpn)),
             }
         }
-        (total, unknown, used)
+        PadLoad {
+            pf: total,
+            unknown,
+            used,
+        }
     }
 }
 
@@ -329,7 +342,7 @@ fn model(
                 line.elements.push(Element::Shunt { c: c / 2.0 });
             }
             Step::Stub(stub) => {
-                let (pf, unk, _) = loads.of(&stub.pads, ends);
+                let PadLoad { pf, unknown: unk, .. } = loads.of(&stub.pads, ends);
                 unknown.extend(unk);
                 let c_end = pf * 1e-12;
                 if stub.length < 1e-3 {
@@ -353,7 +366,7 @@ fn model(
                 });
             }
             Step::Pad { reference, number } => {
-                let (pf, unk, _) = loads.of(&[(reference.clone(), number.clone())], ends);
+                let PadLoad { pf, unknown: unk, .. } = loads.of(&[(reference.clone(), number.clone())], ends);
                 unknown.extend(unk);
                 if pf > 0.0 {
                     line.elements.push(Element::Shunt { c: pf * 1e-12 });
@@ -757,7 +770,7 @@ pub fn check(layout: &Layout, lib: &Library) -> Report {
                 Step::Pad { reference, number } => Some((reference.clone(), number.clone())),
                 _ => None,
             }));
-            let (pf, unknown, used) = loads.of(&pads, &ends);
+            let PadLoad { pf, unknown, used } = loads.of(&pads, &ends);
             let detail = if used.is_empty() {
                 "no parts".to_string()
             } else {

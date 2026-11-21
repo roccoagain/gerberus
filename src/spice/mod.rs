@@ -72,12 +72,17 @@ fn sig(x: f64) -> String {
 
 /// The worst of all runs for one pair of nets.
 #[derive(Debug, Clone, Copy)]
-struct Worst {
-    max: f64,
-    max_run: usize,
-    min: f64,
-    min_run: usize,
-    end_max: f64,
+pub struct Worst {
+    /// The highest value any run reached.
+    pub max: f64,
+    /// The run that reached `max`.
+    pub max_run: usize,
+    /// The lowest value any run reached.
+    pub min: f64,
+    /// The run that reached `min`.
+    pub min_run: usize,
+    /// The highest settled value at the end of any run.
+    pub end_max: f64,
 }
 
 /// The result of a sweep: every run's parameters, and the worst peak across each pair of nets.
@@ -92,9 +97,9 @@ pub struct Sweep {
 }
 
 impl Sweep {
-    /// The highest and lowest `V(a) − V(b)` any run reached, and the run that reached each.
-    pub fn peak(&self, a: usize, b: Option<usize>) -> Option<(f64, usize, f64, usize)> {
-        self.worst.get(&(a, b)).map(|w| (w.max, w.max_run, w.min, w.min_run))
+    /// The worst `V(a) − V(b)` across the runs.
+    pub fn peak(&self, a: usize, b: Option<usize>) -> Option<Worst> {
+        self.worst.get(&(a, b)).copied()
     }
 
     /// The pairs of nets the pin limits read.
@@ -214,7 +219,14 @@ struct At<'a> {
 /// another pin is checked on the difference to that pin in the same run.
 fn side(sweep: &Sweep, at: &At<'_>, bound: &Bound, upper: bool) -> Side {
     let kind = at.kind;
-    let Some((max, max_run, min, min_run)) = sweep.peak(at.key.0, at.key.1) else {
+    let Some(Worst {
+        max,
+        max_run,
+        min,
+        min_run,
+        ..
+    }) = sweep.peak(at.key.0, at.key.1)
+    else {
         return Side::Unknown("ngspice didn't measure it".into());
     };
     let end = if upper { "maximum" } else { "minimum" };
@@ -238,7 +250,7 @@ fn side(sweep: &Sweep, at: &At<'_>, bound: &Bound, upper: bool) -> Side {
                 // The same net: the difference is always 0.
                 None => (0.0, 0, 0.0, 0),
                 Some((x, y)) => match sweep.peak(x, y) {
-                    Some(p) => p,
+                    Some(p) => (p.max, p.max_run, p.min, p.min_run),
                     None => return Side::Unknown(format!("ngspice didn't measure it against {pin}")),
                 },
             };
@@ -335,7 +347,7 @@ pub fn check(design: &Design, lib: &Library, sweep: &Sweep, policy: &SpicePolicy
                         headline,
                     });
                 };
-                let Some((max, _, min, _)) = sweep.peak(an, b) else {
+                let Some(Worst { max, min, .. }) = sweep.peak(an, b) else {
                     finding(
                         Verdict::Unknown,
                         severity,
