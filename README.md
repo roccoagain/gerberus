@@ -1,3 +1,5 @@
+<img src="docs/logo.svg" alt="Gerberus logo: a green three-headed dog" width="96">
+
 # Gerberus
 
 Gerberus checks a PCB design for electrical bugs before you order it: parts pushed past their datasheet limits,

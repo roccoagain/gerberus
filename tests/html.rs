@@ -72,7 +72,8 @@ fn a_finding_is_ringed_on_its_sheet_and_linked_both_ways() {
     );
     // The ring is on the child sheet only, at the symbol, and links to the finding.
     assert!(!page.contains("<?xml"));
-    assert!(page.contains(r##"<a href="#f0"><circle id="m0-1-0" class="mark error" cx="50" cy="50" r="6">"##));
+    assert!(page.contains(r#"<circle id="m0-1-0" class="mark error" cx="50" cy="50" r="6">"#));
+    assert!(page.contains(r##"<a class="ring error" href="#f0"><circle class="halo" cx="50" cy="50" r="6"/>"##));
     assert!(!page.contains("m0-0-0"));
     // The finding links to the ring, and its message is escaped.
     assert!(page.contains(r##"href="#m0-1-0" data-view="1""##));
