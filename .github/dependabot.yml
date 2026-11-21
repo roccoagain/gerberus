@@ -25,3 +25,13 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  # The tscircuit CLI the tests run (ci/tscircuit), with the same week's wait.
+  - package-ecosystem: npm
+    directory: /ci/tscircuit
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      tscircuit:
+        patterns: ["*"]

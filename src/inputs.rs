@@ -170,10 +170,15 @@ impl BoardInputs {
     /// Every connector pin is left as whatever might be plugged in, so nets that only a connector reaches stay
     /// UNKNOWN.
     pub fn none(board: &str, design: &Design) -> BoardInputs {
-        let ground = design.nets.iter().find(|n| {
-            let name = n.name.rsplit('/').next().unwrap_or("").to_ascii_uppercase();
-            matches!(name.as_str(), "GND" | "0V" | "VSS") && !n.pins.is_empty()
-        });
+        // The board's own ground before one local to a sheet or subcircuit (`/A/GND`).
+        let ground = design
+            .nets
+            .iter()
+            .filter(|n| {
+                let name = n.name.rsplit('/').next().unwrap_or("").to_ascii_uppercase();
+                matches!(name.as_str(), "GND" | "0V" | "VSS") && !n.pins.is_empty()
+            })
+            .min_by_key(|n| n.name.matches('/').count());
         let inputs = ground
             .and_then(|n| n.pins.iter().min())
             .map(|(r, p)| {

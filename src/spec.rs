@@ -51,14 +51,24 @@ fn dielectric_in(text: &str) -> Option<String> {
     })
 }
 
-/// `0603` from a KiCad footprint such as `Resistor_SMD:R_0603_1608Metric`.
+/// `0603` from a KiCad footprint such as `Resistor_SMD:R_0603_1608Metric`, or a tscircuit one such as `res0603`,
+/// `cap0603_nonpolarized` or `0603`.
 pub fn footprint_size(footprint: &str) -> Option<String> {
     let name = footprint.rsplit(':').next()?;
     let words: Vec<&str> = name.split('_').collect();
-    words.windows(2).find_map(|w| {
-        (w[0].len() == 4 && w[0].bytes().all(|b| b.is_ascii_digit()) && w[1].ends_with("Metric"))
-            .then(|| w[0].to_string())
-    })
+    let four_digits = |w: &str| w.len() == 4 && w.bytes().all(|b| b.is_ascii_digit());
+    let kicad = words
+        .windows(2)
+        .find_map(|w| (four_digits(w[0]) && w[1].ends_with("Metric")).then(|| w[0].to_string()));
+    // tscircuit names a chip part by its imperial size, after its kind for a resistor, capacitor or diode.
+    let tscircuit = || {
+        ["res", "cap", "led", "diode", ""]
+            .iter()
+            .filter_map(|kind| words.first()?.strip_prefix(kind))
+            .find(|size| four_digits(size))
+            .map(str::to_string)
+    };
+    kicad.or_else(tscircuit)
 }
 
 /// A number with an optional SI prefix and unit, as LCSC writes parameters: `25V`, `100mW`, `1/10W`, `1kV`.
@@ -436,6 +446,11 @@ mod tests {
             Some("1210")
         );
         assert_eq!(footprint_size("Capacitor_THT:CP_Radial_D5.0mm_P2.00mm"), None);
+        assert_eq!(footprint_size("res0402").as_deref(), Some("0402"));
+        assert_eq!(footprint_size("cap0805_nonpolarized").as_deref(), Some("0805"));
+        assert_eq!(footprint_size("diode0603_color(red)").as_deref(), Some("0603"));
+        assert_eq!(footprint_size("0805").as_deref(), Some("0805"));
+        assert_eq!(footprint_size("soic8"), None);
     }
 
     #[test]

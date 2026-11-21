@@ -35,7 +35,11 @@ REPORT is any of --all, --verbose (-v) and --json. Reports list errors then warn
 lists UNKNOWNs and passes, and --verbose adds the long explanations (how each net got its range). Colour is on
 for a terminal unless NO_COLOR is set. --json prints the findings as JSON instead.
 
-<design> is a KiCad root .kicad_sch.
+<design> is a KiCad root .kicad_sch, or a tscircuit board: its Circuit JSON (the circuit.json that `tsci build`
+writes) or the board's .tsx, which gerberus turns into Circuit JSON with the tscircuit CLI (`tsci`, from
+`npm install -g tscircuit`). A tscircuit part gets the KiCad standard symbol of its kind, so the checks read
+it as a KiCad part. Commands that read the board's copper (`traces`, `si`, pinout's footprints and the
+board drawing in --html) need a KiCad board.
 
 Part files come from the shared library (built into gerberus), then a `parts/` folder next to the schematic if
 there is one (its files override the shared ones), then any --parts folders in order.
@@ -411,7 +415,11 @@ fn options(path: &Path, rest: &[String], takes: &[&str]) -> Result<Options, Stri
 }
 
 fn load_design(path: &Path) -> Result<gerberus::design::Design, String> {
-    let design = gerberus::kicad::load(path)?;
+    let design = match path.extension().and_then(|e| e.to_str()) {
+        Some("json") => gerberus::tscircuit::load(path)?,
+        Some("tsx") => gerberus::tscircuit::build(path)?,
+        _ => gerberus::kicad::load(path)?,
+    };
     for w in &design.warnings {
         eprintln!("warning: {w}");
     }
@@ -549,7 +557,12 @@ fn write_html(
         }
         None => (None, None),
     };
-    let (drawings, note) = match gerberus::html::draw(design, path, pcb.as_deref()) {
+    let drawn = if path.extension().is_some_and(|e| e == "kicad_sch") {
+        gerberus::html::draw(design, path, pcb.as_deref())
+    } else {
+        Err("the drawings are made from a KiCad schematic".to_string())
+    };
+    let (drawings, note) = match drawn {
         Ok(d) => (d, None),
         Err(e) => {
             eprintln!("warning: {e}");

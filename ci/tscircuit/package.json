@@ -1,0 +1,11 @@
+{
+  "name": "gerberus-ci-tscircuit",
+  "private": true,
+  "description": "The tscircuit CLI that tests/tscircuit.rs runs, pinned by package-lock.json",
+  "dependencies": {
+    "tscircuit": "0.0.3266"
+  },
+  "overrides": {
+    "rollup": "4.40.0"
+  }
+}

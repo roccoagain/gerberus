@@ -5,7 +5,8 @@ For working on Gerberus itself. Build with `cargo build`; run a command from a c
 ## Tests
 
 `cargo test` compares each schematic's netlist with the pad nets in the matching `.kicad_pcb`, which KiCad wrote
-from the same schematic. It also checks that every part on the test boards has a sound limits file covering
+from the same schematic, and (`tests/tscircuit.rs`) each tscircuit board's nets with the connectivity tscircuit
+wrote into its Circuit JSON; one of those tests needs the tscircuit CLI, `tsci` (`npm ci --prefix ci/tscircuit` installs the version CI uses, in `ci/tscircuit/node_modules/.bin`). It also checks that every part on the test boards has a sound limits file covering
 every pin it uses, and that the boards' pinouts agree (no errors, and only the known warnings). BOM health tests
 run against a snapshot of LCSC's answers in `tests/fixtures/lcsc`, so they don't need the network. The boards come
 from [roccoagain/hardware](https://github.com/roccoagain/hardware).
@@ -58,7 +59,8 @@ git config core.hooksPath .githooks
 Every command reads a design into one design graph and checks that.
 
 - `src/kicad/` reads schematics and boards into the design graph (`src/design.rs`: parts, pins and
-  the nets that join them). `src/sexpr.rs` is the S-expression reader for KiCad files.
+  the nets that join them). `src/sexpr.rs` is the S-expression reader for KiCad files. `src/tscircuit.rs` reads
+  tscircuit's Circuit JSON into the same graph.
 - `src/limits/` loads the part files (`parts/`, format in [`parts/README.md`](../parts/README.md)), with part
   families in `src/limits/family.rs`, and `src/policy.rs` the derating policy (`policy.toml`), including the
   `stress` and `traces` settings. Both are built into the binary by `build.rs`.
