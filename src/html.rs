@@ -246,7 +246,7 @@ pub fn render(
         // A fault case's findings already name it at the start of their message.
         let _ = write!(
             list,
-            r#"<li id="f{n}" class="finding {c}"><div class="head"><i class="dot" title="{c}"></i><b>{}</b><code>{}</code></div><p>{}</p><div class="links">{}</div></li>"#,
+            r#"<li id="f{n}" class="finding {c}"><div class="head"><i class="dot" role="img" aria-label="{c}" title="{c}"></i><b>{}</b><code>{}</code></div><p>{}</p><div class="links">{}</div></li>"#,
             escape(&f.reference),
             escape(f.rule),
             escape(&f.message),
@@ -340,6 +340,7 @@ h1{font-size:14px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;te
 .filters label{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap}
 .filters label:hover{background:var(--soft)}.filters label:has(:checked){background:var(--soft);color:var(--fg)}
 .filters input{position:absolute;opacity:0;pointer-events:none}.filters label:not(:has(:checked)) .dot{opacity:.35}
+.filters label:has(:focus-visible){outline:2px solid var(--fg);outline-offset:1px}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none;background:var(--muted)}
 .error .dot{background:var(--error)}.warning .dot{background:var(--warning)}.unknown .dot{background:var(--unknown)}.pass .dot{background:var(--pass)}
 main{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);height:calc(100vh - 52px)}
